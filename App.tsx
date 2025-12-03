@@ -1,0 +1,350 @@
+import React, { useState, useEffect, useRef } from 'react';
+import FabricCard from './components/FabricCard';
+import FabricDetail from './components/FabricDetail';
+import UploadModal from './components/UploadModal';
+import ChatBot from './components/ChatBot';
+import ImageGenModal from './components/ImageGenModal';
+import { INITIAL_FABRICS } from './constants';
+import { Fabric, AppView } from './types';
+
+// --- IndexedDB Helpers ---
+const DB_NAME = 'CreataFabricDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'fabrics';
+
+const openDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const saveToDB = async (data: Fabric[]) => {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    store.put(data, 'all_fabrics');
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (error) {
+    console.error("Failed to save to IndexedDB:", error);
+  }
+};
+
+const loadFromDB = async (): Promise<Fabric[]> => {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.get('all_fabrics');
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error("Failed to load from IndexedDB:", error);
+    return [];
+  }
+};
+// -------------------------
+
+function App() {
+  const [view, setView] = useState<AppView>('grid');
+  const [fabrics, setFabrics] = useState<Fabric[]>([]);
+  const [selectedFabricId, setSelectedFabricId] = useState<string | null>(null);
+  const [isUploadModalOpen, setUploadModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'model' | 'color' | 'wood'>('model');
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // State for Color View Lightbox
+  const [colorLightbox, setColorLightbox] = useState<{
+    isOpen: boolean;
+    image: string;
+    fabricId: string;
+    colorName: string;
+  } | null>(null);
+
+  // Load initial data
+  useEffect(() => {
+    const initData = async () => {
+      // Try loading from IDB first
+      const dbData = await loadFromDB();
+      
+      if (dbData && dbData.length > 0) {
+        setFabrics(dbData);
+      } else {
+        // Fallback: Check localStorage for migration (if any exists from previous version)
+        try {
+          const localData = localStorage.getItem('creata_fabrics');
+          if (localData) {
+            const parsed = JSON.parse(localData);
+            setFabrics(parsed);
+            // Migrate to DB immediately
+            await saveToDB(parsed);
+            // Clear localStorage to free up space
+            localStorage.removeItem('creata_fabrics');
+          } else {
+            setFabrics(INITIAL_FABRICS as Fabric[]);
+          }
+        } catch (e) {
+          console.error("Migration error:", e);
+          setFabrics(INITIAL_FABRICS as Fabric[]);
+        }
+      }
+      setIsDataLoaded(true);
+    };
+
+    initData();
+  }, []);
+
+  // Save to IndexedDB whenever fabrics change
+  useEffect(() => {
+    if (isDataLoaded && fabrics.length > 0) {
+       // Debounce saving slightly to avoid heavy DB ops on rapid changes
+       const timer = setTimeout(() => {
+         saveToDB(fabrics);
+       }, 500);
+       return () => clearTimeout(timer);
+    }
+  }, [fabrics, isDataLoaded]);
+
+  const handleFabricClick = (fabric: Fabric, specificColor?: string) => {
+    if (activeTab === 'model') {
+        // Direct to detail page
+        setSelectedFabricId(fabric.id);
+        setView('detail');
+    } else {
+        // Open Lightbox for Color View
+        const img = specificColor && fabric.colorImages?.[specificColor] 
+            ? fabric.colorImages[specificColor] 
+            : fabric.mainImage;
+            
+        setColorLightbox({
+            isOpen: true,
+            image: img,
+            fabricId: fabric.id,
+            colorName: specificColor || 'Unknown'
+        });
+    }
+  };
+
+  const handleSaveFabric = (newFabric: Fabric) => {
+    setFabrics(prev => [newFabric, ...prev]);
+  };
+
+  const handleBulkSaveFabrics = (newFabrics: Fabric[]) => {
+      setFabrics(prev => [...newFabrics, ...prev]);
+  };
+
+  const handleUpdateFabric = (updatedFabric: Fabric) => {
+    setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
+  };
+
+  // Renamed/Repurposed to handle Edit Action (Legacy trash button logic removed)
+  const handleEditFabric = (id: string) => {
+     // No longer used directly here, logic moved to Detail view
+  };
+
+  const goToDetailFromLightbox = () => {
+    if (colorLightbox) {
+        setSelectedFabricId(colorLightbox.fabricId);
+        setView('detail');
+        setColorLightbox(null); // Close lightbox
+    }
+  };
+
+  // Logic for Grid Rendering
+  const getDisplayItems = () => {
+    let items = fabrics;
+
+    if (searchQuery) {
+        items = items.filter(f => 
+            f.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            f.colors.some(c => c.toLowerCase().includes(searchQuery.toLowerCase()))
+        );
+    }
+    if (activeTab === 'wood') return [];
+    return items;
+  };
+
+  const displayItems = getDisplayItems();
+
+  return (
+    <div 
+        className="min-h-screen text-primary font-sans selection:bg-black selection:text-white relative"
+        style={{ backgroundColor: 'rgb(219, 219, 219)' }}
+    >
+      
+      {/* Top Right Upload Button */}
+      <button 
+        onClick={() => setUploadModalOpen(true)}
+        className="fixed top-4 right-4 z-50 text-gray-400 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/50 transition-colors"
+        title="Subir Archivos"
+      >
+        .
+      </button>
+
+      {/* Header */}
+      {view === 'grid' && (
+        <header className="pt-16 pb-8 px-6 flex flex-col items-center space-y-6 bg-transparent">
+            <h1 className="font-serif text-6xl md:text-7xl font-bold text-center tracking-tight text-slate-900 leading-none">
+                Catálogo de telas
+            </h1>
+            <div className="flex space-x-8 md:space-x-12 border-b border-transparent">
+                <button 
+                    onClick={() => setActiveTab('model')}
+                    className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
+                        activeTab === 'model' ? 'text-black border-b-2 border-black' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    Ver modelos
+                </button>
+                <button 
+                    onClick={() => setActiveTab('color')}
+                    className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
+                        activeTab === 'color' ? 'text-black border-b-2 border-black' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    Ver colores
+                </button>
+                <button 
+                    onClick={() => setActiveTab('wood')}
+                    className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
+                        activeTab === 'wood' ? 'text-black border-b-2 border-black' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    Ver maderas
+                </button>
+            </div>
+            <div className="relative w-full max-w-lg">
+              <input 
+                type="text" 
+                placeholder="Buscar por nombre, código o composición..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-white/80 backdrop-blur-sm border border-transparent rounded-full py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-black placeholder-gray-400 transition-shadow hover:shadow-sm"
+              />
+              <svg className="absolute left-4 top-3.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            </div>
+        </header>
+      )}
+
+      {/* Main Content */}
+      <main>
+        {view === 'grid' && (
+          <div className="container mx-auto px-6 pb-20">
+            {activeTab === 'wood' ? (
+                <div className="text-center py-20 text-gray-500">
+                    <h3 className="font-serif text-xl italic">Colección de maderas próximamente</h3>
+                </div>
+            ) : displayItems.length === 0 ? (
+                <div className="text-center py-20 text-gray-500">
+                     <p>El catálogo está vacío.</p>
+                     <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
+                </div>
+            ) : (
+                // UPDATED GRID: Closer gap (gap-4) and 5 columns on XL screens (xl:grid-cols-5)
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 justify-items-center">
+                    {activeTab === 'model' 
+                        ? displayItems.map(fabric => (
+                            <FabricCard 
+                                key={fabric.id} 
+                                fabric={fabric}
+                                mode="model"
+                                onClick={() => handleFabricClick(fabric)} 
+                            />
+                        ))
+                        : displayItems.flatMap(fabric => 
+                             fabric.colors.map((colorName, idx) => (
+                                <FabricCard
+                                    key={`${fabric.id}-${idx}`}
+                                    fabric={fabric}
+                                    mode="color"
+                                    specificColorName={colorName}
+                                    onClick={() => handleFabricClick(fabric, colorName)}
+                                />
+                             ))
+                        )
+                    }
+                </div>
+            )}
+          </div>
+        )}
+
+        {view === 'detail' && selectedFabricId && (
+          <FabricDetail 
+            fabric={fabrics.find(f => f.id === selectedFabricId)!} 
+            onBack={() => setView('grid')}
+            onUpdate={handleUpdateFabric}
+          />
+        )}
+        
+        {view === 'generator' && (
+            <ImageGenModal onClose={() => setView('grid')} />
+        )}
+      </main>
+
+      {/* Color View Lightbox Overlay - 70% Blur */}
+      {colorLightbox && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center">
+            {/* Background: Transparent 70% white (bg-white/70) with Blur (backdrop-blur-lg) */}
+            <div 
+                className="absolute inset-0 bg-white/70 backdrop-blur-lg transition-all duration-500"
+                onClick={() => setColorLightbox(null)}
+            ></div>
+            
+            {/* Top Button */}
+            <div className="absolute top-10 z-[110] animate-fade-in-down">
+                <button 
+                    onClick={goToDetailFromLightbox}
+                    className="bg-black text-white px-8 py-3 rounded-full text-sm font-bold uppercase tracking-widest shadow-xl hover:bg-gray-800 transition-transform hover:scale-105"
+                >
+                    Ver Detalle del Modelo
+                </button>
+            </div>
+
+            {/* Large Image */}
+            <div className="relative z-[105] p-8 max-w-4xl w-full h-full flex items-center justify-center pointer-events-none">
+                 <img 
+                    src={colorLightbox.image} 
+                    alt={colorLightbox.colorName} 
+                    className="max-h-[80vh] max-w-full object-contain shadow-2xl rounded-sm pointer-events-auto"
+                 />
+            </div>
+            
+            {/* Close Button (X) */}
+            <button 
+                onClick={() => setColorLightbox(null)}
+                className="absolute top-10 right-10 z-[110] text-gray-400 hover:text-black"
+            >
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        </div>
+      )}
+
+      {/* Modals */}
+      <UploadModal 
+        isOpen={isUploadModalOpen} 
+        onClose={() => setUploadModalOpen(false)} 
+        onSave={handleSaveFabric} 
+        onBulkSave={handleBulkSaveFabrics}
+      />
+
+      <ChatBot />
+
+    </div>
+  );
+}
+
+export default App;
