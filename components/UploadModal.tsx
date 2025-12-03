@@ -59,9 +59,21 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
           console.warn(`Extraction failed for ${groupName}`, e);
       }
 
+      // HELPER: Remove "Fromatex" prefix if present
+      const cleanFabricName = (inputName: string) => {
+          if (!inputName) return "";
+          // Remove "Fromatex" followed by _, -, space or nothing, case insensitive
+          return inputName.replace(/^Fromatex[_\-\s]*/i, '').trim();
+      };
+
+      // Clean extracted name
+      if (rawData.name && rawData.name !== "Unknown") {
+          rawData.name = cleanFabricName(rawData.name);
+      }
+
       // 2. Name Inference
       if (!rawData.name || rawData.name === "Unknown") {
-          rawData.name = groupName; // Use folder name as fallback
+          rawData.name = cleanFabricName(groupName); // Use cleaned folder name as fallback
       }
 
       // 3. Cross-reference DB
@@ -91,9 +103,23 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             }
         } else {
             // Unknown fabric: Use filename as color
-            const cleanName = fileNameLower.replace(/[-_]/g, " ");
-            colorImages[cleanName] = base64Img;
-            if (!detectedColors.includes(cleanName)) detectedColors.push(cleanName);
+            // Clean filename too if it has the fabric name prefix usually found in files (e.g. Fromatex_Alanis_Red.jpg)
+            let cleanColorName = fileNameLower;
+            
+            // Try to remove fabric name prefix if it exists in filename
+            if (rawData.name) {
+                const nameRegex = new RegExp(`^${rawData.name}[_\\-\\s]*`, 'i');
+                cleanColorName = cleanColorName.replace(nameRegex, '');
+            }
+            // Also clean Fromatex if still there
+            cleanColorName = cleanColorName.replace(/^Fromatex[_\-\s]*/i, '');
+            
+            const cleanName = cleanColorName.replace(/[-_]/g, " ").trim();
+            // Capitalize first letter
+            const formattedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+
+            colorImages[formattedName] = base64Img;
+            if (!detectedColors.includes(formattedName)) detectedColors.push(formattedName);
         }
       }
 
