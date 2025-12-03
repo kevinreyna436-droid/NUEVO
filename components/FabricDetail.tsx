@@ -11,6 +11,23 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack }) => {
   const [showSpecs, setShowSpecs] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
+  // Helper function to clean displayed color name
+  const getCleanColorName = (fullColorName: string) => {
+    let name = fullColorName;
+    // 1. Remove "Fromatex" prefix (case insensitive)
+    name = name.replace(/^Fromatex[_\-\s]*/i, '');
+    
+    // 2. Remove Fabric Name prefix if present (case insensitive)
+    if (fabric.name) {
+        // Escape special regex characters in fabric name just in case
+        const escapedFabricName = fabric.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+        const modelRegex = new RegExp(`^${escapedFabricName}[_\\-\\s]*`, 'i');
+        name = name.replace(modelRegex, '');
+    }
+    
+    return name.trim();
+  };
+
   return (
     <div 
         className="min-h-screen pb-20 animate-fade-in-up relative"
@@ -49,12 +66,10 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack }) => {
         {/* 1. Centered Header Info */}
         <div className="mb-6 space-y-2">
             <h2 className="text-gray-500 italic font-serif text-sm tracking-wide">CREATA</h2>
-            <h1 className="font-serif text-6xl md:text-8xl font-bold text-slate-900 tracking-tight leading-none">
+            {/* Reduced Title Size */}
+            <h1 className="font-serif text-4xl md:text-5xl font-bold text-slate-900 tracking-tight leading-none">
                 {fabric.name}
             </h1>
-            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em] pt-1">
-                {fabric.supplier}
-            </p>
         </div>
 
         {/* Collapsible Technical Specs */}
@@ -121,7 +136,7 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack }) => {
             <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-12">Variantes de Color</h3>
             
             {/* Flex container for centering and wrapping */}
-            <div className="flex flex-wrap justify-center gap-8">
+            <div className="flex flex-wrap justify-center gap-10">
               {fabric.colors.map((color, idx) => {
                 const colorImg = fabric.colorImages?.[color] || fabric.mainImage;
                 
@@ -131,17 +146,17 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack }) => {
                     className="flex flex-col items-center group cursor-pointer" 
                     onClick={() => setLightboxImage(colorImg)}
                   >
-                    {/* Circle Image - Increased size to w-40 h-40 (160px) */}
-                    <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border border-gray-100 p-1 shadow-sm transition-transform duration-500 group-hover:scale-105 group-hover:shadow-xl bg-white">
+                    {/* Circle Image - Increased size, thin black border, almost no padding */}
+                    <div className="w-40 h-40 md:w-48 md:h-48 rounded-full border-[0.5px] border-black p-[2px] shadow-sm transition-transform duration-500 group-hover:scale-105 group-hover:shadow-2xl bg-white overflow-hidden">
                         <img 
                             src={colorImg} 
                             alt={color} 
-                            className="w-full h-full rounded-full object-cover"
+                            className="w-full h-full rounded-full object-cover scale-[1.01]" 
                         />
                     </div>
-                    {/* Color Name */}
-                    <span className="mt-4 text-xs font-bold text-gray-500 uppercase tracking-widest group-hover:text-black transition-colors">
-                        {color}
+                    {/* Color Name - Cleaned */}
+                    <span className="mt-5 text-xs font-bold text-gray-600 uppercase tracking-widest group-hover:text-black transition-colors">
+                        {getCleanColorName(color)}
                     </span>
                   </div>
                 );
