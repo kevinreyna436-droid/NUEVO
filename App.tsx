@@ -447,35 +447,35 @@ function App() {
       {/* Color View Lightbox Overlay */}
       {colorLightbox && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center">
-            {/* Background: Transparent 70% white with Blur 70% (approx md/lg blur) */}
+            {/* Background: Transparent 70% blurred */}
             <div 
-                className="absolute inset-0 bg-white/70 backdrop-blur-xl transition-all duration-500"
+                className="absolute inset-0 bg-black/60 backdrop-blur-[10px] transition-all duration-500"
                 onClick={() => setColorLightbox(null)}
             ></div>
             
-            {/* Top Button */}
+            {/* Top Button - SMALLER */}
             <div className="absolute top-10 z-[110] animate-fade-in-down">
                 <button 
                     onClick={goToDetailFromLightbox}
-                    className="bg-black text-white px-8 py-3 rounded-full text-sm font-bold uppercase tracking-widest shadow-xl hover:bg-gray-800 transition-transform hover:scale-105"
+                    className="bg-black text-white px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest shadow-xl hover:bg-gray-800 transition-transform hover:scale-105 border border-white/10"
                 >
-                    Ver Detalle del Modelo
+                    Ver Detalle de la tela
                 </button>
             </div>
 
             {/* Large Image */}
-            <div className="relative z-[105] p-8 max-w-4xl w-full h-full flex items-center justify-center pointer-events-none">
+            <div className="relative z-[105] p-8 max-w-5xl w-full h-full flex items-center justify-center pointer-events-none">
                  <img 
                     src={colorLightbox.image} 
                     alt={colorLightbox.colorName} 
-                    className="max-h-[80vh] max-w-full object-contain shadow-2xl rounded-sm pointer-events-auto"
+                    className="max-h-[85vh] max-w-full object-contain shadow-2xl rounded-sm pointer-events-auto border border-white/10"
                  />
             </div>
             
             {/* Close Button (X) */}
             <button 
                 onClick={() => setColorLightbox(null)}
-                className="absolute top-10 right-10 z-[110] text-gray-400 hover:text-black"
+                className="absolute top-8 right-8 z-[110] text-white/70 hover:text-white"
             >
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>

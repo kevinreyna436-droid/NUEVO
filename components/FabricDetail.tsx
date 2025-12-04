@@ -111,38 +111,37 @@ Generado automáticamente por Creata App
       {/* Lightbox Overlay (Full Screen Image with Navigation) */}
       {lightboxIndex !== null && (
         <div 
-            className="fixed inset-0 z-[100] bg-white/30 backdrop-blur-xl flex items-center justify-center cursor-pointer p-4 md:p-8"
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-[10px] flex items-center justify-center cursor-pointer p-4 md:p-8"
             onClick={() => setLightboxIndex(null)}
         >
-            {/* Prev Button */}
+            {/* Prev Button (Small Arrow) */}
             <button 
               onClick={handlePrevImage}
-              className="absolute left-4 md:left-8 text-black hover:scale-125 transition-transform p-4 z-[110]"
+              className="absolute left-4 md:left-8 text-white/80 hover:text-white hover:scale-110 transition-all p-4 z-[110] bg-black/20 rounded-full backdrop-blur-sm"
             >
-               <svg className="w-10 h-10 md:w-16 md:h-16 drop-shadow-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" /></svg>
+               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
 
             {/* Image */}
-            <div className="relative max-w-5xl max-h-full">
+            <div className="relative max-w-5xl max-h-full flex items-center justify-center">
                <img 
                   src={getLightboxImage()!} 
                   alt="Full Texture" 
-                  className="max-w-full max-h-[85vh] object-contain shadow-2xl rounded-sm animate-fade-in border-[1px] border-white/20"
+                  className="max-w-full max-h-[85vh] object-contain shadow-2xl rounded-sm animate-fade-in border border-white/10"
                />
-               {/* REMOVED NAME TEXT AS REQUESTED */}
             </div>
 
-            {/* Next Button */}
+            {/* Next Button (Small Arrow) */}
             <button 
               onClick={handleNextImage}
-              className="absolute right-4 md:right-8 text-black hover:scale-125 transition-transform p-4 z-[110]"
+              className="absolute right-4 md:right-8 text-white/80 hover:text-white hover:scale-110 transition-all p-4 z-[110] bg-black/20 rounded-full backdrop-blur-sm"
             >
-               <svg className="w-10 h-10 md:w-16 md:h-16 drop-shadow-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" /></svg>
+               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
 
-            {/* Close X (optional, clicking bg closes too) */}
-            <button className="absolute top-6 right-6 text-black opacity-50 hover:opacity-100">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            {/* Close X */}
+            <button className="absolute top-6 right-6 text-white/70 hover:text-white">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
         </div>
       )}
@@ -260,9 +259,12 @@ Generado automáticamente por Creata App
                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
                        />
                        
-                       {/* HOVER OVERLAY WITH ICON */}
-                       <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[1px]">
-                          <svg className="w-12 h-12 text-white drop-shadow-lg transform scale-75 group-hover:scale-100 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
+                       {/* HOVER OVERLAY WITH LUPA + ICON (Small White) */}
+                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                          {/* Search Plus Icon */}
+                          <svg className="w-8 h-8 text-white drop-shadow-md transform scale-75 group-hover:scale-100 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+                          </svg>
                        </div>
                     </div>
                     
