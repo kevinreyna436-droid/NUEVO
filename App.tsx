@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import FabricCard from './components/FabricCard';
 import FabricDetail from './components/FabricDetail';
 import UploadModal from './components/UploadModal';
@@ -67,7 +67,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'wood'>('model');
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
-  // State for Color View Lightbox
+  // State for Color View Lightbox (Global Grid)
   const [colorLightbox, setColorLightbox] = useState<{
     isOpen: boolean;
     image: string;
@@ -147,13 +147,9 @@ function App() {
       setFabrics(prev => [...newFabrics, ...prev]);
   };
 
+  // Logic to update an existing fabric (from Edit Modal)
   const handleUpdateFabric = (updatedFabric: Fabric) => {
     setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
-  };
-
-  // Renamed/Repurposed to handle Edit Action (Legacy trash button logic removed)
-  const handleEditFabric = (id: string) => {
-     // No longer used directly here, logic moved to Detail view
   };
 
   const goToDetailFromLightbox = () => {
@@ -181,15 +177,12 @@ function App() {
   const displayItems = getDisplayItems();
 
   return (
-    <div 
-        className="min-h-screen text-primary font-sans selection:bg-black selection:text-white relative"
-        style={{ backgroundColor: 'rgb(219, 219, 219)' }}
-    >
+    <div className="min-h-screen bg-[#f2f2f2] text-primary font-sans selection:bg-black selection:text-white relative">
       
       {/* Top Right Upload Button */}
       <button 
         onClick={() => setUploadModalOpen(true)}
-        className="fixed top-4 right-4 z-50 text-gray-400 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/50 transition-colors"
+        className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"
         title="Subir Archivos"
       >
         .
@@ -197,7 +190,7 @@ function App() {
 
       {/* Header */}
       {view === 'grid' && (
-        <header className="pt-16 pb-8 px-6 flex flex-col items-center space-y-6 bg-transparent">
+        <header className="pt-16 pb-8 px-6 flex flex-col items-center space-y-6">
             <h1 className="font-serif text-6xl md:text-7xl font-bold text-center tracking-tight text-slate-900 leading-none">
                 Catálogo de telas
             </h1>
@@ -205,7 +198,7 @@ function App() {
                 <button 
                     onClick={() => setActiveTab('model')}
                     className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
-                        activeTab === 'model' ? 'text-black border-b-2 border-black' : 'text-gray-500 hover:text-gray-700'
+                        activeTab === 'model' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
                 >
                     Ver modelos
@@ -213,7 +206,7 @@ function App() {
                 <button 
                     onClick={() => setActiveTab('color')}
                     className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
-                        activeTab === 'color' ? 'text-black border-b-2 border-black' : 'text-gray-500 hover:text-gray-700'
+                        activeTab === 'color' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
                 >
                     Ver colores
@@ -221,7 +214,7 @@ function App() {
                 <button 
                     onClick={() => setActiveTab('wood')}
                     className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
-                        activeTab === 'wood' ? 'text-black border-b-2 border-black' : 'text-gray-500 hover:text-gray-700'
+                        activeTab === 'wood' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
                 >
                     Ver maderas
@@ -233,7 +226,7 @@ function App() {
                 placeholder="Buscar por nombre, código o composición..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white/80 backdrop-blur-sm border border-transparent rounded-full py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-black placeholder-gray-400 transition-shadow hover:shadow-sm"
+                className="w-full bg-white border border-gray-200 rounded-full py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-black placeholder-gray-400 transition-shadow hover:shadow-sm shadow-sm"
               />
               <svg className="absolute left-4 top-3.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </div>
@@ -245,17 +238,17 @@ function App() {
         {view === 'grid' && (
           <div className="container mx-auto px-6 pb-20">
             {activeTab === 'wood' ? (
-                <div className="text-center py-20 text-gray-500">
+                <div className="text-center py-20 text-gray-400">
                     <h3 className="font-serif text-xl italic">Colección de maderas próximamente</h3>
                 </div>
             ) : displayItems.length === 0 ? (
-                <div className="text-center py-20 text-gray-500">
+                <div className="text-center py-20 text-gray-300">
                      <p>El catálogo está vacío.</p>
                      <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
                 </div>
             ) : (
-                // UPDATED GRID: Closer gap (gap-4) and 5 columns on XL screens (xl:grid-cols-5)
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 justify-items-center">
+                // Changed Grid to gap-6
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 justify-items-center">
                     {activeTab === 'model' 
                         ? displayItems.map(fabric => (
                             <FabricCard 
@@ -286,7 +279,7 @@ function App() {
           <FabricDetail 
             fabric={fabrics.find(f => f.id === selectedFabricId)!} 
             onBack={() => setView('grid')}
-            onUpdate={handleUpdateFabric}
+            onEdit={handleUpdateFabric}
           />
         )}
         
@@ -295,12 +288,12 @@ function App() {
         )}
       </main>
 
-      {/* Color View Lightbox Overlay - 70% Blur */}
+      {/* Color View Lightbox Overlay */}
       {colorLightbox && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center">
-            {/* Background: Transparent 70% white (bg-white/70) with Blur (backdrop-blur-lg) */}
+            {/* Background: Transparent 70% white with Blur 70% (approx md/lg blur) */}
             <div 
-                className="absolute inset-0 bg-white/70 backdrop-blur-lg transition-all duration-500"
+                className="absolute inset-0 bg-white/70 backdrop-blur-xl transition-all duration-500"
                 onClick={() => setColorLightbox(null)}
             ></div>
             
