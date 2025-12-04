@@ -10,7 +10,7 @@ import {
   getFabricsFromFirestore, 
   saveFabricToFirestore, 
   saveBatchFabricsToFirestore, 
-  deleteFabricFromFirestore,
+  deleteFabricFromFirestore, 
   clearFirestoreCollection 
 } from './services/firebase';
 
@@ -212,7 +212,8 @@ function App() {
       {/* Main Content */}
       <main>
         {view === 'grid' && (
-          <div className="container mx-auto px-6 pb-20">
+          // Added 'flex flex-col items-center' to enforce centering of the grid container content
+          <div className="container mx-auto px-6 pb-20 flex flex-col items-center">
             {activeTab === 'wood' ? (
                 <div className="text-center py-20 text-gray-400">
                     <h3 className="font-serif text-xl italic">Colección de maderas próximamente</h3>
@@ -227,8 +228,8 @@ function App() {
                      <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
                 </div>
             ) : (
-                // CHANGED: Reduced number of columns to make cards larger (removed 5 cols option)
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 xl:gap-8">
+                // CHANGED: Added max-w to keep grid from stretching too wide on huge screens, maintaining visual center
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 xl:gap-8 w-full max-w-[1600px]">
                     {activeTab === 'model' 
                         ? displayItems.map((fabric, idx) => (
                             <FabricCard 
