@@ -98,8 +98,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       for (const file of imgFiles) {
         const fileNameLower = file.name.toLowerCase().replace(/\.[^/.]+$/, "");
         
-        // Use Compressed Image for Storage (Aggressive settings: 500px, 0.5 quality)
-        const base64Img = await compressImage(file, 500, 0.5);
+        // Use Compressed Image for Storage
+        // REDUCED TO 300px and 0.5 quality to fix Firestore 1MB limit error
+        const base64Img = await compressImage(file, 300, 0.5);
 
         if (dbName) {
             const matchedColor = detectedColors.find(color => fileNameLower.includes(color.toLowerCase()));
@@ -133,7 +134,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       if (Object.keys(colorImages).length > 0) {
           mainImageToUse = Object.values(colorImages)[0];
       } else if (imgFiles.length > 0) {
-          mainImageToUse = await compressImage(imgFiles[0], 500, 0.5);
+          // Use smaller size for main image fallback as well
+          mainImageToUse = await compressImage(imgFiles[0], 300, 0.5);
       } else {
           mainImageToUse = 'https://picsum.photos/500/500'; // Placeholder
       }
@@ -229,7 +231,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         onClose();
     } catch (error: any) {
         console.error("Save error:", error?.message || "Unknown error");
-        alert("Ocurrió un error al guardar en la nube. Intenta subir menos archivos a la vez.");
+        alert("Ocurrió un error al guardar en la nube. Posiblemente los archivos sean demasiado pesados.");
     } finally {
         setIsSaving(false);
     }

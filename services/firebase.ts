@@ -94,7 +94,8 @@ const createCleanFabricObject = (source: any): Fabric => {
               const key = safeString(k);
               const val = safeString(v);
               // Only keep valid base64/url strings
-              if (key && val && val.length < 5000000) { // Safety check on size if needed
+              // Reduced to ~300KB limit to ensure we don't accidentally blow up the 1MB Firestore doc limit
+              if (key && val && val.length < 400000) { 
                   cleanColorImages[key] = val;
               }
           });
