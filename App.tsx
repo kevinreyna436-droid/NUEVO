@@ -48,8 +48,8 @@ function App() {
         // DO NOT LOAD INITIAL_FABRICS AUTOMATICALLY
         setFabrics([]); 
       }
-    } catch (e) {
-      console.error("Error loading initial data:", e);
+    } catch (e: any) {
+      console.error("Error loading initial data:", e?.message || "Unknown error");
     } finally {
       setLoading(false);
     }
@@ -81,25 +81,38 @@ function App() {
   };
 
   const handleSaveFabric = async (newFabric: Fabric) => {
-    // Optimistic Update
-    setFabrics(prev => [newFabric, ...prev]);
-    // Save to Firestore
-    await saveFabricToFirestore(newFabric);
+    try {
+      // Optimistic Update
+      setFabrics(prev => [newFabric, ...prev]);
+      // Save to Firestore
+      await saveFabricToFirestore(newFabric);
+    } catch (e: any) {
+      console.error("Error saving fabric:", e?.message || "Unknown error");
+      // Optional: Revert state if needed, or just warn
+    }
   };
 
   const handleBulkSaveFabrics = async (newFabrics: Fabric[]) => {
+    try {
       // Optimistic Update
       setFabrics(prev => [...newFabrics, ...prev]);
       // Save to Firestore
       await saveBatchFabricsToFirestore(newFabrics);
+    } catch (e: any) {
+      console.error("Error bulk saving:", e?.message || "Unknown error");
+    }
   };
 
   // Logic to update an existing fabric (from Edit Modal)
   const handleUpdateFabric = async (updatedFabric: Fabric) => {
-    // Optimistic Update
-    setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
-    // Save to Firestore
-    await saveFabricToFirestore(updatedFabric);
+    try {
+      // Optimistic Update
+      setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
+      // Save to Firestore
+      await saveFabricToFirestore(updatedFabric);
+    } catch (e: any) {
+      console.error("Error updating fabric:", e?.message || "Unknown error");
+    }
   };
 
   const handleDeleteFabric = async (fabricId: string) => {
@@ -109,7 +122,8 @@ function App() {
           setView('grid');
           setSelectedFabricId(null);
           await deleteFabricFromFirestore(fabricId);
-      } catch (e) {
+      } catch (e: any) {
+          console.error("Error deleting fabric:", e?.message || "Unknown error");
           alert("Hubo un error al eliminar la ficha.");
       }
   };
@@ -122,7 +136,8 @@ function App() {
             await clearFirestoreCollection();
             setUploadModalOpen(false);
             alert("Catálogo reseteado correctamente en la nube.");
-          } catch (e) {
+          } catch (e: any) {
+            console.error("Error resetting collection:", e?.message || "Unknown error");
             alert("Error al resetear la base de datos.");
           }
       }

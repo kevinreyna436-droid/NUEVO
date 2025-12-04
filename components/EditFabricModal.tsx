@@ -78,8 +78,8 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
             // If it's the first color, update main image too optionally, or logic to keep mainImage separate
             mainImage: editingColorIndex === 0 ? base64 : prev.mainImage
           }));
-      } catch (err) {
-          console.error("Error compressing image", err);
+      } catch (err: any) {
+          console.error("Error compressing image", err?.message || "Unknown error");
           alert("Error al procesar la imagen.");
       }
       setEditingColorIndex(null);

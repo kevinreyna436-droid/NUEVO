@@ -58,8 +58,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             // const base64Data = await fileToBase64(imgFiles[0]);
             // rawData = await extractFabricData(base64Data.split(',')[1], imgFiles[0].type);
         }
-      } catch (e) {
-          console.warn(`Extraction failed for ${groupName}`, e);
+      } catch (e: any) {
+          console.warn(`Extraction failed for ${groupName}`, e?.message || "Unknown error");
       }
 
       // HELPER: Remove "Fromatex", "Fotmatex" prefix if present
@@ -188,8 +188,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       setExtractedFabrics(results);
       setStep('review');
 
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("Processing error:", err?.message || "Unknown error");
       alert('Error procesando archivos. Intenta de nuevo.');
       setStep('upload');
     }
@@ -227,8 +227,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         setFiles([]);
         setExtractedFabrics([]);
         onClose();
-    } catch (error) {
-        console.error("Save error:", error);
+    } catch (error: any) {
+        console.error("Save error:", error?.message || "Unknown error");
         alert("Ocurrió un error al guardar en la nube. Intenta subir menos archivos a la vez.");
     } finally {
         setIsSaving(false);

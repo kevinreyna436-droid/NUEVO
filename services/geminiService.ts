@@ -80,8 +80,8 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
     }));
 
     return JSON.parse(response.text || '{}');
-  } catch (error) {
-    console.error("Error extracting fabric data:", error);
+  } catch (error: any) {
+    console.error("Error extracting fabric data:", error?.message || String(error));
     throw error;
   }
 };
@@ -112,8 +112,8 @@ export const generateFabricDesign = async (prompt: string, aspectRatio: string =
        }
     }
     return null;
-  } catch (error) {
-    console.error("Error generating fabric:", error);
+  } catch (error: any) {
+    console.error("Error generating fabric:", error?.message || String(error));
     throw error;
   }
 };
@@ -141,8 +141,8 @@ export const editFabricImage = async (base64Image: string, prompt: string) => {
       }
    }
    return null;
-  } catch (error) {
-    console.error("Error editing fabric:", error);
+  } catch (error: any) {
+    console.error("Error editing fabric:", error?.message || String(error));
     throw error;
   }
 };
@@ -174,8 +174,8 @@ export const chatWithExpert = async (message: string, history: any[]) => {
     })) || [];
 
     return { text, sources };
-  } catch (error) {
-    console.error("Error in chat:", error);
+  } catch (error: any) {
+    console.error("Error in chat:", error?.message || String(error));
     return { text: "I'm having trouble connecting to the design studio. Please try again.", sources: [] };
   }
 };
