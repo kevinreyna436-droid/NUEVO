@@ -38,26 +38,26 @@ function App() {
     colorName: string;
   } | null>(null);
 
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const dbData = await getFabricsFromFirestore();
+      if (dbData && dbData.length > 0) {
+        setFabrics(dbData);
+      } else {
+        // DO NOT LOAD INITIAL_FABRICS AUTOMATICALLY
+        setFabrics([]); 
+      }
+    } catch (e) {
+      console.error("Error loading initial data:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Load initial data from Firestore
   useEffect(() => {
-    const initData = async () => {
-      setLoading(true);
-      try {
-        const dbData = await getFabricsFromFirestore();
-        if (dbData && dbData.length > 0) {
-          setFabrics(dbData);
-        } else {
-          // DO NOT LOAD INITIAL_FABRICS AUTOMATICALLY
-          setFabrics([]); 
-        }
-      } catch (e) {
-        console.error("Error loading initial data:", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initData();
+    loadData();
   }, []);
 
   const handleFabricClick = (fabric: Fabric, specificColor?: string) => {
@@ -396,8 +396,15 @@ function App() {
                 </div>
             ) : filteredItemCount === 0 && activeTab !== 'wood' ? (
                 <div className="text-center py-20 text-gray-300">
-                     <p>El catálogo está vacío.</p>
-                     <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
+                     <p>El catálogo está vacío o no se pudo cargar.</p>
+                     <p className="text-xs mt-2 mb-4">Verifica tu conexión a internet.</p>
+                     <button 
+                        onClick={loadData}
+                        className="bg-black text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-gray-800"
+                     >
+                        Reintentar
+                     </button>
+                     <p className="text-xs mt-4">O usa el botón "." arriba a la derecha para cargar datos nuevos.</p>
                 </div>
             ) : (
                 // CHANGED: Limited max columns to 5 (2xl:grid-cols-5)

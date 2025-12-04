@@ -8,8 +8,6 @@ import {
   doc, 
   deleteDoc, 
   writeBatch,
-  QuerySnapshot,
-  DocumentData,
   enableIndexedDbPersistence,
   initializeFirestore,
   CACHE_SIZE_UNLIMITED
@@ -29,26 +27,20 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with specific settings to improve stability
+// Initialize Firestore with specific settings
 const db = initializeFirestore(app, {
     cacheSizeBytes: CACHE_SIZE_UNLIMITED
 });
 
-// Enable Offline Persistence with robust error handling
-// We execute this immediately to ensure it's ready before any operation
-const setupPersistence = async () => {
-    try {
-        await enableIndexedDbPersistence(db);
-        console.log("Offline persistence enabled");
-    } catch (err: any) {
-        if (err.code === 'failed-precondition') {
-            console.warn('Persistence failed: Multiple tabs open');
-        } else if (err.code === 'unimplemented') {
-            console.warn('Persistence not supported by browser');
-        }
+// Attempt to enable persistence
+// This allows the app to work offline and load faster on subsequent visits
+enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+        console.warn('Persistence failed: Multiple tabs open');
+    } else if (err.code === 'unimplemented') {
+        console.warn('Persistence not supported by browser');
     }
-};
-setupPersistence();
+});
 
 const COLLECTION_NAME = "fabrics";
 
@@ -57,29 +49,50 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Creates a clean, plain Javascript object strictly adhering to the Fabric interface.
- * Prevents "Converting circular structure to JSON" errors by forcing primitive types.
+ * This function acts as a firewall preventing circular structures (DOM nodes, Events)
+ * from entering the database or state.
  */
 const createCleanFabricObject = (source: any): Fabric => {
-  // Ultra-safe string converter that rejects objects/functions/symbols
+  // If source is null or not an object, return a safe default to prevent crashes
+  if (!source || typeof source !== 'object') {
+      return {
+          id: 'error-' + Date.now(),
+          name: 'Error de Datos',
+          supplier: '',
+          technicalSummary: '',
+          specs: { composition: '', martindale: '', usage: '', weight: '' },
+          colors: [],
+          colorImages: {},
+          mainImage: '',
+          category: 'model'
+      };
+  }
+
+  // Ultra-safe string converter
   const safeString = (val: any): string => {
-      if (val === null || val === undefined) return '';
-      if (typeof val === 'string') return val;
-      if (typeof val === 'number') return String(val);
-      if (typeof val === 'boolean') return String(val);
-      // If it's any object (DOM node, React ref, Image, Blob), return empty string to be safe
-      return ''; 
+      try {
+          if (val === null || val === undefined) return '';
+          if (typeof val === 'string') return val;
+          if (typeof val === 'number') return String(val);
+          if (typeof val === 'boolean') return String(val);
+          // Reject objects/arrays/functions to avoid [object Object] or circular refs
+          return ''; 
+      } catch (e) { return ''; }
   };
 
   // Safely extract color images map
   const cleanColorImages: Record<string, string> = {};
-  if (source.colorImages && typeof source.colorImages === 'object') {
-      Object.entries(source.colorImages).forEach(([k, v]) => {
-          const key = safeString(k);
-          const val = safeString(v);
-          if (key && val) {
-              cleanColorImages[key] = val;
-          }
-      });
+  if (source.colorImages && typeof source.colorImages === 'object' && source.colorImages !== null) {
+      try {
+          Object.entries(source.colorImages).forEach(([k, v]) => {
+              const key = safeString(k);
+              const val = safeString(v);
+              // Only keep valid base64/url strings
+              if (key && val && val.length < 5000000) { // Safety check on size if needed
+                  cleanColorImages[key] = val;
+              }
+          });
+      } catch(e) { console.warn("Error cleaning colorImages", e); }
   }
 
   // Safely extract colors array
@@ -93,14 +106,14 @@ const createCleanFabricObject = (source: any): Fabric => {
 
   return {
     id: safeString(source.id),
-    name: safeString(source.name),
+    name: safeString(source.name) || 'Sin Nombre',
     supplier: safeString(source.supplier),
     technicalSummary: safeString(source.technicalSummary),
     specs: {
-      composition: safeString(source.specs?.composition),
-      weight: safeString(source.specs?.weight),
-      martindale: safeString(source.specs?.martindale),
-      usage: safeString(source.specs?.usage),
+      composition: safeString(source?.specs?.composition),
+      weight: safeString(source?.specs?.weight),
+      martindale: safeString(source?.specs?.martindale),
+      usage: safeString(source?.specs?.usage),
     },
     colors: cleanColors,
     colorImages: cleanColorImages,
@@ -120,11 +133,10 @@ const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay
         const isConnectionError = error.code === 'unavailable' || 
                                   error.message?.includes('backend') || 
                                   error.message?.includes('network') ||
-                                  error.message?.includes('offline') ||
-                                  error.message?.includes('Cloud Firestore backend');
+                                  error.message?.includes('offline');
         
         if (retries > 0 && isConnectionError) {
-            console.warn(`Retrying Firestore op. Attempts left: ${retries}`);
+            console.warn(`Retrying Firestore op... ${retries} attempts left.`);
             await delay(delayMs);
             return retryOperation(operation, retries - 1, delayMs * 2);
         }
@@ -136,45 +148,27 @@ const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay
 
 /**
  * Fetch all fabrics from Firestore.
- * Implements a "Server First, Cache Fallback" strategy.
+ * Strategy: Standard getDocs with automatic SDK offline handling.
+ * If strictly offline/unreachable and SDK throws, explicit fallback to cache.
  */
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   try {
-    // Try server first with timeout protection via Promise.race
-    // If server takes too long (e.g. 5s), fallback to cache immediately
-    const serverPromise = getDocs(collection(db, COLLECTION_NAME));
+    // We do NOT use a timeout here anymore. We let Firebase SDK handle the connection.
+    // If backend doesn't respond in 10s, the SDK might throw or return from cache if configured.
+    const snapshot = await getDocs(collection(db, COLLECTION_NAME));
     
-    // Create a timeout promise that rejects
-    const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT')), 5000)
-    );
-
-    let querySnapshot: QuerySnapshot<DocumentData>;
-    
-    try {
-        querySnapshot = await Promise.race([serverPromise, timeoutPromise]);
-    } catch (e) {
-        // If server timed out or failed, try cache explicitly
-        console.warn("Server fetch failed/timed out, falling back to cache.");
-        try {
-            querySnapshot = await getDocsFromCache(collection(db, COLLECTION_NAME));
-        } catch (cacheErr) {
-            // If cache also fails, return empty array to prevent crash
-            console.error("Cache fetch failed", cacheErr);
-            return [];
-        }
-    }
-
-    const fabrics: Fabric[] = [];
-    querySnapshot.forEach((doc) => {
-      // Very important: clean data coming OUT of DB too
-      fabrics.push(createCleanFabricObject(doc.data()));
-    });
-    return fabrics;
+    return snapshot.docs.map(doc => createCleanFabricObject(doc.data()));
   } catch (error) {
-    console.error("Error getting documents: ", error);
-    // Return empty array instead of crashing app on read failure
-    return [];
+    console.warn("Network fetch failed, attempting explicit cache fallback...", error);
+    try {
+        // If network failed completely (and SDK didn't auto-fallback), try forcing cache
+        const cacheSnap = await getDocsFromCache(collection(db, COLLECTION_NAME));
+        return cacheSnap.docs.map(doc => createCleanFabricObject(doc.data()));
+    } catch (cacheErr) {
+        console.error("Cache fetch also failed", cacheErr);
+        // Return empty array so app doesn't crash, allowing UI to show "Empty/Error" state
+        return [];
+    }
   }
 };
 
@@ -183,7 +177,7 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
  */
 export const saveFabricToFirestore = async (fabric: Fabric) => {
   try {
-    // 1. Sanitize Data
+    // 1. Sanitize Data (Crucial Step to prevent Circular JSON)
     const cleanFabric = createCleanFabricObject(fabric);
     
     // 2. Validate ID
@@ -201,11 +195,9 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
  * Save multiple fabrics at once (Batch)
  */
 export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
-  const CHUNK_SIZE = 5; // Increased slightly as 1 is too slow, 5 is safe for text/base64
+  const CHUNK_SIZE = 5; 
   
   const cleanFabrics = fabrics.map(createCleanFabricObject).filter(f => f.id);
-
-  console.log(`Starting batch save for ${cleanFabrics.length} items...`);
 
   for (let i = 0; i < cleanFabrics.length; i += CHUNK_SIZE) {
     const chunk = cleanFabrics.slice(i, i + CHUNK_SIZE);
@@ -218,8 +210,7 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
     
     try {
         await retryOperation(() => batch.commit(), 3, 2000);
-        console.log(`Saved batch chunk ${Math.floor(i / CHUNK_SIZE) + 1}`);
-        await delay(500); 
+        await delay(300); 
     } catch (error: any) {
         console.error("Error batch writing chunk: ", error);
         throw new Error("Error al guardar lote. Verifique su conexión.");
@@ -244,16 +235,12 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
  */
 export const clearFirestoreCollection = async () => {
   try {
-    // We need to fetch references directly to delete them
-    // We use a simple getDocs here, as we are online if we are resetting
     const snap = await getDocs(collection(db, COLLECTION_NAME));
-    
     const batch = writeBatch(db);
     snap.docs.forEach((doc) => {
         batch.delete(doc.ref);
     });
     await batch.commit();
-
   } catch (error) {
     console.error("Error clearing collection: ", error);
     throw error;
