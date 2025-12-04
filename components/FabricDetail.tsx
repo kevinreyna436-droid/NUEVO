@@ -61,7 +61,11 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
           onSave={(updated) => {
             onEdit(updated);
             setEditModalOpen(false);
-          }} 
+          }}
+          onDelete={() => {
+              // Trigger the delete logic passed from App
+              onDelete(fabric.id);
+          }}
         />
       )}
 
@@ -117,13 +121,6 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
         
         {/* Right side controls */}
         <div className="absolute right-6 flex items-center space-x-4">
-            <button 
-                onClick={() => onDelete(fabric.id)}
-                className="text-red-400 hover:text-red-600 transition-colors text-xs font-bold uppercase tracking-wide px-2"
-                title="Eliminar esta ficha permanentemente"
-            >
-                Borrar
-            </button>
             <button 
                 onClick={() => setEditModalOpen(true)} 
                 className="text-gray-400 hover:text-black transition-colors font-bold text-3xl pb-4 h-8 flex items-center"

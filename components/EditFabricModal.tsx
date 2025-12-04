@@ -6,9 +6,10 @@ interface EditFabricModalProps {
   fabric: Fabric;
   onClose: () => void;
   onSave: (updatedFabric: Fabric) => void;
+  onDelete: () => void;
 }
 
-const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSave }) => {
+const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSave, onDelete }) => {
   // Ensure default values for arrays/objects to prevent crashes
   const [formData, setFormData] = useState<Fabric>({ 
       ...fabric,
@@ -83,6 +84,12 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
       }
       setEditingColorIndex(null);
     }
+  };
+
+  const handleDeleteClick = () => {
+      // Logic handled by parent (App.tsx via FabricDetail) which includes confirmation
+      onDelete();
+      // We don't close immediately here because onDelete usually handles navigation/state
   };
 
   return (
@@ -189,12 +196,19 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
           </div>
         </div>
         
-        <div className="p-6 border-t border-gray-100 bg-gray-50">
+        <div className="p-6 border-t border-gray-100 bg-gray-50 flex flex-col space-y-4">
             <button 
                 onClick={() => onSave(formData)}
                 className="w-full bg-black text-white py-3 rounded-xl font-bold tracking-wide hover:opacity-80 transition-all"
             >
                 Guardar Cambios
+            </button>
+            
+            <button 
+                onClick={handleDeleteClick}
+                className="w-full text-red-400 text-xs font-bold uppercase tracking-widest hover:text-red-600 hover:underline py-2"
+            >
+                Eliminar Ficha
             </button>
         </div>
 
