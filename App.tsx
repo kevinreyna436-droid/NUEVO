@@ -41,7 +41,6 @@ function App() {
           setFabrics(dbData);
         } else {
           // DO NOT LOAD INITIAL_FABRICS AUTOMATICALLY
-          // This ensures the app starts empty for real data entry
           setFabrics([]); 
         }
       } catch (e) {
@@ -97,13 +96,11 @@ function App() {
   };
 
   const handleDeleteFabric = async (fabricId: string) => {
-      // Confirmation moved to UI component (EditFabricModal)
       try {
           // Optimistic delete
           setFabrics(prev => prev.filter(f => f.id !== fabricId));
           setView('grid');
           setSelectedFabricId(null);
-          // Fire and forget (or await if you prefer strict sync)
           await deleteFabricFromFirestore(fabricId);
       } catch (e) {
           alert("Hubo un error al eliminar la ficha.");
@@ -143,10 +140,46 @@ function App() {
         );
     }
     
-    // Sort Models Alphabetically
+    // Default Sort for models: Alphabetical
     items.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
 
     return items;
+  };
+
+  /**
+   * Helper function to determine sorting weight based on color name.
+   * Higher value = Lighter/Cleaner. Lower value = Darker/Stronger.
+   */
+  const getColorWeight = (colorName: string): number => {
+      const name = colorName.toLowerCase();
+      
+      // Whites / Lights (Highest priority)
+      if (name.includes('white') || name.includes('snow') || name.includes('ivory') || name.includes('blanco') || name.includes('nieve')) return 100;
+      if (name.includes('cream') || name.includes('bone') || name.includes('hueso') || name.includes('crema') || name.includes('pearl')) return 95;
+      if (name.includes('natural') || name.includes('linen') || name.includes('lino') || name.includes('ecru') || name.includes('cotton')) return 90;
+      
+      // Light Neutrals
+      if (name.includes('beige') || name.includes('sand') || name.includes('arena') || name.includes('oyster') || name.includes('flax')) return 85;
+      if (name.includes('champagne') || name.includes('mist') || name.includes('fog')) return 80;
+
+      // Greys / Silvers
+      if (name.includes('silver') || name.includes('plata') || name.includes('platinum')) return 70;
+      if (name.includes('light grey') || name.includes('pale')) return 65;
+      if (name.includes('grey') || name.includes('gris') || name.includes('stone') || name.includes('piedra') || name.includes('zinc') || name.includes('pewter')) return 50;
+
+      // Colors (Mid-range)
+      if (name.includes('gold') || name.includes('yellow') || name.includes('mustard')) return 45;
+      if (name.includes('orange') || name.includes('terra') || name.includes('brick')) return 40;
+      if (name.includes('red') || name.includes('rose') || name.includes('pink') || name.includes('coral')) return 35;
+      if (name.includes('green') || name.includes('olive') || name.includes('moss') || name.includes('emerald')) return 30;
+      if (name.includes('blue') || name.includes('sky') || name.includes('aqua') || name.includes('teal')) return 25;
+
+      // Darks / Strongs (Lowest priority)
+      if (name.includes('navy') || name.includes('midnight') || name.includes('indigo') || name.includes('dark')) return 15;
+      if (name.includes('charcoal') || name.includes('anthracite') || name.includes('slate') || name.includes('graphite')) return 10;
+      if (name.includes('black') || name.includes('negro') || name.includes('ebony') || name.includes('onyx') || name.includes('caviar')) return 0;
+
+      return 50; // Default for unknowns
   };
 
   // Prepared items for rendering
@@ -174,7 +207,7 @@ function App() {
         ));
     }
 
-    // --- COLOR VIEW (Sorted by Color Name) ---
+    // --- COLOR VIEW (Sorted by Lightest to Darkest) ---
     if (activeTab === 'color') {
         // Flatten all colors into a single array of objects
         const allColorCards = items.flatMap((fabric) => 
@@ -184,8 +217,13 @@ function App() {
             }))
         );
 
-        // SORT BY COLOR NAME (A-Z)
-        allColorCards.sort((a, b) => a.colorName.localeCompare(b.colorName, 'es', { sensitivity: 'base' }));
+        // SORT BY COLOR WEIGHT (Lightest -> Darkest)
+        allColorCards.sort((a, b) => {
+            const weightA = getColorWeight(a.colorName);
+            const weightB = getColorWeight(b.colorName);
+            // Sort descending (100 -> 0)
+            return weightB - weightA; 
+        });
 
         return allColorCards.map((item, idx) => (
             <FabricCard
@@ -203,7 +241,8 @@ function App() {
   const filteredItemCount = getDisplayItems().length;
 
   return (
-    <div className="min-h-screen bg-[#f2f2f2] text-primary font-sans selection:bg-black selection:text-white relative">
+    // Updated background color to match index.html (rgb(241, 242, 244))
+    <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans selection:bg-black selection:text-white relative">
       
       {/* Top Right Upload Button */}
       <button 
@@ -274,7 +313,7 @@ function App() {
                      <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
                 </div>
             ) : (
-                // CHANGED: Limited max columns to 5 (2xl:grid-cols-5) to satisfy "5 fichas por linea" and make them bigger.
+                // CHANGED: Limited max columns to 5 (2xl:grid-cols-5)
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-5 gap-6 xl:gap-8 w-full max-w-[1920px] justify-center">
                     {renderGridContent()}
                 </div>
