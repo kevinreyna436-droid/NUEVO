@@ -14,7 +14,31 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
   if (mode === 'color' && specificColorName && fabric.colorImages?.[specificColorName]) {
     displayImage = fabric.colorImages[specificColorName];
   }
+
+  // Helper to clean names for display
+  const cleanName = (text: string, context: 'fabric' | 'color') => {
+    if (!text) return "";
+    let cleaned = text;
+
+    // 1. Remove brand prefixes (Fromatex, Fotmatex, etc) case insensitive
+    cleaned = cleaned.replace(/^(fromatex|fotmatex|formatex)[_\-\s]*/i, '');
+
+    // 2. If it's a color, remove the fabric name prefix if present
+    if (context === 'color' && fabric.name) {
+       // Clean fabric name first to get the core name
+       const coreFabricName = fabric.name.replace(/^(fromatex|fotmatex|formatex)[_\-\s]*/i, '').trim();
+       // Escape for regex
+       const escapedName = coreFabricName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+       const modelRegex = new RegExp(`^${escapedName}[_\\-\\s]*`, 'i');
+       cleaned = cleaned.replace(modelRegex, '');
+    }
+
+    return cleaned.trim();
+  };
   
+  const displayFabricName = cleanName(fabric.name, 'fabric');
+  const displayColorName = specificColorName ? cleanName(specificColorName, 'color') : '';
+
   return (
     <div 
       onClick={onClick}
@@ -26,7 +50,7 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
         {/* Image */}
         <img 
           src={displayImage} 
-          alt={mode === 'model' ? fabric.name : `${fabric.name} - ${specificColorName}`} 
+          alt={mode === 'model' ? displayFabricName : `${displayFabricName} - ${displayColorName}`} 
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
         />
 
@@ -41,20 +65,20 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
             /* VISTA MODELOS */
             <>
               <h3 className="font-serif text-3xl font-bold text-slate-900 leading-tight mb-1">
-                {fabric.name}
+                {displayFabricName}
               </h3>
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest line-clamp-2 px-2">
-                {fabric.colors.join(', ')}
+                {fabric.colors.map(c => cleanName(c, 'color')).join(', ')}
               </p>
             </>
           ) : (
             /* VISTA COLORES */
             <>
               <h3 className="font-serif text-2xl font-bold text-slate-900 leading-tight mb-1">
-                {specificColorName}
+                {displayColorName}
               </h3>
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em]">
-                {fabric.name}
+                {displayFabricName}
               </p>
             </>
           )}

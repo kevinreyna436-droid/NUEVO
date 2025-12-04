@@ -59,11 +59,11 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
           console.warn(`Extraction failed for ${groupName}`, e);
       }
 
-      // HELPER: Remove "Fromatex" prefix if present
+      // HELPER: Remove "Fromatex", "Fotmatex" prefix if present
       const cleanFabricName = (inputName: string) => {
           if (!inputName) return "";
-          // Remove "Fromatex" followed by _, -, space or nothing, case insensitive
-          return inputName.replace(/^Fromatex[_\-\s]*/i, '').trim();
+          // Remove "Fromatex" or "Fotmatex" followed by _, -, space or nothing, case insensitive
+          return inputName.replace(/^(fromatex|fotmatex|formatex)[_\-\s]*/i, '').trim();
       };
 
       // Clean extracted name
@@ -111,8 +111,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                 const nameRegex = new RegExp(`^${rawData.name}[_\\-\\s]*`, 'i');
                 cleanColorName = cleanColorName.replace(nameRegex, '');
             }
-            // Also clean Fromatex if still there
-            cleanColorName = cleanColorName.replace(/^Fromatex[_\-\s]*/i, '');
+            // Also clean Fromatex/Fotmatex if still there
+            cleanColorName = cleanColorName.replace(/^(fromatex|fotmatex|formatex)[_\-\s]*/i, '');
             
             const cleanName = cleanColorName.replace(/[-_]/g, " ").trim();
             // Capitalize first letter
