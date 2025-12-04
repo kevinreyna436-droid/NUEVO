@@ -97,17 +97,16 @@ function App() {
   };
 
   const handleDeleteFabric = async (fabricId: string) => {
-      if(window.confirm("¿Estás seguro de que quieres eliminar esta ficha completamente? Esta acción no se puede deshacer.")) {
-          try {
-              // Optimistic delete
-              setFabrics(prev => prev.filter(f => f.id !== fabricId));
-              setView('grid');
-              setSelectedFabricId(null);
-              // Fire and forget (or await if you prefer strict sync)
-              await deleteFabricFromFirestore(fabricId);
-          } catch (e) {
-              alert("Hubo un error al eliminar la ficha.");
-          }
+      // Confirmation moved to UI component (EditFabricModal)
+      try {
+          // Optimistic delete
+          setFabrics(prev => prev.filter(f => f.id !== fabricId));
+          setView('grid');
+          setSelectedFabricId(null);
+          // Fire and forget (or await if you prefer strict sync)
+          await deleteFabricFromFirestore(fabricId);
+      } catch (e) {
+          alert("Hubo un error al eliminar la ficha.");
       }
   };
 

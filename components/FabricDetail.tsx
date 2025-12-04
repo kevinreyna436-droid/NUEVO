@@ -135,11 +135,11 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
         
         {/* 1. Centered Header Info */}
         <div className="mb-6 space-y-2">
-            <h2 className="text-gray-400 italic font-serif text-sm tracking-wide">CREATA</h2>
-            <h1 className="font-serif text-6xl md:text-7xl font-bold text-slate-900 tracking-tight leading-none">
+            <h2 className="text-gray-400 italic font-serif text-base tracking-wide">CREATA</h2>
+            <h1 className="font-serif text-6xl md:text-8xl font-bold text-slate-900 tracking-tight leading-none">
                 {fabric.name}
             </h1>
-            <p className="text-xs text-gray-500 font-bold uppercase tracking-[0.25em] pt-2">
+            <p className="text-sm text-gray-500 font-bold uppercase tracking-[0.25em] pt-2">
                 {fabric.supplier}
             </p>
         </div>
@@ -149,9 +149,9 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
             {!showSpecs ? (
                 <button 
                     onClick={() => setShowSpecs(true)}
-                    className="group flex items-center justify-center mx-auto space-x-2 text-xs font-medium text-gray-500 hover:text-black transition-colors px-6 py-2 rounded-full border border-gray-300 hover:border-black hover:bg-white"
+                    className="group flex items-center justify-center mx-auto space-x-2 text-sm font-medium text-gray-500 hover:text-black transition-colors px-6 py-3 rounded-full border border-gray-300 hover:border-black hover:bg-white"
                 >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                     <span>Ficha técnica</span>
                 </button>
             ) : (
@@ -164,25 +164,25 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
                     </button>
                     
                     <div className="pr-8">
-                        <h3 className="font-serif text-xl mb-4 text-slate-800">Resumen Técnico</h3>
-                        <p className="text-base text-gray-500 leading-relaxed mb-6">{fabric.technicalSummary || "Información técnica no disponible."}</p>
+                        <h3 className="font-serif text-2xl mb-4 text-slate-800">Resumen Técnico</h3>
+                        <p className="text-lg text-gray-500 leading-relaxed mb-8">{fabric.technicalSummary || "Información técnica no disponible."}</p>
                         
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 border-t border-gray-100 pt-6">
                             <div>
-                                <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Composición</span>
-                                <span className="text-sm text-slate-800 font-medium">{fabric.specs.composition || "N/A"}</span>
+                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Composición</span>
+                                <span className="text-base md:text-lg text-slate-800 font-medium">{fabric.specs.composition || "N/A"}</span>
                             </div>
                             <div>
-                                <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Durabilidad</span>
-                                <span className="text-sm text-slate-800 font-medium">{fabric.specs.martindale || "N/A"}</span>
+                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Durabilidad</span>
+                                <span className="text-base md:text-lg text-slate-800 font-medium">{fabric.specs.martindale || "N/A"}</span>
                             </div>
                             <div>
-                                <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Uso</span>
-                                <span className="text-sm text-slate-800 font-medium">{fabric.specs.usage || "N/A"}</span>
+                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Uso</span>
+                                <span className="text-base md:text-lg text-slate-800 font-medium">{fabric.specs.usage || "N/A"}</span>
                             </div>
                             <div>
-                                <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Peso</span>
-                                <span className="text-sm text-slate-800 font-medium">{fabric.specs.weight || "N/A"}</span>
+                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Peso</span>
+                                <span className="text-base md:text-lg text-slate-800 font-medium">{fabric.specs.weight || "N/A"}</span>
                             </div>
                         </div>
 
@@ -190,10 +190,10 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
                              <a 
                                href={fabric.pdfUrl || "#"} 
                                download={`${fabric.name}-ficha-tecnica.pdf`}
-                               className="flex items-center space-x-2 bg-black text-white px-6 py-3 rounded-full text-xs font-bold uppercase hover:bg-gray-800 transition-colors shadow-lg"
+                               className="flex items-center space-x-2 bg-black text-white px-8 py-3 rounded-full text-sm font-bold uppercase hover:bg-gray-800 transition-colors shadow-lg"
                                onClick={(e) => { if(!fabric.pdfUrl) { e.preventDefault(); alert("PDF simulado descargado."); } }}
                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                                 <span>Descargar Ficha</span>
                              </a>
                         </div>
@@ -204,10 +204,10 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
 
         {/* 2. Muestrario Interactivo (Circular Grid) */}
         <div className="w-full">
-            <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-[0.25em] mb-12">Variantes de Color</h3>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-[0.25em] mb-12">Variantes de Color</h3>
             
             {/* Increased gap to gap-8 (more separation) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 gap-y-10 justify-items-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 gap-y-12 justify-items-center">
               {sortedColors.map((color, idx) => {
                 const colorImg = fabric.colorImages?.[color] || fabric.mainImage;
                 
@@ -229,7 +229,7 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
                        </div>
                     </div>
                     
-                    <p className="mt-6 text-base font-bold text-slate-900 uppercase tracking-widest text-center group-hover:text-black transition-colors">
+                    <p className="mt-6 text-lg font-bold text-slate-900 uppercase tracking-widest text-center group-hover:text-black transition-colors">
                       {color}
                     </p>
                   </div>
@@ -239,7 +239,7 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
             
             {/* If empty grid */}
             {sortedColors.length === 0 && (
-                <p className="text-sm text-gray-400 italic py-10">No hay variantes cargadas.</p>
+                <p className="text-base text-gray-400 italic py-10">No hay variantes cargadas.</p>
             )}
         </div>
 

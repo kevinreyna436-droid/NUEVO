@@ -86,10 +86,14 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
     }
   };
 
-  const handleDeleteClick = () => {
-      // Logic handled by parent (App.tsx via FabricDetail) which includes confirmation
-      onDelete();
-      // We don't close immediately here because onDelete usually handles navigation/state
+  const handleDeleteClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      
+      // Confirmation moved here to ensure UI interaction is caught
+      if (window.confirm("¿Estás seguro de que quieres eliminar esta ficha completamente? Esta acción no se puede deshacer.")) {
+        onDelete();
+      }
   };
 
   return (
@@ -198,6 +202,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
         
         <div className="p-6 border-t border-gray-100 bg-gray-50 flex flex-col space-y-4">
             <button 
+                type="button"
                 onClick={() => onSave(formData)}
                 className="w-full bg-black text-white py-3 rounded-xl font-bold tracking-wide hover:opacity-80 transition-all"
             >
@@ -205,6 +210,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
             </button>
             
             <button 
+                type="button"
                 onClick={handleDeleteClick}
                 className="w-full text-red-400 text-xs font-bold uppercase tracking-widest hover:text-red-600 hover:underline py-2"
             >
