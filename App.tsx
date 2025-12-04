@@ -6,73 +6,12 @@ import ChatBot from './components/ChatBot';
 import ImageGenModal from './components/ImageGenModal';
 import { INITIAL_FABRICS } from './constants';
 import { Fabric, AppView } from './types';
-
-// --- IndexedDB Helpers ---
-// Changed DB Name to force a fresh start (wipes old data effectively)
-const DB_NAME = 'CreataFabricDB_v2';
-const DB_VERSION = 1;
-const STORE_NAME = 'fabrics';
-
-const openDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const saveToDB = async (data: Fabric[]) => {
-  try {
-    const db = await openDB();
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    store.put(data, 'all_fabrics');
-    return new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch (error) {
-    console.error("Failed to save to IndexedDB:", error);
-  }
-};
-
-const loadFromDB = async (): Promise<Fabric[]> => {
-  try {
-    const db = await openDB();
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.get('all_fabrics');
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
-    });
-  } catch (error) {
-    console.error("Failed to load from IndexedDB:", error);
-    return [];
-  }
-};
-
-const clearDB = async () => {
-    try {
-        const db = await openDB();
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        store.clear();
-        return new Promise<void>((resolve, reject) => {
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => reject(tx.error);
-        });
-    } catch (error) {
-        console.error("Failed to clear DB:", error);
-    }
-};
-// -------------------------
+import { 
+  getFabricsFromFirestore, 
+  saveFabricToFirestore, 
+  saveBatchFabricsToFirestore, 
+  clearFirestoreCollection 
+} from './services/firebase';
 
 function App() {
   const [view, setView] = useState<AppView>('grid');
@@ -81,7 +20,7 @@ function App() {
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'wood'>('model');
-  const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // State for Color View Lightbox (Global Grid)
   const [colorLightbox, setColorLightbox] = useState<{
@@ -91,49 +30,26 @@ function App() {
     colorName: string;
   } | null>(null);
 
-  // Load initial data
+  // Load initial data from Firestore
   useEffect(() => {
     const initData = async () => {
-      // Try loading from IDB first
-      const dbData = await loadFromDB();
-      
-      if (dbData && dbData.length > 0) {
-        setFabrics(dbData);
-      } else {
-        // Fallback: Check localStorage for migration (if any exists from previous version)
-        try {
-          const localData = localStorage.getItem('creata_fabrics');
-          if (localData) {
-            const parsed = JSON.parse(localData);
-            setFabrics(parsed);
-            // Migrate to DB immediately
-            await saveToDB(parsed);
-            // Clear localStorage to free up space
-            localStorage.removeItem('creata_fabrics');
-          } else {
-            setFabrics(INITIAL_FABRICS as Fabric[]);
-          }
-        } catch (e) {
-          console.error("Migration error:", e);
+      setLoading(true);
+      try {
+        const dbData = await getFabricsFromFirestore();
+        if (dbData && dbData.length > 0) {
+          setFabrics(dbData);
+        } else {
           setFabrics(INITIAL_FABRICS as Fabric[]);
         }
+      } catch (e) {
+        console.error("Error loading initial data:", e);
+      } finally {
+        setLoading(false);
       }
-      setIsDataLoaded(true);
     };
 
     initData();
   }, []);
-
-  // Save to IndexedDB whenever fabrics change
-  useEffect(() => {
-    if (isDataLoaded && fabrics.length > 0) {
-       // Debounce saving slightly to avoid heavy DB ops on rapid changes
-       const timer = setTimeout(() => {
-         saveToDB(fabrics);
-       }, 500);
-       return () => clearTimeout(timer);
-    }
-  }, [fabrics, isDataLoaded]);
 
   const handleFabricClick = (fabric: Fabric, specificColor?: string) => {
     if (activeTab === 'model') {
@@ -155,26 +71,39 @@ function App() {
     }
   };
 
-  const handleSaveFabric = (newFabric: Fabric) => {
+  const handleSaveFabric = async (newFabric: Fabric) => {
+    // Optimistic Update
     setFabrics(prev => [newFabric, ...prev]);
+    // Save to Firestore
+    await saveFabricToFirestore(newFabric);
   };
 
-  const handleBulkSaveFabrics = (newFabrics: Fabric[]) => {
+  const handleBulkSaveFabrics = async (newFabrics: Fabric[]) => {
+      // Optimistic Update
       setFabrics(prev => [...newFabrics, ...prev]);
+      // Save to Firestore
+      await saveBatchFabricsToFirestore(newFabrics);
   };
 
   // Logic to update an existing fabric (from Edit Modal)
-  const handleUpdateFabric = (updatedFabric: Fabric) => {
+  const handleUpdateFabric = async (updatedFabric: Fabric) => {
+    // Optimistic Update
     setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
+    // Save to Firestore
+    await saveFabricToFirestore(updatedFabric);
   };
 
   // Full Reset
   const handleReset = async () => {
-      if(window.confirm("¿Estás seguro de que quieres borrar TODA la información y empezar de cero? Esta acción no se puede deshacer.")) {
-          await clearDB();
-          setFabrics([]);
-          setUploadModalOpen(false);
-          alert("Catálogo reseteado correctamente.");
+      if(window.confirm("¿Estás seguro de que quieres borrar TODA la información de la base de datos (Nube)? Esta acción no se puede deshacer.")) {
+          try {
+            setFabrics([]);
+            await clearFirestoreCollection();
+            setUploadModalOpen(false);
+            alert("Catálogo reseteado correctamente en la nube.");
+          } catch (e) {
+            alert("Error al resetear la base de datos.");
+          }
       }
   };
 
@@ -220,7 +149,8 @@ function App() {
 
       {/* Header */}
       {view === 'grid' && (
-        <header className="pt-16 pb-8 px-6 flex flex-col items-center space-y-6">
+        // Reduced vertical padding (pt-16 -> pt-8, pb-8 -> pb-2) and spacing (space-y-6 -> space-y-4)
+        <header className="pt-8 pb-4 px-6 flex flex-col items-center space-y-4">
             <h1 className="font-serif text-6xl md:text-7xl font-bold text-center tracking-tight text-slate-900 leading-none">
                 Catálogo de telas
             </h1>
@@ -271,24 +201,29 @@ function App() {
                 <div className="text-center py-20 text-gray-400">
                     <h3 className="font-serif text-xl italic">Colección de maderas próximamente</h3>
                 </div>
+            ) : loading ? (
+                <div className="flex justify-center items-center py-20">
+                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+                </div>
             ) : displayItems.length === 0 ? (
                 <div className="text-center py-20 text-gray-300">
                      <p>El catálogo está vacío.</p>
                      <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
                 </div>
             ) : (
-                // Changed grid spacing: gap-x-4 (tight horizontal) and gap-y-12 (large vertical)
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-12 justify-items-center">
+                // Changed grid spacing: gap-x-0 (cards touch) and reduced gap-y-12 to gap-y-8
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-0 gap-y-8">
                     {activeTab === 'model' 
-                        ? displayItems.map(fabric => (
+                        ? displayItems.map((fabric, idx) => (
                             <FabricCard 
                                 key={fabric.id} 
                                 fabric={fabric}
                                 mode="model"
-                                onClick={() => handleFabricClick(fabric)} 
+                                onClick={() => handleFabricClick(fabric)}
+                                index={idx}
                             />
                         ))
-                        : displayItems.flatMap(fabric => 
+                        : displayItems.flatMap((fabric) => 
                              fabric.colors.map((colorName, idx) => (
                                 <FabricCard
                                     key={`${fabric.id}-${idx}`}
@@ -296,6 +231,7 @@ function App() {
                                     mode="color"
                                     specificColorName={colorName}
                                     onClick={() => handleFabricClick(fabric, colorName)}
+                                    index={idx} // Passing index might need global index logic here if needed, but per-group is fine for now
                                 />
                              ))
                         )

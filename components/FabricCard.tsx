@@ -6,22 +6,27 @@ interface FabricCardProps {
   onClick: () => void;
   mode: 'model' | 'color';
   specificColorName?: string;
+  index: number;
 }
 
-const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specificColorName }) => {
+const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specificColorName, index }) => {
   // Determine which image to show
   let displayImage = fabric.mainImage;
   if (mode === 'color' && specificColorName && fabric.colorImages?.[specificColorName]) {
     displayImage = fabric.colorImages[specificColorName];
   }
-  
+
+  // Alternating wave effect based on index
+  const isOdd = index % 2 !== 0;
+
   return (
     <div 
       onClick={onClick}
-      className="group relative w-48 h-64 bg-white rounded-[1.2rem] overflow-hidden cursor-pointer border border-gray-200 shadow-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-xl flex flex-col"
+      // Removed fixed width (w-48 -> w-full), removed rounded corners (rounded-none), removed border/shadow for seamless look
+      className="group relative w-full h-64 bg-white overflow-hidden cursor-pointer transition-all duration-500 hover:z-10 hover:shadow-2xl flex flex-col"
     >
-      {/* SECTION SUPERIOR (Imagen Grande - Ocupa casi todo) */}
-      <div className="relative h-44 w-full bg-gray-100 overflow-hidden flex-shrink-0">
+      {/* SECTION SUPERIOR (Imagen Grande) */}
+      <div className="relative h-48 w-full bg-gray-100 overflow-hidden flex-shrink-0">
         
         {/* Image */}
         <img 
@@ -30,13 +35,25 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
         />
 
-        {/* Small subtle gradient at bottom instead of large arc to save space */}
-        <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-black/10 to-transparent"></div>
+        {/* Wave Overlay (SVG) at the bottom */}
+        <div className="absolute bottom-0 left-0 right-0 h-8 w-full z-10 text-white">
+           {isOdd ? (
+             // Concave Up (Bulge Up) - The white part forms a hill
+             <svg viewBox="0 0 1440 320" preserveAspectRatio="none" className="w-full h-full">
+                <path fill="currentColor" fillOpacity="1" d="M0,320L1440,320L1440,160C1100,280 340,40 0,160Z"></path>
+             </svg>
+           ) : (
+             // Concave Down (Scoop) - The white part forms a valley
+             <svg viewBox="0 0 1440 320" preserveAspectRatio="none" className="w-full h-full">
+                 <path fill="currentColor" fillOpacity="1" d="M0,320L1440,320L1440,0C1100,120 340,280 0,160Z"></path>
+             </svg>
+           )}
+        </div>
       </div>
 
       {/* SECTION INFERIOR (Información Compacta) */}
-      <div className="flex-1 px-3 py-2 text-center flex flex-col items-center justify-start bg-white relative">
-        <div className="w-full -mt-1">
+      <div className="flex-1 px-3 py-2 text-center flex flex-col items-center justify-start bg-white relative z-20">
+        <div className="w-full">
           {mode === 'model' ? (
             /* VISTA MODELOS */
             <>
@@ -60,7 +77,7 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
           )}
         </div>
 
-        {/* Proveedor Compacto - Pegado al fondo, muy sutil */}
+        {/* Proveedor Compacto */}
         <div className="mt-auto pt-1 w-full opacity-60">
             <p className="text-[8px] font-bold text-gray-300 tracking-[0.1em] uppercase">
                 {fabric.supplier}
