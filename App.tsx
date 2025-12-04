@@ -122,7 +122,7 @@ function App() {
     if (searchQuery) {
         items = items.filter(f => 
             f.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-            f.colors.some(c => c.toLowerCase().includes(searchQuery.toLowerCase()))
+            (f.colors || []).some(c => c.toLowerCase().includes(searchQuery.toLowerCase()))
         );
     }
 
@@ -224,7 +224,7 @@ function App() {
                             />
                         ))
                         : displayItems.flatMap((fabric) => 
-                             fabric.colors.map((colorName, idx) => (
+                             (fabric.colors || []).map((colorName, idx) => (
                                 <FabricCard
                                     key={`${fabric.id}-${idx}`}
                                     fabric={fabric}

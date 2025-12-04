@@ -19,6 +19,9 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
   // Alternating wave effect based on index
   const isOdd = index % 2 !== 0;
 
+  // Safe access to colors
+  const colorList = fabric.colors || [];
+
   return (
     <div 
       onClick={onClick}
@@ -61,7 +64,7 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
                 {fabric.name}
               </h3>
               <p className="text-[9px] text-gray-400 font-medium uppercase leading-tight line-clamp-1 px-1">
-                {fabric.colors.join(', ')}
+                {colorList.join(', ')}
               </p>
             </>
           ) : (

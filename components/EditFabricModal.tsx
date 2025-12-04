@@ -8,7 +8,13 @@ interface EditFabricModalProps {
 }
 
 const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSave }) => {
-  const [formData, setFormData] = useState<Fabric>({ ...fabric });
+  // Ensure default values for arrays/objects to prevent crashes
+  const [formData, setFormData] = useState<Fabric>({ 
+      ...fabric,
+      colors: fabric.colors || [],
+      colorImages: fabric.colorImages || {}
+  });
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingColorIndex, setEditingColorIndex] = useState<number | null>(null);
 

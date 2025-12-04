@@ -13,8 +13,8 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit }) =
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
 
-  // Sort colors alphabetically for display
-  const sortedColors = [...fabric.colors].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+  // Sort colors alphabetically for display, handle undefined colors safely
+  const sortedColors = [...(fabric.colors || [])].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
 
   // Keydown listener for arrow keys in lightbox
   useEffect(() => {
