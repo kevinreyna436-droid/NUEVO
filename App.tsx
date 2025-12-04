@@ -28,6 +28,7 @@ function App() {
   
   // Sorting State - Default "color"
   const [sortBy, setSortBy] = useState<SortOption>('color');
+  const [isFilterMenuOpen, setFilterMenuOpen] = useState(false);
 
   // State for Color View Lightbox (Global Grid)
   const [colorLightbox, setColorLightbox] = useState<{
@@ -196,26 +197,8 @@ function App() {
 
     // --- MODEL VIEW ---
     if (activeTab === 'model') {
-        // Sort Logic for Models
-        items.sort((a, b) => {
-            if (sortBy === 'name') {
-                return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
-            }
-            if (sortBy === 'supplier') {
-                return a.supplier.localeCompare(b.supplier, 'es', { sensitivity: 'base' });
-            }
-            if (sortBy === 'color') {
-                // For Models: Sort by weight of their *first* color as a proxy
-                const colorA = a.colors?.[0] || '';
-                const colorB = b.colors?.[0] || '';
-                return getColorWeight(colorB) - getColorWeight(colorA);
-            }
-            if (sortBy === 'model') {
-                // Same as name for Model view
-                return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
-            }
-            return 0;
-        });
+        // Models are sorted by Name by default in this view since filter is hidden
+        items.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
 
         return items.map((fabric, idx) => (
             <FabricCard 
@@ -302,7 +285,7 @@ function App() {
             </h1>
             <div className="flex space-x-8 md:space-x-12 border-b border-transparent">
                 <button 
-                    onClick={() => setActiveTab('model')}
+                    onClick={() => { setActiveTab('model'); setFilterMenuOpen(false); }}
                     className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
                         activeTab === 'model' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
@@ -318,7 +301,7 @@ function App() {
                     Ver colores
                 </button>
                 <button 
-                    onClick={() => setActiveTab('wood')}
+                    onClick={() => { setActiveTab('wood'); setFilterMenuOpen(false); }}
                     className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
                         activeTab === 'wood' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
@@ -328,7 +311,7 @@ function App() {
             </div>
             
             {/* SEARCH AND FILTER BAR */}
-            <div className="flex flex-col md:flex-row gap-4 w-full max-w-2xl">
+            <div className="flex flex-row items-center gap-3 w-full max-w-2xl relative">
                 {/* Search Input */}
                 <div className="relative flex-grow">
                   <input 
@@ -341,23 +324,63 @@ function App() {
                   <svg className="absolute left-4 top-3.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 </div>
 
-                {/* Sorting Dropdown */}
-                <div className="relative min-w-[180px]">
-                    <select 
-                        value={sortBy} 
-                        onChange={(e) => setSortBy(e.target.value as SortOption)}
-                        className="w-full appearance-none bg-white border border-gray-200 rounded-full py-3 pl-6 pr-10 text-sm focus:outline-none focus:ring-1 focus:ring-black cursor-pointer shadow-sm hover:bg-gray-50 transition-colors"
-                    >
-                        <option value="color">Por color (Claro-Fuerte)</option>
-                        <option value="name">Por nombre (A-Z)</option>
-                        <option value="model">Por modelo</option>
-                        <option value="supplier">Por proveedor</option>
-                    </select>
-                    {/* Chevron Icon */}
-                    <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none">
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                {/* Filter Button - ONLY VISIBLE IN COLOR TAB */}
+                {activeTab === 'color' && (
+                    <div className="relative">
+                        <button 
+                            onClick={() => setFilterMenuOpen(!isFilterMenuOpen)}
+                            className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${isFilterMenuOpen ? 'bg-black text-white border-black' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                            title="Filtrar colores"
+                        >
+                            {/* Sort Icon: Three lines decreasing width */}
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="4" y1="6" x2="20" y2="6"></line>
+                                <line x1="4" y1="12" x2="16" y2="12"></line>
+                                <line x1="4" y1="18" x2="10" y2="18"></line>
+                            </svg>
+                        </button>
+
+                        {/* Dropdown Menu */}
+                        {isFilterMenuOpen && (
+                            <div className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden animate-fade-in">
+                                <div className="px-4 py-2 text-[10px] uppercase font-bold text-gray-400 tracking-wider">Ordenar Por</div>
+                                <button 
+                                    onClick={() => { setSortBy('color'); setFilterMenuOpen(false); }}
+                                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${sortBy === 'color' ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
+                                >
+                                    <span>Color (Claro a Fuerte)</span>
+                                    {sortBy === 'color' && <span className="text-black">•</span>}
+                                </button>
+                                <button 
+                                    onClick={() => { setSortBy('name'); setFilterMenuOpen(false); }}
+                                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${sortBy === 'name' ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
+                                >
+                                    <span>Nombre (A-Z)</span>
+                                    {sortBy === 'name' && <span className="text-black">•</span>}
+                                </button>
+                                <button 
+                                    onClick={() => { setSortBy('model'); setFilterMenuOpen(false); }}
+                                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${sortBy === 'model' ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
+                                >
+                                    <span>Por Modelo</span>
+                                    {sortBy === 'model' && <span className="text-black">•</span>}
+                                </button>
+                                <button 
+                                    onClick={() => { setSortBy('supplier'); setFilterMenuOpen(false); }}
+                                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${sortBy === 'supplier' ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
+                                >
+                                    <span>Por Proveedor</span>
+                                    {sortBy === 'supplier' && <span className="text-black">•</span>}
+                                </button>
+                            </div>
+                        )}
+                        
+                        {/* Backdrop to close menu */}
+                        {isFilterMenuOpen && (
+                            <div className="fixed inset-0 z-40" onClick={() => setFilterMenuOpen(false)}></div>
+                        )}
                     </div>
-                </div>
+                )}
             </div>
         </header>
       )}
