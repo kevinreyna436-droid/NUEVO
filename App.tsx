@@ -56,6 +56,21 @@ const loadFromDB = async (): Promise<Fabric[]> => {
     return [];
   }
 };
+
+const clearDB = async () => {
+    try {
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        store.clear();
+        return new Promise<void>((resolve, reject) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    } catch (error) {
+        console.error("Failed to clear DB:", error);
+    }
+};
 // -------------------------
 
 function App() {
@@ -152,6 +167,16 @@ function App() {
     setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
   };
 
+  // Full Reset
+  const handleReset = async () => {
+      if(window.confirm("¿Estás seguro de que quieres borrar TODA la información y empezar de cero? Esta acción no se puede deshacer.")) {
+          await clearDB();
+          setFabrics([]);
+          setUploadModalOpen(false);
+          alert("Catálogo reseteado correctamente.");
+      }
+  };
+
   const goToDetailFromLightbox = () => {
     if (colorLightbox) {
         setSelectedFabricId(colorLightbox.fabricId);
@@ -183,7 +208,7 @@ function App() {
       <button 
         onClick={() => setUploadModalOpen(true)}
         className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"
-        title="Subir Archivos"
+        title="Subir Archivos / Gestionar"
       >
         .
       </button>
@@ -332,6 +357,7 @@ function App() {
         onClose={() => setUploadModalOpen(false)} 
         onSave={handleSaveFabric} 
         onBulkSave={handleBulkSaveFabrics}
+        onReset={handleReset}
       />
 
       <ChatBot />

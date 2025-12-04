@@ -8,9 +8,10 @@ interface UploadModalProps {
   onClose: () => void;
   onSave: (fabric: Fabric) => void;
   onBulkSave?: (fabrics: Fabric[]) => void;
+  onReset?: () => void;
 }
 
-const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBulkSave }) => {
+const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBulkSave, onReset }) => {
   const [step, setStep] = useState<'upload' | 'processing' | 'review'>('upload');
   const [files, setFiles] = useState<File[]>([]);
   // Store multiple extracted fabrics for bulk mode
@@ -268,51 +269,19 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             >
               Analizar Información
             </button>
+            
+            {onReset && (
+                <div className="pt-4 border-t border-gray-100 mt-4 text-center">
+                    <button 
+                        onClick={onReset}
+                        className="text-red-400 text-xs font-bold uppercase tracking-widest hover:text-red-600 hover:underline"
+                    >
+                        Resetear Catálogo (Borrar Todo)
+                    </button>
+                </div>
+            )}
           </div>
         )}
 
         {step === 'processing' && (
-          <div className="flex flex-col items-center justify-center h-64 space-y-6 text-center flex-1">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
-            <div>
-                <p className="text-xl font-serif mb-2">Procesando...</p>
-                <p className="text-sm text-gray-400">{currentProgress}</p>
-            </div>
-          </div>
-        )}
-
-        {step === 'review' && (
-          <div className="space-y-4 flex-1 flex flex-col min-h-0">
-             <div className="flex justify-between items-center mb-2">
-                 <p className="text-sm text-gray-500">Se encontraron <span className="font-bold text-black">{extractedFabrics.length}</span> telas.</p>
-             </div>
-             
-             {/* List of found fabrics */}
-             <div className="flex-1 overflow-y-auto space-y-3 pr-2 border border-gray-100 rounded-xl p-2 bg-gray-50">
-                 {extractedFabrics.map((fabric, idx) => (
-                     <div key={idx} className="bg-white p-3 rounded-lg shadow-sm flex items-center space-x-3">
-                         <div className="w-12 h-12 bg-gray-200 rounded-md overflow-hidden flex-shrink-0">
-                             {fabric.mainImage && <img src={fabric.mainImage} className="w-full h-full object-cover" alt="" />}
-                         </div>
-                         <div className="flex-1 min-w-0">
-                             <h4 className="font-bold text-sm truncate">{fabric.name}</h4>
-                             <p className="text-xs text-gray-400 truncate">{fabric.supplier} • {fabric.colors?.length} colores</p>
-                         </div>
-                     </div>
-                 ))}
-             </div>
-
-            <button 
-              onClick={handleFinalSave}
-              className="w-full bg-primary text-white py-4 rounded-xl font-bold tracking-wide hover:bg-black transition-all uppercase flex-shrink-0 mt-4"
-            >
-              Guardar Todo ({extractedFabrics.length})
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default UploadModal;
+          <div className="flex flex-col items-center justify-center h-64 space-y-6 text-center

@@ -1,3 +1,5 @@
+import { Fabric } from './types';
+
 // The Master Database for cross-referencing AI results.
 export const MASTER_FABRIC_DB: Record<string, string[]> = {
   "Alanis": ["Ash", "Beige", "Curry", "Dove", "Indigo", "Ivory", "Steel"],
@@ -76,5 +78,5 @@ export const MASTER_FABRIC_DB: Record<string, string[]> = {
   "Zenith": ["Aqua", "Black", "Brick", "Buttercup", "Cobalt", "Cocoa", "Emerald", "Grape", "Marine", "Mineral", "Natural", "Ocean", "Red", "Snow", "Stone", "Toffe", "Tusk", "Zinc", "Coral"]
 };
 
-// Start with an empty list as requested.
-export const INITIAL_FABRICS = [];
+// INITIAL_FABRICS reverted to empty
+export const INITIAL_FABRICS: Fabric[] = [];
