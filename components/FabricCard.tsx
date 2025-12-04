@@ -22,11 +22,11 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
   return (
     <div 
       onClick={onClick}
-      // Hover scale and lift (translate-y-2) for interaction
-      className="group relative w-full aspect-square bg-white rounded-3xl shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden cursor-pointer flex flex-col hover:-translate-y-2 hover:scale-[1.02]"
+      // Hover scale and lift for interaction
+      className="group relative w-full aspect-[3/4] md:aspect-[4/5] bg-white rounded-3xl shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden cursor-pointer flex flex-col hover:-translate-y-2 hover:scale-[1.02]"
     >
-      {/* SECTION SUPERIOR (Imagen) - 55% height (increased from 50%) */}
-      <div className="relative h-[55%] w-full bg-gray-100 overflow-hidden">
+      {/* SECTION SUPERIOR (Imagen) - 70% height */}
+      <div className="relative h-[70%] w-full bg-gray-100 overflow-hidden">
         {/* Image */}
         <img 
           src={displayImage} 
@@ -34,42 +34,52 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
           className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-110"
         />
         
-        {/* Removed the Eye/View Icon Overlay as requested */}
+        {/* Curved Wave Separator (SVG) - Fills the gaps with photo */}
+        <div className="absolute bottom-[-1px] left-0 w-full text-white pointer-events-none z-10">
+             <svg 
+               viewBox="0 0 1440 120" 
+               className="w-full h-auto block fill-current"
+               preserveAspectRatio="none"
+             >
+                {/* A gentle curve that goes up in the middle */}
+               <path d="M0,60 C480,130 960,130 1440,60 L1440,120 L0,120 Z" />
+             </svg>
+        </div>
       </div>
 
-      {/* SECTION INFERIOR (Información) - 45% height (decreased from 50%) */}
-      <div className="h-[45%] px-4 pb-2 pt-2 text-center flex flex-col items-center justify-center bg-white relative z-20">
+      {/* SECTION INFERIOR (Información) - 30% height */}
+      <div className="h-[30%] px-4 pb-2 text-center flex flex-col items-center justify-start pt-2 bg-white relative z-20">
         <div className="w-full flex flex-col justify-center h-full space-y-1">
           {mode === 'model' ? (
             /* VISTA MODELOS */
             <>
-              <h3 className="font-serif text-2xl md:text-3xl font-bold text-slate-900 leading-tight mb-1 group-hover:text-black transition-colors px-1 line-clamp-1">
+              {/* Main Title - Standardized */}
+              <h3 className="font-serif text-xl md:text-2xl font-medium text-slate-800 leading-tight mb-0.5 group-hover:text-black transition-colors px-1 line-clamp-1">
                 {fabric.name}
               </h3>
-              {/* Supplier Name */}
-              <p className="text-xs md:text-sm font-bold text-gray-400 uppercase tracking-widest mb-1 leading-none">
+              {/* Supplier Name - Standardized */}
+              <p className="text-[10px] md:text-xs font-semibold text-gray-400 uppercase tracking-widest leading-none">
                 {fabric.supplier}
               </p>
               
-              <div className="w-12 h-[1px] bg-gray-200 mx-auto my-1"></div>
-              
-              <p className="text-[10px] md:text-xs text-gray-500 font-medium uppercase leading-snug px-1 tracking-wide line-clamp-2">
+              {/* Colors List */}
+              <p className="text-[9px] md:text-[10px] text-gray-400 font-normal uppercase leading-snug px-1 tracking-wide line-clamp-1 mt-2">
                 {colorList.join(', ')}
               </p>
             </>
           ) : (
             /* VISTA COLORES */
             <>
-              <h3 className="font-serif text-xl md:text-2xl font-bold text-slate-900 leading-none mb-1 group-hover:text-black line-clamp-2 px-1 break-words">
+              {/* Main Title - Matches Model View */}
+              <h3 className="font-serif text-xl md:text-2xl font-medium text-slate-800 leading-tight mb-0.5 group-hover:text-black transition-colors px-1 line-clamp-2 break-words">
                 {specificColorName}
               </h3>
-               <div className="w-8 h-[1px] bg-gray-200 mx-auto my-1"></div>
               
-              {/* Fabric Name + Supplier */}
-              <p className="text-xs md:text-sm text-gray-500 font-bold uppercase tracking-widest mt-0.5 line-clamp-1">
+              {/* Supplier/Fabric - Matches Model View */}
+              <p className="text-[10px] md:text-xs font-semibold text-gray-400 uppercase tracking-widest leading-none mt-0.5">
                 {fabric.name}
               </p>
-               <p className="text-[10px] md:text-xs text-gray-300 font-bold uppercase tracking-widest leading-none">
+               <p className="text-[9px] text-gray-300 font-semibold uppercase tracking-widest leading-none mt-1">
                 {fabric.supplier}
               </p>
             </>

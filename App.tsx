@@ -134,7 +134,7 @@ function App() {
 
   // Logic for Grid Rendering
   const getDisplayItems = () => {
-    let items = [...fabrics]; // Copy to sort safely
+    let items = [...fabrics];
 
     if (searchQuery) {
         items = items.filter(f => 
@@ -142,15 +142,65 @@ function App() {
             (f.colors || []).some(c => c.toLowerCase().includes(searchQuery.toLowerCase()))
         );
     }
-
-    // SORT ALPHABETICALLY BY NAME
+    
+    // Sort Models Alphabetically
     items.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
 
-    if (activeTab === 'wood') return [];
     return items;
   };
 
-  const displayItems = getDisplayItems();
+  // Prepared items for rendering
+  const renderGridContent = () => {
+    const items = getDisplayItems();
+
+    if (activeTab === 'wood') {
+        return (
+            <div className="text-center py-20 text-gray-400">
+                <h3 className="font-serif text-xl italic">Colección de maderas próximamente</h3>
+            </div>
+        );
+    }
+
+    // --- MODEL VIEW ---
+    if (activeTab === 'model') {
+        return items.map((fabric, idx) => (
+            <FabricCard 
+                key={fabric.id} 
+                fabric={fabric}
+                mode="model"
+                onClick={() => handleFabricClick(fabric)}
+                index={idx}
+            />
+        ));
+    }
+
+    // --- COLOR VIEW (Sorted by Color Name) ---
+    if (activeTab === 'color') {
+        // Flatten all colors into a single array of objects
+        const allColorCards = items.flatMap((fabric) => 
+            (fabric.colors || []).map((colorName) => ({
+                fabric,
+                colorName
+            }))
+        );
+
+        // SORT BY COLOR NAME (A-Z)
+        allColorCards.sort((a, b) => a.colorName.localeCompare(b.colorName, 'es', { sensitivity: 'base' }));
+
+        return allColorCards.map((item, idx) => (
+            <FabricCard
+                key={`${item.fabric.id}-${item.colorName}-${idx}`}
+                fabric={item.fabric}
+                mode="color"
+                specificColorName={item.colorName}
+                onClick={() => handleFabricClick(item.fabric, item.colorName)}
+                index={idx}
+            />
+        ));
+    }
+  };
+
+  const filteredItemCount = getDisplayItems().length;
 
   return (
     <div className="min-h-screen bg-[#f2f2f2] text-primary font-sans selection:bg-black selection:text-white relative">
@@ -214,46 +264,19 @@ function App() {
         {view === 'grid' && (
           // Added 'flex flex-col items-center' to enforce centering of the grid container content
           <div className="container mx-auto px-6 pb-20 flex flex-col items-center">
-            {activeTab === 'wood' ? (
-                <div className="text-center py-20 text-gray-400">
-                    <h3 className="font-serif text-xl italic">Colección de maderas próximamente</h3>
-                </div>
-            ) : loading ? (
+            {loading ? (
                 <div className="flex justify-center items-center py-20">
                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
                 </div>
-            ) : displayItems.length === 0 ? (
+            ) : filteredItemCount === 0 && activeTab !== 'wood' ? (
                 <div className="text-center py-20 text-gray-300">
                      <p>El catálogo está vacío.</p>
                      <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
                 </div>
             ) : (
-                // CHANGED: Reduced grid columns (lg:grid-cols-3 xl:grid-cols-4) to make cards roughly 15-20% larger.
-                // ADDED: 'justify-center' to ensure the whole grid block stays in the center.
-                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 xl:gap-8 w-full max-w-[1800px] justify-center">
-                    {activeTab === 'model' 
-                        ? displayItems.map((fabric, idx) => (
-                            <FabricCard 
-                                key={fabric.id} 
-                                fabric={fabric}
-                                mode="model"
-                                onClick={() => handleFabricClick(fabric)}
-                                index={idx}
-                            />
-                        ))
-                        : displayItems.flatMap((fabric) => 
-                             (fabric.colors || []).map((colorName, idx) => (
-                                <FabricCard
-                                    key={`${fabric.id}-${idx}`}
-                                    fabric={fabric}
-                                    mode="color"
-                                    specificColorName={colorName}
-                                    onClick={() => handleFabricClick(fabric, colorName)}
-                                    index={idx}
-                                />
-                             ))
-                        )
-                    }
+                // CHANGED: Limited max columns to 5 (2xl:grid-cols-5) to satisfy "5 fichas por linea" and make them bigger.
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-5 gap-6 xl:gap-8 w-full max-w-[1920px] justify-center">
+                    {renderGridContent()}
                 </div>
             )}
           </div>
