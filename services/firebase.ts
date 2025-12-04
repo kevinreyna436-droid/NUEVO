@@ -8,7 +8,8 @@ import {
   deleteDoc, 
   writeBatch,
   QuerySnapshot,
-  DocumentData 
+  DocumentData,
+  enableIndexedDbPersistence
 } from "firebase/firestore";
 import { Fabric } from "../types";
 
@@ -25,6 +26,18 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+
+// Enable Offline Persistence
+// This is critical for preventing "Backend didn't respond" errors on slow connections.
+// It allows the app to read/write locally and sync when possible.
+enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code == 'failed-precondition') {
+        console.warn('Persistence failed: Multiple tabs open');
+    } else if (err.code == 'unimplemented') {
+        console.warn('Persistence not supported by browser');
+    }
+});
+
 const COLLECTION_NAME = "fabrics";
 
 // Helper for delay
@@ -66,15 +79,16 @@ const createCleanFabricObject = (source: any): Fabric => {
  * Retries an async operation with exponential backoff.
  * Essential for handling unstable connections or "Backend didn't respond" errors.
  */
-const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delayMs = 1000): Promise<T> => {
+const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delayMs = 2000): Promise<T> => {
     try {
         return await operation();
     } catch (error: any) {
-        // Retry on connection/availability errors or timeouts
+        // Retry on connection/availability errors, timeouts, or "Backend didn't respond"
         const isConnectionError = error.code === 'unavailable' || 
                                   error.message?.includes('backend') || 
                                   error.message?.includes('network') ||
-                                  error.message?.includes('offline');
+                                  error.message?.includes('offline') ||
+                                  error.message?.includes('Cloud Firestore backend');
         
         if (retries > 0 && isConnectionError) {
             console.warn(`Retrying Firestore operation. Attempts left: ${retries}. Error: ${error.message}`);
@@ -137,7 +151,7 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
     
     chunk.forEach((fabric) => {
       const docRef = doc(db, COLLECTION_NAME, fabric.id);
-      batch.set(docRef, fabric); // batch.set overwrites, which is fine for new bulk uploads
+      batch.set(docRef, fabric); 
     });
     
     try {
