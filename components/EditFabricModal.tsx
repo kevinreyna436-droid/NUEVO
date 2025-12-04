@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Fabric } from '../types';
+import { compressImage } from '../utils/imageCompression';
 
 interface EditFabricModalProps {
   fabric: Fabric;
@@ -57,22 +58,23 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
     fileInputRef.current?.click();
   };
 
-  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0] && editingColorIndex !== null) {
       const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result as string;
-        const colorName = formData.colors[editingColorIndex];
-        setFormData(prev => ({
-          ...prev,
-          colorImages: { ...prev.colorImages, [colorName]: base64 },
-          // If it's the first color, update main image too optionally, or logic to keep mainImage separate
-          mainImage: editingColorIndex === 0 ? base64 : prev.mainImage
-        }));
-        setEditingColorIndex(null);
-      };
-      reader.readAsDataURL(file);
+      try {
+          const base64 = await compressImage(file);
+          const colorName = formData.colors[editingColorIndex];
+          setFormData(prev => ({
+            ...prev,
+            colorImages: { ...prev.colorImages, [colorName]: base64 },
+            // If it's the first color, update main image too optionally, or logic to keep mainImage separate
+            mainImage: editingColorIndex === 0 ? base64 : prev.mainImage
+          }));
+      } catch (err) {
+          console.error("Error compressing image", err);
+          alert("Error al procesar la imagen.");
+      }
+      setEditingColorIndex(null);
     }
   };
 

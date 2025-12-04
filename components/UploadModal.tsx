@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { extractFabricData } from '../services/geminiService';
 import { MASTER_FABRIC_DB } from '../constants';
 import { Fabric } from '../types';
+import { compressImage } from '../utils/imageCompression';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -52,7 +53,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             const base64Data = await fileToBase64(pdfFile);
             rawData = await extractFabricData(base64Data.split(',')[1], 'application/pdf');
         } else if (imgFiles.length > 0) {
-            // Optional: Try extracting from first image
+            // Optional: Try extracting from first image using raw base64 (better for OCR)
             // const base64Data = await fileToBase64(imgFiles[0]);
             // rawData = await extractFabricData(base64Data.split(',')[1], imgFiles[0].type);
         }
@@ -95,7 +96,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       
       for (const file of imgFiles) {
         const fileNameLower = file.name.toLowerCase().replace(/\.[^/.]+$/, "");
-        const base64Img = await fileToBase64(file);
+        
+        // Use Compressed Image for Storage
+        const base64Img = await compressImage(file);
 
         if (dbName) {
             const matchedColor = detectedColors.find(color => fileNameLower.includes(color.toLowerCase()));
@@ -129,7 +132,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       if (Object.keys(colorImages).length > 0) {
           mainImageToUse = Object.values(colorImages)[0];
       } else if (imgFiles.length > 0) {
-          mainImageToUse = await fileToBase64(imgFiles[0]);
+          mainImageToUse = await compressImage(imgFiles[0]);
       } else {
           mainImageToUse = 'https://picsum.photos/800/600'; // Placeholder
       }
