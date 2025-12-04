@@ -117,31 +117,40 @@ Generado automáticamente por Creata App
             {/* Prev Button (Small Arrow) */}
             <button 
               onClick={handlePrevImage}
-              className="absolute left-4 md:left-8 text-white/80 hover:text-white hover:scale-110 transition-all p-2 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
+              className="absolute left-2 md:left-8 text-white/80 hover:text-white hover:scale-110 transition-all p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
             >
-               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
 
-            {/* Image */}
-            <div className="relative max-w-5xl max-h-full flex items-center justify-center">
+            {/* Image Container - Fixed Size Square for Consistency */}
+            <div 
+                className="relative bg-white shadow-2xl rounded-sm overflow-hidden flex items-center justify-center border border-white/10
+                           w-[90vw] h-[90vw] md:w-[80vh] md:h-[80vh]"
+                onClick={(e) => e.stopPropagation()} 
+            >
                <img 
                   src={getLightboxImage()!} 
                   alt="Full Texture" 
-                  className="max-w-full max-h-[85vh] object-contain shadow-2xl rounded-sm animate-fade-in border border-white/10"
+                  // object-cover forces the image to fill the square (Zoom effect)
+                  // w-full h-full ensures all images appear exactly the same size
+                  className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
                />
             </div>
 
             {/* Next Button (Small Arrow) */}
             <button 
               onClick={handleNextImage}
-              className="absolute right-4 md:right-8 text-white/80 hover:text-white hover:scale-110 transition-all p-2 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
+              className="absolute right-2 md:right-8 text-white/80 hover:text-white hover:scale-110 transition-all p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
             >
-               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
 
             {/* Close X */}
-            <button className="absolute top-6 right-6 text-white/70 hover:text-white">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            <button 
+              onClick={() => setLightboxIndex(null)}
+              className="absolute top-6 right-6 text-white/70 hover:text-white z-[110]"
+            >
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
         </div>
       )}
