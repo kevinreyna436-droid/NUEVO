@@ -53,6 +53,13 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
     setFormData(prev => ({ ...prev, colors: newColors, colorImages: newColorImages }));
   };
 
+  const handleAddColor = () => {
+    setFormData(prev => ({
+        ...prev,
+        colors: [...prev.colors, "Nuevo Color"]
+    }));
+  };
+
   const triggerImageUpload = (index: number) => {
     setEditingColorIndex(index);
     fileInputRef.current?.click();
@@ -62,7 +69,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
     if (e.target.files && e.target.files[0] && editingColorIndex !== null) {
       const file = e.target.files[0];
       try {
-          const base64 = await compressImage(file);
+          const base64 = await compressImage(file, 500, 0.5);
           const colorName = formData.colors[editingColorIndex];
           setFormData(prev => ({
             ...prev,
@@ -144,54 +151,61 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
 
           {/* Colors Management */}
           <div>
-            <h3 className="font-serif text-lg mb-4">Gestión de Variantes</h3>
-            <div className="space-y-3">
-              {formData.colors.map((color, idx) => (
-                <div key={idx} className="flex items-center space-x-3 bg-gray-50 p-2 rounded-xl border border-gray-100">
-                  {/* Image Preview & Upload */}
-                  <div 
-                    onClick={() => triggerImageUpload(idx)}
-                    className="w-12 h-12 rounded-lg bg-gray-200 overflow-hidden cursor-pointer relative group flex-shrink-0"
-                  >
-                    <img 
-                      src={formData.colorImages?.[color] || formData.mainImage} 
-                      className="w-full h-full object-cover" 
-                      alt="" 
-                    />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                       <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                    </div>
-                  </div>
+              <div className="flex justify-between items-center mb-4">
+                  <label className="block text-xs font-bold uppercase text-gray-400">Variantes de Color</label>
+                  <button onClick={handleAddColor} className="text-xs font-bold text-blue-500 hover:underline">+ Añadir Color</button>
+              </div>
+              
+              <div className="space-y-3">
+                  {formData.colors.map((color, idx) => (
+                      <div key={idx} className="flex items-center space-x-3 bg-gray-50 p-2 rounded-lg">
+                          {/* Image Preview / Upload */}
+                          <div 
+                              onClick={() => triggerImageUpload(idx)}
+                              className="w-10 h-10 bg-gray-200 rounded cursor-pointer overflow-hidden flex-shrink-0 hover:opacity-80"
+                          >
+                              {formData.colorImages && formData.colorImages[color] ? (
+                                  <img src={formData.colorImages[color]} alt={color} className="w-full h-full object-cover" />
+                              ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-gray-400 text-[8px]">Upload</div>
+                              )}
+                          </div>
 
-                  {/* Name Input */}
-                  <input 
-                    type="text" 
-                    value={color}
-                    onChange={(e) => handleColorNameChange(idx, e.target.value)}
-                    className="flex-1 bg-transparent border-none focus:ring-0 font-medium text-sm"
-                  />
+                          {/* Name Input */}
+                          <input 
+                              type="text" 
+                              value={color} 
+                              onChange={(e) => handleColorNameChange(idx, e.target.value)}
+                              className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-medium"
+                          />
 
-                  {/* Actions */}
-                  <button onClick={() => handleRemoveColor(idx)} className="text-red-400 hover:text-red-600 p-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-            
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
+                          {/* Delete */}
+                          <button onClick={() => handleRemoveColor(idx)} className="text-red-400 hover:text-red-600 p-2">
+                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                      </div>
+                  ))}
+              </div>
           </div>
-
         </div>
-
-        <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end">
+        
+        <div className="p-6 border-t border-gray-100 bg-gray-50">
             <button 
-              onClick={() => onSave(formData)}
-              className="bg-black text-white px-8 py-3 rounded-full font-bold uppercase tracking-wide hover:bg-gray-800 transition-all shadow-lg"
+                onClick={() => onSave(formData)}
+                className="w-full bg-black text-white py-3 rounded-xl font-bold tracking-wide hover:opacity-80 transition-all"
             >
-              Guardar Cambios
+                Guardar Cambios
             </button>
         </div>
+
+        {/* Hidden File Input */}
+        <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept="image/*"
+            onChange={handleImageFileChange}
+        />
       </div>
     </div>
   );

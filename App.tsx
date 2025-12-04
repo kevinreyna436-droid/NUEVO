@@ -39,7 +39,9 @@ function App() {
         if (dbData && dbData.length > 0) {
           setFabrics(dbData);
         } else {
-          setFabrics(INITIAL_FABRICS as Fabric[]);
+          // DO NOT LOAD INITIAL_FABRICS AUTOMATICALLY
+          // This ensures the app starts empty for real data entry
+          setFabrics([]); 
         }
       } catch (e) {
         console.error("Error loading initial data:", e);
@@ -210,8 +212,8 @@ function App() {
                      <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
                 </div>
             ) : (
-                // Restored gap-8 spacing between cards
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 xl:gap-8">
+                // CHANGED: Reduced number of columns to make cards larger (removed 5 cols option)
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 xl:gap-8">
                     {activeTab === 'model' 
                         ? displayItems.map((fabric, idx) => (
                             <FabricCard 

@@ -97,8 +97,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       for (const file of imgFiles) {
         const fileNameLower = file.name.toLowerCase().replace(/\.[^/.]+$/, "");
         
-        // Use Compressed Image for Storage
-        const base64Img = await compressImage(file);
+        // Use Compressed Image for Storage (Aggressive settings: 500px, 0.5 quality)
+        const base64Img = await compressImage(file, 500, 0.5);
 
         if (dbName) {
             const matchedColor = detectedColors.find(color => fileNameLower.includes(color.toLowerCase()));
@@ -132,9 +132,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       if (Object.keys(colorImages).length > 0) {
           mainImageToUse = Object.values(colorImages)[0];
       } else if (imgFiles.length > 0) {
-          mainImageToUse = await compressImage(imgFiles[0]);
+          mainImageToUse = await compressImage(imgFiles[0], 500, 0.5);
       } else {
-          mainImageToUse = 'https://picsum.photos/800/600'; // Placeholder
+          mainImageToUse = 'https://picsum.photos/500/500'; // Placeholder
       }
 
       return {
