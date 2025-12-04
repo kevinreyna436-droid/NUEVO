@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, SchemaType } from "@google/genai";
+import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 
 // Ensure API Key is present
 const apiKey = process.env.API_KEY;
@@ -7,6 +7,26 @@ if (!apiKey) {
 }
 
 const ai = new GoogleGenAI({ apiKey: apiKey || 'dummy-key' });
+
+/**
+ * Helper function to retry operations with exponential backoff.
+ * Handles 503 (Service Unavailable) and 429 (Too Many Requests).
+ */
+async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
+  try {
+    return await operation();
+  } catch (error: any) {
+    const errorCode = error?.status || error?.code;
+    const isTransientError = errorCode === 503 || errorCode === 429 || (error.message && error.message.includes('overloaded'));
+
+    if (retries > 0 && isTransientError) {
+      console.warn(`Gemini API overloaded or rate-limited (${errorCode}). Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return retryWithBackoff(operation, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+}
 
 /**
  * Uploads a PDF or Image (base64) to extract Fabric Data.
@@ -29,7 +49,7 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
     Return JSON strictly adhering to this schema.
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: {
         parts: [
@@ -57,7 +77,7 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
           }
         }
       }
-    });
+    }));
 
     return JSON.parse(response.text || '{}');
   } catch (error) {
@@ -72,7 +92,7 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
  */
 export const generateFabricDesign = async (prompt: string, aspectRatio: string = "1:1", size: string = "1K") => {
   try {
-    const response = await ai.models.generateContent({
+    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
       model: 'gemini-3-pro-image-preview',
       contents: {
         parts: [{ text: `Generate a high-quality close-up texture image of a fabric: ${prompt}` }]
@@ -83,7 +103,7 @@ export const generateFabricDesign = async (prompt: string, aspectRatio: string =
           imageSize: size as any,
         }
       }
-    });
+    }));
     
     // Extract image
     for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -104,7 +124,7 @@ export const generateFabricDesign = async (prompt: string, aspectRatio: string =
  */
 export const editFabricImage = async (base64Image: string, prompt: string) => {
   try {
-    const response = await ai.models.generateContent({
+    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
       model: 'gemini-2.5-flash-image', // Optimized for editing/multimodal
       contents: {
         parts: [
@@ -112,7 +132,7 @@ export const editFabricImage = async (base64Image: string, prompt: string) => {
           { text: prompt }
         ]
       }
-    });
+    }));
 
      // Extract image
      for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -133,7 +153,7 @@ export const editFabricImage = async (base64Image: string, prompt: string) => {
  */
 export const chatWithExpert = async (message: string, history: any[]) => {
   try {
-    const response = await ai.models.generateContent({
+    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: [
         ...history,
@@ -143,7 +163,7 @@ export const chatWithExpert = async (message: string, history: any[]) => {
         tools: [{ googleSearch: {} }],
         systemInstruction: "You are a helpful expert assistant for 'Creata Collection', a premium fabric catalog. You help designers find trends, technical info, and fabric care advice. Respond in Spanish."
       }
-    });
+    }));
 
     const text = response.text;
     const grounding = response.candidates?.[0]?.groundingMetadata?.groundingChunks;

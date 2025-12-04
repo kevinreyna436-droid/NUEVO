@@ -59,15 +59,28 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
 
 /**
  * Save multiple fabrics at once (Batch)
+ * Implements chunking to avoid Firestore 10MB payload limit.
  */
 export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
   try {
-    const batch = writeBatch(db);
-    fabrics.forEach((fabric) => {
-      const docRef = doc(db, COLLECTION_NAME, fabric.id);
-      batch.set(docRef, fabric);
-    });
-    await batch.commit();
+    // Firestore has a limit of 10MB per request.
+    // Since we are storing base64 images, we need to be conservative.
+    // We'll process in chunks of 5 documents to stay safe.
+    const CHUNK_SIZE = 5; 
+    
+    for (let i = 0; i < fabrics.length; i += CHUNK_SIZE) {
+      const chunk = fabrics.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      
+      chunk.forEach((fabric) => {
+        const docRef = doc(db, COLLECTION_NAME, fabric.id);
+        batch.set(docRef, fabric);
+      });
+      
+      // Execute this chunk
+      await batch.commit();
+      console.log(`Saved batch chunk ${Math.floor(i / CHUNK_SIZE) + 1} of ${Math.ceil(fabrics.length / CHUNK_SIZE)}`);
+    }
   } catch (error) {
     console.error("Error batch writing documents: ", error);
     throw error;
@@ -93,11 +106,17 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
 export const clearFirestoreCollection = async () => {
   try {
     const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
-    const batch = writeBatch(db);
-    querySnapshot.forEach((document) => {
-      batch.delete(document.ref);
-    });
-    await batch.commit();
+    
+    // Deleting in batches is also more efficient and safer
+    const CHUNK_SIZE = 500; // Delete limit is just operation count (500), payload is small
+    const docs = querySnapshot.docs;
+    
+    for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+        const batch = writeBatch(db);
+        const chunk = docs.slice(i, i + CHUNK_SIZE);
+        chunk.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+    }
   } catch (error) {
     console.error("Error clearing collection: ", error);
     throw error;
