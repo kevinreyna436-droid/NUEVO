@@ -14,6 +14,9 @@ import {
   clearFirestoreCollection 
 } from './services/firebase';
 
+// Type for Sorting
+type SortOption = 'color' | 'name' | 'model' | 'supplier';
+
 function App() {
   const [view, setView] = useState<AppView>('grid');
   const [fabrics, setFabrics] = useState<Fabric[]>([]);
@@ -22,6 +25,9 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'wood'>('model');
   const [loading, setLoading] = useState(true);
+  
+  // Sorting State - Default "color"
+  const [sortBy, setSortBy] = useState<SortOption>('color');
 
   // State for Color View Lightbox (Global Grid)
   const [colorLightbox, setColorLightbox] = useState<{
@@ -129,23 +135,6 @@ function App() {
     }
   };
 
-  // Logic for Grid Rendering
-  const getDisplayItems = () => {
-    let items = [...fabrics];
-
-    if (searchQuery) {
-        items = items.filter(f => 
-            f.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-            (f.colors || []).some(c => c.toLowerCase().includes(searchQuery.toLowerCase()))
-        );
-    }
-    
-    // Default Sort for models: Alphabetical
-    items.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
-
-    return items;
-  };
-
   /**
    * Helper function to determine sorting weight based on color name.
    * Higher value = Lighter/Cleaner. Lower value = Darker/Stronger.
@@ -182,9 +171,20 @@ function App() {
       return 50; // Default for unknowns
   };
 
+  const getFilteredItems = () => {
+    let items = [...fabrics];
+    if (searchQuery) {
+        items = items.filter(f => 
+            f.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            (f.colors || []).some(c => c.toLowerCase().includes(searchQuery.toLowerCase()))
+        );
+    }
+    return items;
+  };
+
   // Prepared items for rendering
   const renderGridContent = () => {
-    const items = getDisplayItems();
+    let items = getFilteredItems();
 
     if (activeTab === 'wood') {
         return (
@@ -196,6 +196,27 @@ function App() {
 
     // --- MODEL VIEW ---
     if (activeTab === 'model') {
+        // Sort Logic for Models
+        items.sort((a, b) => {
+            if (sortBy === 'name') {
+                return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+            }
+            if (sortBy === 'supplier') {
+                return a.supplier.localeCompare(b.supplier, 'es', { sensitivity: 'base' });
+            }
+            if (sortBy === 'color') {
+                // For Models: Sort by weight of their *first* color as a proxy
+                const colorA = a.colors?.[0] || '';
+                const colorB = b.colors?.[0] || '';
+                return getColorWeight(colorB) - getColorWeight(colorA);
+            }
+            if (sortBy === 'model') {
+                // Same as name for Model view
+                return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+            }
+            return 0;
+        });
+
         return items.map((fabric, idx) => (
             <FabricCard 
                 key={fabric.id} 
@@ -207,7 +228,7 @@ function App() {
         ));
     }
 
-    // --- COLOR VIEW (Sorted by Lightest to Darkest) ---
+    // --- COLOR VIEW ---
     if (activeTab === 'color') {
         // Flatten all colors into a single array of objects
         const allColorCards = items.flatMap((fabric) => 
@@ -217,12 +238,32 @@ function App() {
             }))
         );
 
-        // SORT BY COLOR WEIGHT (Lightest -> Darkest)
+        // Sort Logic for Individual Colors
         allColorCards.sort((a, b) => {
-            const weightA = getColorWeight(a.colorName);
-            const weightB = getColorWeight(b.colorName);
-            // Sort descending (100 -> 0)
-            return weightB - weightA; 
+            if (sortBy === 'color') {
+                // Lightest to Darkest
+                const weightA = getColorWeight(a.colorName);
+                const weightB = getColorWeight(b.colorName);
+                return weightB - weightA; 
+            }
+            if (sortBy === 'name') {
+                // Sort by Color Name (Abecedario)
+                return a.colorName.localeCompare(b.colorName, 'es', { sensitivity: 'base' });
+            }
+            if (sortBy === 'model') {
+                // Group by Model Name
+                const modelCompare = a.fabric.name.localeCompare(b.fabric.name, 'es', { sensitivity: 'base' });
+                if (modelCompare !== 0) return modelCompare;
+                // Secondary sort by color name
+                return a.colorName.localeCompare(b.colorName, 'es', { sensitivity: 'base' });
+            }
+            if (sortBy === 'supplier') {
+                // Group by Supplier
+                const suppCompare = a.fabric.supplier.localeCompare(b.fabric.supplier, 'es', { sensitivity: 'base' });
+                if (suppCompare !== 0) return suppCompare;
+                 return a.fabric.name.localeCompare(b.fabric.name, 'es', { sensitivity: 'base' });
+            }
+            return 0;
         });
 
         return allColorCards.map((item, idx) => (
@@ -238,7 +279,7 @@ function App() {
     }
   };
 
-  const filteredItemCount = getDisplayItems().length;
+  const filteredItemCount = getFilteredItems().length;
 
   return (
     // Updated background color to match index.html (rgb(241, 242, 244))
@@ -285,15 +326,38 @@ function App() {
                     Ver maderas
                 </button>
             </div>
-            <div className="relative w-full max-w-lg">
-              <input 
-                type="text" 
-                placeholder="Buscar por nombre, código o composición..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-gray-200 rounded-full py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-black placeholder-gray-400 transition-shadow hover:shadow-sm shadow-sm"
-              />
-              <svg className="absolute left-4 top-3.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            
+            {/* SEARCH AND FILTER BAR */}
+            <div className="flex flex-col md:flex-row gap-4 w-full max-w-2xl">
+                {/* Search Input */}
+                <div className="relative flex-grow">
+                  <input 
+                    type="text" 
+                    placeholder="Buscar..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-white border border-gray-200 rounded-full py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-black placeholder-gray-400 transition-shadow hover:shadow-sm shadow-sm"
+                  />
+                  <svg className="absolute left-4 top-3.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                </div>
+
+                {/* Sorting Dropdown */}
+                <div className="relative min-w-[180px]">
+                    <select 
+                        value={sortBy} 
+                        onChange={(e) => setSortBy(e.target.value as SortOption)}
+                        className="w-full appearance-none bg-white border border-gray-200 rounded-full py-3 pl-6 pr-10 text-sm focus:outline-none focus:ring-1 focus:ring-black cursor-pointer shadow-sm hover:bg-gray-50 transition-colors"
+                    >
+                        <option value="color">Por color (Claro-Fuerte)</option>
+                        <option value="name">Por nombre (A-Z)</option>
+                        <option value="model">Por modelo</option>
+                        <option value="supplier">Por proveedor</option>
+                    </select>
+                    {/* Chevron Icon */}
+                    <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                </div>
             </div>
         </header>
       )}

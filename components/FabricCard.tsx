@@ -22,8 +22,8 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
   return (
     <div 
       onClick={onClick}
-      // Reverted to white background (standard card style)
-      className="group relative w-full aspect-[3/4] md:aspect-[4/5] bg-white rounded-3xl shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden cursor-pointer flex flex-col hover:-translate-y-2 hover:scale-[1.02]"
+      // Added scale-[0.95] to reduce size by 5% as requested
+      className="group relative w-full aspect-[3/4] md:aspect-[4/5] bg-white rounded-3xl shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden cursor-pointer flex flex-col hover:-translate-y-2 hover:scale-[0.97] transform-gpu scale-[0.95]"
     >
       {/* SECTION SUPERIOR (Imagen) - 70% height */}
       <div className="relative h-[70%] w-full bg-gray-100 overflow-hidden">
