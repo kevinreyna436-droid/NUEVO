@@ -228,8 +228,8 @@ function App() {
                      <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
                 </div>
             ) : (
-                // CHANGED: Added max-w to keep grid from stretching too wide on huge screens, maintaining visual center
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 xl:gap-8 w-full max-w-[1600px]">
+                // CHANGED: Increased grid-cols to make cards smaller (lg:grid-cols-5)
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-6 xl:gap-8 w-full max-w-[1800px]">
                     {activeTab === 'model' 
                         ? displayItems.map((fabric, idx) => (
                             <FabricCard 

@@ -129,9 +129,7 @@ Generado automáticamente por Creata App
                   alt="Full Texture" 
                   className="max-w-full max-h-[85vh] object-contain shadow-2xl rounded-sm animate-fade-in border-[1px] border-white/20"
                />
-               <p className="text-center mt-4 font-serif text-2xl font-bold text-black drop-shadow-md">
-                 {sortedColors[lightboxIndex]}
-               </p>
+               {/* REMOVED NAME TEXT AS REQUESTED */}
             </div>
 
             {/* Next Button */}
@@ -245,8 +243,8 @@ Generado automáticamente por Creata App
         <div className="w-full">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-[0.25em] mb-16">Variantes de Color</h3>
             
-            {/* Increased spacing: gap-10 and gap-y-16 to 'separate it a little more' */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-10 gap-y-16 justify-items-center">
+            {/* DOUBLED SPACING: gap-20 (5rem) and gap-y-32 (8rem) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-20 gap-y-32 justify-items-center">
               {sortedColors.map((color, idx) => {
                 const colorImg = fabric.colorImages?.[color] || fabric.mainImage;
                 
