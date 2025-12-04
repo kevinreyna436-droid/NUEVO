@@ -33,9 +33,9 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
           alt={mode === 'model' ? fabric.name : `${fabric.name} - ${specificColorName}`} 
           // UPDATED: 
           // 1. object-top: Anchors image to the top edge.
-          // 2. scale-[1.15]: Zooms in 15% to create crop margin.
-          // 3. translate-y-4: Pushes image down to hide bottom text/labels.
-          className="w-full h-full object-cover object-top transition-transform duration-700 scale-[1.15] translate-y-4 group-hover:scale-[1.25] group-hover:translate-y-2"
+          // 2. scale-[1.40]: Aggressive zoom to crop margin (was 1.35).
+          // 3. translate-y-14: Aggressive downward shift to hide bottom text/labels (was 12).
+          className="w-full h-full object-cover object-top transition-transform duration-700 scale-[1.40] translate-y-14 group-hover:scale-[1.50] group-hover:translate-y-12"
         />
         
         {/* Curved Wave Separator (SVG) - Fills the gaps with photo */}

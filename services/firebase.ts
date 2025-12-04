@@ -37,10 +37,14 @@ const db = initializeFirestore(app, {
 // Attempt to enable persistence
 // This allows the app to work offline and load faster on subsequent visits
 enableIndexedDbPersistence(db).catch((err) => {
+    // Only log safe messages
+    const msg = err?.message || 'Unknown persistence error';
     if (err.code === 'failed-precondition') {
         console.warn('Persistence failed: Multiple tabs open');
     } else if (err.code === 'unimplemented') {
         console.warn('Persistence not supported by browser');
+    } else {
+        console.warn('Persistence error:', msg);
     }
 });
 
@@ -132,10 +136,13 @@ const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay
     try {
         return await operation();
     } catch (error: any) {
-        const isConnectionError = error.code === 'unavailable' || 
-                                  error.message?.includes('backend') || 
-                                  error.message?.includes('network') ||
-                                  error.message?.includes('offline');
+        // Safe check for error properties to avoid circular access
+        const errorCode = error?.code || '';
+        const errorMsg = error?.message || '';
+        const isConnectionError = errorCode === 'unavailable' || 
+                                  errorMsg.includes('backend') || 
+                                  errorMsg.includes('network') ||
+                                  errorMsg.includes('offline');
         
         if (retries > 0 && isConnectionError) {
             console.warn(`Retrying Firestore op... ${retries} attempts left.`);
@@ -151,9 +158,9 @@ const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay
 /**
  * Fetch all fabrics from Firestore with a Smart Offline Strategy.
  * 
- * It races the Network request against a 2.5 second timer.
+ * It races the Network request against a timer.
  * 1. If Network responds fast -> Returns server data.
- * 2. If Network is slow (>2.5s) -> Returns Cached data immediately.
+ * 2. If Network is slow -> Returns Cached data immediately.
  * 3. If Network fails completely -> Returns Cached data.
  */
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
@@ -161,7 +168,7 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
     // Define the network request
     const serverPromise = getDocs(collection(db, COLLECTION_NAME));
     
-    // Define a timeout that rejects after 2.5 seconds
+    // Define a timeout that rejects after 2.5 seconds (Balance between patience and speed)
     const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
         setTimeout(() => reject(new Error('TIMEOUT_SLOW_NETWORK')), 2500)
     );
@@ -173,28 +180,30 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
         snapshot = await Promise.race([serverPromise, timeoutPromise]);
     } catch (raceError: any) {
         // If the timeout won, or the network failed immediately
-        const isTimeout = raceError.message === 'TIMEOUT_SLOW_NETWORK';
+        const msg = raceError?.message || '';
+        const isTimeout = msg === 'TIMEOUT_SLOW_NETWORK';
         
         if (isTimeout) {
             console.log("Network is slow. Switching to offline cache for instant load.");
         } else {
-            console.warn("Network request failed. Attempting cache fallback.");
+            // Log safely
+            console.warn("Network request failed. Attempting cache fallback.", msg);
         }
 
         // Fallback: Try to read from local cache
         try {
             snapshot = await getDocsFromCache(collection(db, COLLECTION_NAME));
-        } catch (cacheError) {
-            console.error("Cache fetch also failed. Returning empty list.");
+        } catch (cacheError: any) {
+            console.error("Cache fetch also failed.", cacheError?.message || 'Unknown cache error');
             return [];
         }
     }
     
     return snapshot.docs.map(doc => createCleanFabricObject(doc.data()));
 
-  } catch (error) {
-    // Global safety catch
-    console.error("Critical error in getFabricsFromFirestore", error);
+  } catch (error: any) {
+    // Global safety catch - LOG MESSAGE ONLY to avoid circular JSON error
+    console.error("Critical error in getFabricsFromFirestore", error?.message || "Unknown error");
     return [];
   }
 };
@@ -212,9 +221,9 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
 
     // 3. Write
     await retryOperation(() => setDoc(doc(db, COLLECTION_NAME, cleanFabric.id), cleanFabric, { merge: true }));
-  } catch (error) {
-    // Simplified error logging to avoid circular structures in the error object itself
-    console.error("Error writing document"); 
+  } catch (error: any) {
+    // Log message only
+    console.error("Error writing document", error?.message || 'Unknown write error'); 
     throw error;
   }
 };
@@ -240,7 +249,7 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
         await retryOperation(() => batch.commit(), 3, 2000);
         await delay(300); 
     } catch (error: any) {
-        console.error("Error batch writing chunk");
+        console.error("Error batch writing chunk", error?.message || 'Unknown batch error');
         throw new Error("Error al guardar lote. Verifique su conexión.");
     }
   }
@@ -252,8 +261,8 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
 export const deleteFabricFromFirestore = async (fabricId: string) => {
   try {
     await retryOperation(() => deleteDoc(doc(db, COLLECTION_NAME, fabricId)));
-  } catch (error) {
-    console.error("Error deleting document");
+  } catch (error: any) {
+    console.error("Error deleting document", error?.message || 'Unknown delete error');
     throw error;
   }
 };
@@ -271,8 +280,8 @@ export const clearFirestoreCollection = async () => {
         batch.delete(doc.ref);
     });
     await batch.commit();
-  } catch (error) {
-    console.error("Error clearing collection");
+  } catch (error: any) {
+    console.error("Error clearing collection", error?.message || 'Unknown clear error');
     throw error;
   }
 };
