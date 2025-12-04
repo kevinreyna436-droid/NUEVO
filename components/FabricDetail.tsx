@@ -50,6 +50,45 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
     return fabric.colorImages?.[colorName] || fabric.mainImage;
   };
 
+  const handleDownloadFicha = (e: React.MouseEvent) => {
+      if (fabric.pdfUrl) return; // If real URL exists, let default behavior happen
+      
+      e.preventDefault();
+      
+      // Generate a text file with the specs
+      const content = `
+CREATA COLLECTION - FICHA TÉCNICA
+---------------------------------
+Modelo: ${fabric.name}
+Proveedor: ${fabric.supplier}
+
+RESUMEN TÉCNICO
+${fabric.technicalSummary || 'Información no disponible'}
+
+ESPECIFICACIONES
+- Composición: ${fabric.specs.composition || 'N/A'}
+- Durabilidad (Martindale): ${fabric.specs.martindale || 'N/A'}
+- Uso Recomendado: ${fabric.specs.usage || 'N/A'}
+- Peso: ${fabric.specs.weight || 'N/A'}
+
+VARIANTES DE COLOR
+${sortedColors.join(', ')}
+
+---------------------------------
+Generado automáticamente por Creata App
+`;
+
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Ficha_Tecnica_${fabric.name.replace(/\s+/g, '_')}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="min-h-screen bg-[#f2f2f2] pb-20 animate-fade-in-up relative">
       
@@ -189,9 +228,9 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
                         <div className="mt-8 flex justify-end">
                              <a 
                                href={fabric.pdfUrl || "#"} 
-                               download={`${fabric.name}-ficha-tecnica.pdf`}
+                               download={`${fabric.name}-ficha-tecnica.pdf`} // Default filename for real URL
                                className="flex items-center space-x-2 bg-black text-white px-8 py-3 rounded-full text-sm font-bold uppercase hover:bg-gray-800 transition-colors shadow-lg"
-                               onClick={(e) => { if(!fabric.pdfUrl) { e.preventDefault(); alert("PDF simulado descargado."); } }}
+                               onClick={handleDownloadFicha}
                              >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                                 <span>Descargar Ficha</span>
@@ -204,10 +243,10 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
 
         {/* 2. Muestrario Interactivo (Circular Grid) */}
         <div className="w-full">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-[0.25em] mb-12">Variantes de Color</h3>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-[0.25em] mb-16">Variantes de Color</h3>
             
-            {/* Increased gap to gap-8 (more separation) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 gap-y-12 justify-items-center">
+            {/* Increased spacing: gap-10 and gap-y-16 to 'separate it a little more' */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-10 gap-y-16 justify-items-center">
               {sortedColors.map((color, idx) => {
                 const colorImg = fabric.colorImages?.[color] || fabric.mainImage;
                 
