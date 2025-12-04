@@ -149,9 +149,8 @@ function App() {
 
       {/* Header */}
       {view === 'grid' && (
-        // Reduced vertical padding (pt-16 -> pt-8, pb-8 -> pb-2) and spacing (space-y-6 -> space-y-4)
-        <header className="pt-8 pb-4 px-6 flex flex-col items-center space-y-4">
-            <h1 className="font-serif text-6xl md:text-7xl font-bold text-center tracking-tight text-slate-900 leading-none">
+        <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down">
+            <h1 className="font-serif text-6xl md:text-8xl font-bold text-center tracking-tight text-slate-900 leading-none">
                 Catálogo de telas
             </h1>
             <div className="flex space-x-8 md:space-x-12 border-b border-transparent">
@@ -211,8 +210,8 @@ function App() {
                      <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
                 </div>
             ) : (
-                // Changed grid spacing: gap-x-0 (cards touch) and reduced gap-y-12 to gap-y-8
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-0 gap-y-8">
+                // Restored gap-8 spacing between cards
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 xl:gap-8">
                     {activeTab === 'model' 
                         ? displayItems.map((fabric, idx) => (
                             <FabricCard 
@@ -231,7 +230,7 @@ function App() {
                                     mode="color"
                                     specificColorName={colorName}
                                     onClick={() => handleFabricClick(fabric, colorName)}
-                                    index={idx} // Passing index might need global index logic here if needed, but per-group is fine for now
+                                    index={idx}
                                 />
                              ))
                         )
