@@ -8,7 +8,8 @@ import { INITIAL_FABRICS } from './constants';
 import { Fabric, AppView } from './types';
 
 // --- IndexedDB Helpers ---
-const DB_NAME = 'CreataFabricDB';
+// Changed DB Name to force a fresh start (wipes old data effectively)
+const DB_NAME = 'CreataFabricDB_v2';
 const DB_VERSION = 1;
 const STORE_NAME = 'fabrics';
 
@@ -187,7 +188,7 @@ function App() {
 
   // Logic for Grid Rendering
   const getDisplayItems = () => {
-    let items = fabrics;
+    let items = [...fabrics]; // Copy to sort safely
 
     if (searchQuery) {
         items = items.filter(f => 
@@ -195,6 +196,10 @@ function App() {
             f.colors.some(c => c.toLowerCase().includes(searchQuery.toLowerCase()))
         );
     }
+
+    // SORT ALPHABETICALLY BY NAME
+    items.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+
     if (activeTab === 'wood') return [];
     return items;
   };
@@ -272,8 +277,8 @@ function App() {
                      <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
                 </div>
             ) : (
-                // Changed Grid to gap-6
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 justify-items-center">
+                // Changed grid spacing: gap-x-4 (tight horizontal) and gap-y-12 (large vertical)
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-12 justify-items-center">
                     {activeTab === 'model' 
                         ? displayItems.map(fabric => (
                             <FabricCard 

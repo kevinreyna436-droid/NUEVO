@@ -13,6 +13,9 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit }) =
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
 
+  // Sort colors alphabetically for display
+  const sortedColors = [...fabric.colors].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
   // Keydown listener for arrow keys in lightbox
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -28,21 +31,21 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit }) =
 
   const handleNextImage = (e?: React.MouseEvent | KeyboardEvent) => {
     e?.stopPropagation();
-    if (lightboxIndex !== null && fabric.colors.length > 0) {
-      setLightboxIndex((prev) => (prev! + 1) % fabric.colors.length);
+    if (lightboxIndex !== null && sortedColors.length > 0) {
+      setLightboxIndex((prev) => (prev! + 1) % sortedColors.length);
     }
   };
 
   const handlePrevImage = (e?: React.MouseEvent | KeyboardEvent) => {
     e?.stopPropagation();
-    if (lightboxIndex !== null && fabric.colors.length > 0) {
-      setLightboxIndex((prev) => (prev! - 1 + fabric.colors.length) % fabric.colors.length);
+    if (lightboxIndex !== null && sortedColors.length > 0) {
+      setLightboxIndex((prev) => (prev! - 1 + sortedColors.length) % sortedColors.length);
     }
   };
 
   const getLightboxImage = () => {
     if (lightboxIndex === null) return null;
-    const colorName = fabric.colors[lightboxIndex];
+    const colorName = sortedColors[lightboxIndex];
     return fabric.colorImages?.[colorName] || fabric.mainImage;
   };
 
@@ -83,7 +86,7 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit }) =
                   className="max-w-full max-h-[85vh] object-contain shadow-2xl rounded-sm animate-fade-in border-[1px] border-white/20"
                />
                <p className="text-center mt-4 font-serif text-2xl font-bold text-black drop-shadow-md">
-                 {fabric.colors[lightboxIndex]}
+                 {sortedColors[lightboxIndex]}
                </p>
             </div>
 
@@ -196,8 +199,9 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit }) =
         <div className="w-full">
             <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-[0.25em] mb-12">Variantes de Color</h3>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-8 gap-y-16 justify-items-center">
-              {fabric.colors.map((color, idx) => {
+            {/* Increased gap to gap-8 (more separation) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 gap-y-10 justify-items-center">
+              {sortedColors.map((color, idx) => {
                 const colorImg = fabric.colorImages?.[color] || fabric.mainImage;
                 
                 return (
@@ -227,7 +231,7 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit }) =
             </div>
             
             {/* If empty grid */}
-            {fabric.colors.length === 0 && (
+            {sortedColors.length === 0 && (
                 <p className="text-sm text-gray-400 italic py-10">No hay variantes cargadas.</p>
             )}
         </div>

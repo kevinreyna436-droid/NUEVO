@@ -284,4 +284,48 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         )}
 
         {step === 'processing' && (
-          <div className="flex flex-col items-center justify-center h-64 space-y-6 text-center
+          <div className="flex flex-col items-center justify-center h-64 space-y-6 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+            <div>
+                <p className="font-serif text-lg animate-pulse">Analizando con Gemini AI...</p>
+                <p className="text-xs text-gray-400 mt-2">{currentProgress}</p>
+            </div>
+          </div>
+        )}
+
+        {step === 'review' && (
+          <div className="flex flex-col space-y-6 text-center flex-1 overflow-hidden">
+             <div className="flex-1 overflow-y-auto">
+                 <div className="bg-green-50 p-6 rounded-2xl mb-4">
+                    <svg className="w-12 h-12 text-green-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                    <h3 className="text-xl font-serif text-green-800">¡Análisis Completo!</h3>
+                    <p className="text-sm text-green-600 mt-1">Se han procesado {extractedFabrics.length} telas.</p>
+                 </div>
+                 
+                 <div className="space-y-2 text-left">
+                     {extractedFabrics.map((f, i) => (
+                         <div key={i} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                             <img src={f.mainImage} alt="" className="w-10 h-10 rounded object-cover bg-gray-200" />
+                             <div>
+                                 <p className="font-bold text-sm text-gray-800">{f.name}</p>
+                                 <p className="text-xs text-gray-400">{f.colors?.length || 0} colores detectados</p>
+                             </div>
+                         </div>
+                     ))}
+                 </div>
+             </div>
+
+             <button 
+              onClick={handleFinalSave}
+              className="w-full bg-black text-white py-4 rounded-xl font-bold tracking-wide hover:opacity-80 transition-all uppercase shadow-lg"
+            >
+              Guardar en Catálogo
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default UploadModal;
