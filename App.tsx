@@ -228,8 +228,9 @@ function App() {
                      <p className="text-xs mt-2">Usa el botón "." arriba a la derecha para cargar datos.</p>
                 </div>
             ) : (
-                // CHANGED: Reduced grid columns (lg:grid-cols-4 xl:grid-cols-5) to make cards larger (approx 10%+)
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 xl:gap-8 w-full max-w-[1800px]">
+                // CHANGED: Reduced grid columns (lg:grid-cols-3 xl:grid-cols-4) to make cards roughly 15-20% larger.
+                // ADDED: 'justify-center' to ensure the whole grid block stays in the center.
+                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 xl:gap-8 w-full max-w-[1800px] justify-center">
                     {activeTab === 'model' 
                         ? displayItems.map((fabric, idx) => (
                             <FabricCard 

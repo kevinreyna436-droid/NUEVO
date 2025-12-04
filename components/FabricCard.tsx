@@ -25,8 +25,8 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
       // Hover scale and lift (translate-y-2) for interaction
       className="group relative w-full aspect-square bg-white rounded-3xl shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden cursor-pointer flex flex-col hover:-translate-y-2 hover:scale-[1.02]"
     >
-      {/* SECTION SUPERIOR (Imagen) - 50% height */}
-      <div className="relative h-[50%] w-full bg-gray-100 overflow-hidden">
+      {/* SECTION SUPERIOR (Imagen) - 55% height (increased from 50%) */}
+      <div className="relative h-[55%] w-full bg-gray-100 overflow-hidden">
         {/* Image */}
         <img 
           src={displayImage} 
@@ -37,8 +37,8 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
         {/* Removed the Eye/View Icon Overlay as requested */}
       </div>
 
-      {/* SECTION INFERIOR (Información) - 50% height */}
-      <div className="h-[50%] px-4 pb-2 pt-2 text-center flex flex-col items-center justify-center bg-white relative z-20">
+      {/* SECTION INFERIOR (Información) - 45% height (decreased from 50%) */}
+      <div className="h-[45%] px-4 pb-2 pt-2 text-center flex flex-col items-center justify-center bg-white relative z-20">
         <div className="w-full flex flex-col justify-center h-full space-y-1">
           {mode === 'model' ? (
             /* VISTA MODELOS */

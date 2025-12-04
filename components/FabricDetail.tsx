@@ -243,13 +243,13 @@ Generado automáticamente por Creata App
         <div className="w-full">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-[0.25em] mb-16">Variantes de Color</h3>
             
-            {/* DOUBLED SPACING: gap-20 (5rem) and gap-y-32 (8rem) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-20 gap-y-32 justify-items-center">
+            {/* CHANGED TO FLEXBOX FOR PERFECT CENTERING */}
+            <div className="flex flex-wrap justify-center gap-20 gap-y-32">
               {sortedColors.map((color, idx) => {
                 const colorImg = fabric.colorImages?.[color] || fabric.mainImage;
                 
                 return (
-                  <div key={idx} className="flex flex-col items-center group w-full">
+                  <div key={idx} className="flex flex-col items-center group w-64">
                     <div 
                       onClick={() => setLightboxIndex(idx)} 
                       className="relative w-64 h-64 rounded-full border-[1px] border-gray-300 overflow-hidden cursor-pointer bg-white shadow-md transition-all duration-500 hover:shadow-2xl hover:scale-105"
