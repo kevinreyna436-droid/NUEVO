@@ -449,7 +449,7 @@ function App() {
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center">
             {/* Background: Transparent 70% blurred */}
             <div 
-                className="absolute inset-0 bg-black/60 backdrop-blur-[10px] transition-all duration-500"
+                className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-all duration-500"
                 onClick={() => setColorLightbox(null)}
             ></div>
             
@@ -457,7 +457,7 @@ function App() {
             <div className="absolute top-10 z-[110] animate-fade-in-down">
                 <button 
                     onClick={goToDetailFromLightbox}
-                    className="bg-black text-white px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest shadow-xl hover:bg-gray-800 transition-transform hover:scale-105 border border-white/10"
+                    className="bg-black text-white px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-gray-800 transition-transform hover:scale-105 border border-white/10"
                 >
                     Ver Detalle de la tela
                 </button>

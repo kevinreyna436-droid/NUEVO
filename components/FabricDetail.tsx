@@ -111,15 +111,15 @@ Generado automáticamente por Creata App
       {/* Lightbox Overlay (Full Screen Image with Navigation) */}
       {lightboxIndex !== null && (
         <div 
-            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-[10px] flex items-center justify-center cursor-pointer p-4 md:p-8"
+            className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center cursor-pointer p-4 md:p-8"
             onClick={() => setLightboxIndex(null)}
         >
             {/* Prev Button (Small Arrow) */}
             <button 
               onClick={handlePrevImage}
-              className="absolute left-4 md:left-8 text-white/80 hover:text-white hover:scale-110 transition-all p-4 z-[110] bg-black/20 rounded-full backdrop-blur-sm"
+              className="absolute left-4 md:left-8 text-white/80 hover:text-white hover:scale-110 transition-all p-2 z-[110] bg-black/20 rounded-full backdrop-blur-sm"
             >
-               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
 
             {/* Image */}
@@ -134,9 +134,9 @@ Generado automáticamente por Creata App
             {/* Next Button (Small Arrow) */}
             <button 
               onClick={handleNextImage}
-              className="absolute right-4 md:right-8 text-white/80 hover:text-white hover:scale-110 transition-all p-4 z-[110] bg-black/20 rounded-full backdrop-blur-sm"
+              className="absolute right-4 md:right-8 text-white/80 hover:text-white hover:scale-110 transition-all p-2 z-[110] bg-black/20 rounded-full backdrop-blur-sm"
             >
-               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
 
             {/* Close X */}
@@ -262,7 +262,7 @@ Generado automáticamente por Creata App
                        {/* HOVER OVERLAY WITH LUPA + ICON (Small White) */}
                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
                           {/* Search Plus Icon */}
-                          <svg className="w-8 h-8 text-white drop-shadow-md transform scale-75 group-hover:scale-100 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-5 h-5 text-white drop-shadow-md transform scale-75 group-hover:scale-100 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
                           </svg>
                        </div>
