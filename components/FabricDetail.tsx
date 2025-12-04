@@ -6,9 +6,10 @@ interface FabricDetailProps {
   fabric: Fabric;
   onBack: () => void;
   onEdit: (updatedFabric: Fabric) => void;
+  onDelete: (id: string) => void;
 }
 
-const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit }) => {
+const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onDelete }) => {
   const [showSpecs, setShowSpecs] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
@@ -114,14 +115,23 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit }) =
             </button>
         </div>
         
-        {/* Edit Button (.) */}
-        <button 
-            onClick={() => setEditModalOpen(true)} 
-            className="absolute right-6 text-gray-400 hover:text-black transition-colors font-bold text-3xl w-8 h-8 flex items-center justify-center pb-4"
-            title="Modificar ficha completa"
-        >
-             .
-        </button>
+        {/* Right side controls */}
+        <div className="absolute right-6 flex items-center space-x-4">
+            <button 
+                onClick={() => onDelete(fabric.id)}
+                className="text-red-400 hover:text-red-600 transition-colors text-xs font-bold uppercase tracking-wide px-2"
+                title="Eliminar esta ficha permanentemente"
+            >
+                Borrar
+            </button>
+            <button 
+                onClick={() => setEditModalOpen(true)} 
+                className="text-gray-400 hover:text-black transition-colors font-bold text-3xl pb-4 h-8 flex items-center"
+                title="Modificar ficha completa"
+            >
+                .
+            </button>
+        </div>
       </div>
 
       <div className="container mx-auto px-4 py-6 flex flex-col items-center text-center max-w-5xl">

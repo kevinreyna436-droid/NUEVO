@@ -10,6 +10,7 @@ import {
   getFabricsFromFirestore, 
   saveFabricToFirestore, 
   saveBatchFabricsToFirestore, 
+  deleteFabricFromFirestore,
   clearFirestoreCollection 
 } from './services/firebase';
 
@@ -93,6 +94,21 @@ function App() {
     setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
     // Save to Firestore
     await saveFabricToFirestore(updatedFabric);
+  };
+
+  const handleDeleteFabric = async (fabricId: string) => {
+      if(window.confirm("¿Estás seguro de que quieres eliminar esta ficha completamente? Esta acción no se puede deshacer.")) {
+          try {
+              // Optimistic delete
+              setFabrics(prev => prev.filter(f => f.id !== fabricId));
+              setView('grid');
+              setSelectedFabricId(null);
+              // Fire and forget (or await if you prefer strict sync)
+              await deleteFabricFromFirestore(fabricId);
+          } catch (e) {
+              alert("Hubo un error al eliminar la ficha.");
+          }
+      }
   };
 
   // Full Reset
@@ -247,6 +263,7 @@ function App() {
             fabric={fabrics.find(f => f.id === selectedFabricId)!} 
             onBack={() => setView('grid')}
             onEdit={handleUpdateFabric}
+            onDelete={handleDeleteFabric}
           />
         )}
         

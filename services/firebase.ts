@@ -75,6 +75,18 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
 };
 
 /**
+ * Delete a single fabric
+ */
+export const deleteFabricFromFirestore = async (fabricId: string) => {
+  try {
+    await deleteDoc(doc(db, COLLECTION_NAME, fabricId));
+  } catch (error) {
+    console.error("Error deleting document: ", error);
+    throw error;
+  }
+};
+
+/**
  * Delete all fabrics (Reset)
  * Firestore requires deleting documents one by one to clear a collection from client SDK
  */
