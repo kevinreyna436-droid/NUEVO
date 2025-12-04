@@ -22,7 +22,7 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
   return (
     <div 
       onClick={onClick}
-      // Added scale-[0.95] to reduce size by 5% as requested
+      // Added scale-[0.95] to reduce size by 5% as requested previously
       className="group relative w-full aspect-[3/4] md:aspect-[4/5] bg-white rounded-3xl shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden cursor-pointer flex flex-col hover:-translate-y-2 hover:scale-[0.97] transform-gpu scale-[0.95]"
     >
       {/* SECTION SUPERIOR (Imagen) - 70% height */}
@@ -31,7 +31,11 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
         <img 
           src={displayImage} 
           alt={mode === 'model' ? fabric.name : `${fabric.name} - ${specificColorName}`} 
-          className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-110"
+          // UPDATED: 
+          // 1. object-top: Anchors image to the top edge.
+          // 2. scale-[1.15]: Zooms in 15% to create crop margin.
+          // 3. translate-y-4: Pushes image down to hide bottom text/labels.
+          className="w-full h-full object-cover object-top transition-transform duration-700 scale-[1.15] translate-y-4 group-hover:scale-[1.25] group-hover:translate-y-2"
         />
         
         {/* Curved Wave Separator (SVG) - Fills the gaps with photo */}

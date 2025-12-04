@@ -10,7 +10,9 @@ import {
   writeBatch,
   enableIndexedDbPersistence,
   initializeFirestore,
-  CACHE_SIZE_UNLIMITED
+  CACHE_SIZE_UNLIMITED,
+  QuerySnapshot,
+  DocumentData
 } from "firebase/firestore";
 import { Fabric } from "../types";
 
@@ -92,7 +94,7 @@ const createCleanFabricObject = (source: any): Fabric => {
                   cleanColorImages[key] = val;
               }
           });
-      } catch(e) { console.warn("Error cleaning colorImages", e); }
+      } catch(e) { console.warn("Error cleaning colorImages"); }
   }
 
   // Safely extract colors array
@@ -147,28 +149,53 @@ const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay
 // --- Firestore Operations ---
 
 /**
- * Fetch all fabrics from Firestore.
- * Strategy: Standard getDocs with automatic SDK offline handling.
- * If strictly offline/unreachable and SDK throws, explicit fallback to cache.
+ * Fetch all fabrics from Firestore with a Smart Offline Strategy.
+ * 
+ * It races the Network request against a 2.5 second timer.
+ * 1. If Network responds fast -> Returns server data.
+ * 2. If Network is slow (>2.5s) -> Returns Cached data immediately.
+ * 3. If Network fails completely -> Returns Cached data.
  */
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   try {
-    // We do NOT use a timeout here anymore. We let Firebase SDK handle the connection.
-    // If backend doesn't respond in 10s, the SDK might throw or return from cache if configured.
-    const snapshot = await getDocs(collection(db, COLLECTION_NAME));
+    // Define the network request
+    const serverPromise = getDocs(collection(db, COLLECTION_NAME));
+    
+    // Define a timeout that rejects after 2.5 seconds
+    const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
+        setTimeout(() => reject(new Error('TIMEOUT_SLOW_NETWORK')), 2500)
+    );
+
+    let snapshot: QuerySnapshot<DocumentData>;
+
+    try {
+        // Race them!
+        snapshot = await Promise.race([serverPromise, timeoutPromise]);
+    } catch (raceError: any) {
+        // If the timeout won, or the network failed immediately
+        const isTimeout = raceError.message === 'TIMEOUT_SLOW_NETWORK';
+        
+        if (isTimeout) {
+            console.log("Network is slow. Switching to offline cache for instant load.");
+        } else {
+            console.warn("Network request failed. Attempting cache fallback.");
+        }
+
+        // Fallback: Try to read from local cache
+        try {
+            snapshot = await getDocsFromCache(collection(db, COLLECTION_NAME));
+        } catch (cacheError) {
+            console.error("Cache fetch also failed. Returning empty list.");
+            return [];
+        }
+    }
     
     return snapshot.docs.map(doc => createCleanFabricObject(doc.data()));
+
   } catch (error) {
-    console.warn("Network fetch failed, attempting explicit cache fallback...", error);
-    try {
-        // If network failed completely (and SDK didn't auto-fallback), try forcing cache
-        const cacheSnap = await getDocsFromCache(collection(db, COLLECTION_NAME));
-        return cacheSnap.docs.map(doc => createCleanFabricObject(doc.data()));
-    } catch (cacheErr) {
-        console.error("Cache fetch also failed", cacheErr);
-        // Return empty array so app doesn't crash, allowing UI to show "Empty/Error" state
-        return [];
-    }
+    // Global safety catch
+    console.error("Critical error in getFabricsFromFirestore", error);
+    return [];
   }
 };
 
@@ -186,7 +213,8 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
     // 3. Write
     await retryOperation(() => setDoc(doc(db, COLLECTION_NAME, cleanFabric.id), cleanFabric, { merge: true }));
   } catch (error) {
-    console.error("Error writing document: ", error);
+    // Simplified error logging to avoid circular structures in the error object itself
+    console.error("Error writing document"); 
     throw error;
   }
 };
@@ -212,7 +240,7 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
         await retryOperation(() => batch.commit(), 3, 2000);
         await delay(300); 
     } catch (error: any) {
-        console.error("Error batch writing chunk: ", error);
+        console.error("Error batch writing chunk");
         throw new Error("Error al guardar lote. Verifique su conexión.");
     }
   }
@@ -225,7 +253,7 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
   try {
     await retryOperation(() => deleteDoc(doc(db, COLLECTION_NAME, fabricId)));
   } catch (error) {
-    console.error("Error deleting document: ", error);
+    console.error("Error deleting document");
     throw error;
   }
 };
@@ -235,6 +263,8 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
  */
 export const clearFirestoreCollection = async () => {
   try {
+    // We use getDocs here without race condition because this is a destructive admin action
+    // and we want to ensure we have the latest references, though cache is acceptable if offline.
     const snap = await getDocs(collection(db, COLLECTION_NAME));
     const batch = writeBatch(db);
     snap.docs.forEach((doc) => {
@@ -242,7 +272,7 @@ export const clearFirestoreCollection = async () => {
     });
     await batch.commit();
   } catch (error) {
-    console.error("Error clearing collection: ", error);
+    console.error("Error clearing collection");
     throw error;
   }
 };
