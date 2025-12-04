@@ -25,8 +25,8 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
       // Hover scale and lift (translate-y-2) for interaction
       className="group relative w-full aspect-square bg-white rounded-3xl shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden cursor-pointer flex flex-col hover:-translate-y-2 hover:scale-[1.02]"
     >
-      {/* SECTION SUPERIOR (Imagen) - 60% height to ensure text has space */}
-      <div className="relative h-[60%] w-full bg-gray-100 overflow-hidden">
+      {/* SECTION SUPERIOR (Imagen) - 50% height */}
+      <div className="relative h-[50%] w-full bg-gray-100 overflow-hidden">
         {/* Image */}
         <img 
           src={displayImage} 
@@ -37,8 +37,8 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
         {/* Removed the Eye/View Icon Overlay as requested */}
       </div>
 
-      {/* SECTION INFERIOR (Información) - 40% height */}
-      <div className="h-[40%] px-4 pb-2 pt-2 text-center flex flex-col items-center justify-center bg-white relative z-20">
+      {/* SECTION INFERIOR (Información) - 50% height */}
+      <div className="h-[50%] px-4 pb-2 pt-2 text-center flex flex-col items-center justify-center bg-white relative z-20">
         <div className="w-full flex flex-col justify-center h-full space-y-1">
           {mode === 'model' ? (
             /* VISTA MODELOS */
@@ -60,7 +60,7 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
           ) : (
             /* VISTA COLORES */
             <>
-              <h3 className="font-serif text-xl md:text-2xl font-bold text-slate-900 leading-none mb-1 group-hover:text-black line-clamp-1 px-1">
+              <h3 className="font-serif text-xl md:text-2xl font-bold text-slate-900 leading-none mb-1 group-hover:text-black line-clamp-2 px-1 break-words">
                 {specificColorName}
               </h3>
                <div className="w-8 h-[1px] bg-gray-200 mx-auto my-1"></div>
