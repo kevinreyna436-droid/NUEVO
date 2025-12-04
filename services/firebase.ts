@@ -35,9 +35,7 @@ const db = initializeFirestore(app, {
 });
 
 // Attempt to enable persistence
-// This allows the app to work offline and load faster on subsequent visits
 enableIndexedDbPersistence(db).catch((err) => {
-    // Only log safe messages
     const msg = err?.message || 'Unknown persistence error';
     if (err.code === 'failed-precondition') {
         console.warn('Persistence failed: Multiple tabs open');
@@ -55,11 +53,10 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Creates a clean, plain Javascript object strictly adhering to the Fabric interface.
- * This function acts as a firewall preventing circular structures (DOM nodes, Events)
- * from entering the database or state.
+ * Enforces strict size limits to prevent Firestore crashes.
  */
 const createCleanFabricObject = (source: any): Fabric => {
-  // If source is null or not an object, return a safe default to prevent crashes
+  // 1. Basic Object Structure
   if (!source || typeof source !== 'object') {
       return {
           id: 'error-' + Date.now(),
@@ -74,44 +71,18 @@ const createCleanFabricObject = (source: any): Fabric => {
       };
   }
 
-  // Ultra-safe string converter
   const safeString = (val: any): string => {
       try {
           if (val === null || val === undefined) return '';
           if (typeof val === 'string') return val;
           if (typeof val === 'number') return String(val);
           if (typeof val === 'boolean') return String(val);
-          // Reject objects/arrays/functions to avoid [object Object] or circular refs
           return ''; 
       } catch (e) { return ''; }
   };
 
-  // Safely extract color images map
-  const cleanColorImages: Record<string, string> = {};
-  if (source.colorImages && typeof source.colorImages === 'object' && source.colorImages !== null) {
-      try {
-          Object.entries(source.colorImages).forEach(([k, v]) => {
-              const key = safeString(k);
-              const val = safeString(v);
-              // Only keep valid base64/url strings
-              // Reduced to ~300KB limit to ensure we don't accidentally blow up the 1MB Firestore doc limit
-              if (key && val && val.length < 400000) { 
-                  cleanColorImages[key] = val;
-              }
-          });
-      } catch(e) { console.warn("Error cleaning colorImages"); }
-  }
-
-  // Safely extract colors array
-  const cleanColors: string[] = [];
-  if (Array.isArray(source.colors)) {
-      source.colors.forEach((c: any) => {
-          const s = safeString(c);
-          if (s) cleanColors.push(s);
-      });
-  }
-
-  return {
+  // 2. Extract Basic Data
+  const baseData = {
     id: safeString(source.id),
     name: safeString(source.name) || 'Sin Nombre',
     supplier: safeString(source.supplier),
@@ -122,11 +93,56 @@ const createCleanFabricObject = (source: any): Fabric => {
       martindale: safeString(source?.specs?.martindale),
       usage: safeString(source?.specs?.usage),
     },
-    colors: cleanColors,
-    colorImages: cleanColorImages,
-    mainImage: safeString(source.mainImage),
+    colors: Array.isArray(source.colors) ? source.colors.map(safeString).filter((s: string) => s) : [],
     pdfUrl: safeString(source.pdfUrl),
-    category: source.category === 'wood' ? 'wood' : 'model'
+    category: source.category === 'wood' ? 'wood' as const : 'model' as const,
+    mainImage: safeString(source.mainImage)
+  };
+
+  // 3. SIZE BUDGET LOGIC
+  // Firestore limit is 1,048,576 bytes. We aim for < 950,000 bytes safe zone.
+  const MAX_BYTES = 950000;
+  
+  // Calculate size of everything except colorImages
+  let currentSize = JSON.stringify(baseData).length;
+
+  const cleanColorImages: Record<string, string> = {};
+
+  if (source.colorImages && typeof source.colorImages === 'object') {
+      try {
+          const entries = Object.entries(source.colorImages);
+          // Prioritize adding images in order
+          for (const [k, v] of entries) {
+              const key = safeString(k);
+              const val = safeString(v);
+              
+              if (!key || !val) continue;
+
+              // Individual image hard limit (e.g. 150KB to allow at least ~6 images in worst case, 
+              // but likely many more if compression works well)
+              if (val.length > 150000) {
+                  console.warn(`Skipping large image for color ${key} (${val.length} bytes)`);
+                  continue;
+              }
+
+              // Overhead estimation for JSON key/value pair chars
+              const entrySize = key.length + val.length + 8; 
+
+              if (currentSize + entrySize < MAX_BYTES) {
+                  cleanColorImages[key] = val;
+                  currentSize += entrySize;
+              } else {
+                  console.warn(`Doc size limit reached. Dropping image for: ${key}`);
+                  // Stop adding images to prevent overflow
+                  // We don't break immediately in case there are tiny images later, but usually better to stop
+              }
+          }
+      } catch(e) { console.warn("Error processing colorImages map"); }
+  }
+
+  return {
+    ...baseData,
+    colorImages: cleanColorImages
   };
 };
 
@@ -137,7 +153,6 @@ const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay
     try {
         return await operation();
     } catch (error: any) {
-        // Safe check for error properties to avoid circular access
         const errorCode = error?.code || '';
         const errorMsg = error?.message || '';
         const isConnectionError = errorCode === 'unavailable' || 
@@ -156,20 +171,9 @@ const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay
 
 // --- Firestore Operations ---
 
-/**
- * Fetch all fabrics from Firestore with a Smart Offline Strategy.
- * 
- * It races the Network request against a timer.
- * 1. If Network responds fast -> Returns server data.
- * 2. If Network is slow -> Returns Cached data immediately.
- * 3. If Network fails completely -> Returns Cached data.
- */
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   try {
-    // Define the network request
     const serverPromise = getDocs(collection(db, COLLECTION_NAME));
-    
-    // Define a timeout that rejects after 2.5 seconds (Balance between patience and speed)
     const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
         setTimeout(() => reject(new Error('TIMEOUT_SLOW_NETWORK')), 2500)
     );
@@ -177,88 +181,57 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
     let snapshot: QuerySnapshot<DocumentData>;
 
     try {
-        // Race them!
         snapshot = await Promise.race([serverPromise, timeoutPromise]);
     } catch (raceError: any) {
-        // If the timeout won, or the network failed immediately
-        const msg = raceError?.message || '';
-        const isTimeout = msg === 'TIMEOUT_SLOW_NETWORK';
-        
-        if (isTimeout) {
-            console.log("Network is slow. Switching to offline cache for instant load.");
-        } else {
-            // Log safely
-            console.warn("Network request failed. Attempting cache fallback.", msg);
+        if (raceError?.message === 'TIMEOUT_SLOW_NETWORK') {
+            console.log("Network slow. Switching to offline cache.");
         }
-
-        // Fallback: Try to read from local cache
         try {
             snapshot = await getDocsFromCache(collection(db, COLLECTION_NAME));
-        } catch (cacheError: any) {
-            console.error("Cache fetch also failed.", cacheError?.message || 'Unknown cache error');
+        } catch (cacheError) {
             return [];
         }
     }
     
     return snapshot.docs.map(doc => createCleanFabricObject(doc.data()));
-
   } catch (error: any) {
-    // Global safety catch - LOG MESSAGE ONLY to avoid circular JSON error
-    console.error("Critical error in getFabricsFromFirestore", error?.message || "Unknown error");
+    console.error("Critical error in getFabricsFromFirestore", error?.message || "Unknown");
     return [];
   }
 };
 
-/**
- * Add or Update a single fabric
- */
 export const saveFabricToFirestore = async (fabric: Fabric) => {
   try {
-    // 1. Sanitize Data (Crucial Step to prevent Circular JSON)
     const cleanFabric = createCleanFabricObject(fabric);
-    
-    // 2. Validate ID
     if (!cleanFabric.id) throw new Error("Invalid ID");
-
-    // 3. Write
     await retryOperation(() => setDoc(doc(db, COLLECTION_NAME, cleanFabric.id), cleanFabric, { merge: true }));
   } catch (error: any) {
-    // Log message only
     console.error("Error writing document", error?.message || 'Unknown write error'); 
     throw error;
   }
 };
 
-/**
- * Save multiple fabrics at once (Batch)
- */
 export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
   const CHUNK_SIZE = 5; 
-  
   const cleanFabrics = fabrics.map(createCleanFabricObject).filter(f => f.id);
 
   for (let i = 0; i < cleanFabrics.length; i += CHUNK_SIZE) {
     const chunk = cleanFabrics.slice(i, i + CHUNK_SIZE);
     const batch = writeBatch(db);
-    
     chunk.forEach((fabric) => {
       const docRef = doc(db, COLLECTION_NAME, fabric.id);
       batch.set(docRef, fabric); 
     });
-    
     try {
         await retryOperation(() => batch.commit(), 3, 2000);
         await delay(300); 
     } catch (error: any) {
         console.error("Error batch writing chunk", error?.message || 'Unknown batch error');
-        throw new Error("Error al guardar lote. Verifique su conexión.");
+        throw new Error("Error al guardar lote.");
     }
   }
 };
 
-/**
- * Delete a single fabric
- */
 export const deleteFabricFromFirestore = async (fabricId: string) => {
   try {
     await retryOperation(() => deleteDoc(doc(db, COLLECTION_NAME, fabricId)));
@@ -268,13 +241,8 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
   }
 };
 
-/**
- * Delete all fabrics (Reset)
- */
 export const clearFirestoreCollection = async () => {
   try {
-    // We use getDocs here without race condition because this is a destructive admin action
-    // and we want to ensure we have the latest references, though cache is acceptable if offline.
     const snap = await getDocs(collection(db, COLLECTION_NAME));
     const batch = writeBatch(db);
     snap.docs.forEach((doc) => {

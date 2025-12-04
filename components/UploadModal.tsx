@@ -96,36 +96,40 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       const colorImages: Record<string, string> = {};
       
       for (const file of imgFiles) {
-        const fileNameLower = file.name.toLowerCase().replace(/\.[^/.]+$/, "");
-        
-        // Use Compressed Image for Storage
-        // REDUCED TO 300px and 0.5 quality to fix Firestore 1MB limit error
-        const base64Img = await compressImage(file, 300, 0.5);
-
-        if (dbName) {
-            const matchedColor = detectedColors.find(color => fileNameLower.includes(color.toLowerCase()));
-            if (matchedColor) {
-                colorImages[matchedColor] = base64Img;
-            }
-        } else {
-            // Unknown fabric: Use filename as color
-            // Clean filename too if it has the fabric name prefix usually found in files (e.g. Fromatex_Alanis_Red.jpg)
-            let cleanColorName = fileNameLower;
+        try {
+            const fileNameLower = file.name.toLowerCase().replace(/\.[^/.]+$/, "");
             
-            // Try to remove fabric name prefix if it exists in filename
-            if (rawData.name) {
-                const nameRegex = new RegExp(`^${rawData.name}[_\\-\\s]*`, 'i');
-                cleanColorName = cleanColorName.replace(nameRegex, '');
-            }
-            // Also clean Fromatex/Fotmatex if still there
-            cleanColorName = cleanColorName.replace(/^(fromatex|fotmatex|formatex)[_\-\s]*/i, '');
-            
-            const cleanName = cleanColorName.replace(/[-_]/g, " ").trim();
-            // Capitalize first letter
-            const formattedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+            // Use Compressed Image for Storage
+            // AGGRESSIVE COMPRESSION: 200px width, 0.5 quality
+            const base64Img = await compressImage(file, 200, 0.5);
 
-            colorImages[formattedName] = base64Img;
-            if (!detectedColors.includes(formattedName)) detectedColors.push(formattedName);
+            if (dbName) {
+                const matchedColor = detectedColors.find(color => fileNameLower.includes(color.toLowerCase()));
+                if (matchedColor) {
+                    colorImages[matchedColor] = base64Img;
+                }
+            } else {
+                // Unknown fabric: Use filename as color
+                // Clean filename
+                let cleanColorName = fileNameLower;
+                
+                if (rawData.name) {
+                    const nameRegex = new RegExp(`^${rawData.name}[_\\-\\s]*`, 'i');
+                    cleanColorName = cleanColorName.replace(nameRegex, '');
+                }
+                cleanColorName = cleanColorName.replace(/^(fromatex|fotmatex|formatex)[_\-\s]*/i, '');
+                
+                const cleanName = cleanColorName.replace(/[-_]/g, " ").trim();
+                const formattedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+
+                if (formattedName) {
+                    colorImages[formattedName] = base64Img;
+                    if (!detectedColors.includes(formattedName)) detectedColors.push(formattedName);
+                }
+            }
+        } catch (imgError) {
+            console.warn(`Failed to process image ${file.name}`, imgError);
+            // Continue to next image instead of failing entire group
         }
       }
 
@@ -134,10 +138,13 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       if (Object.keys(colorImages).length > 0) {
           mainImageToUse = Object.values(colorImages)[0];
       } else if (imgFiles.length > 0) {
-          // Use smaller size for main image fallback as well
-          mainImageToUse = await compressImage(imgFiles[0], 300, 0.5);
+          try {
+            mainImageToUse = await compressImage(imgFiles[0], 200, 0.5);
+          } catch(e) {
+            mainImageToUse = '';
+          }
       } else {
-          mainImageToUse = 'https://picsum.photos/500/500'; // Placeholder
+          mainImageToUse = ''; // No placeholder to save space
       }
 
       return {
