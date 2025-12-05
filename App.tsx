@@ -43,7 +43,22 @@ function App() {
     try {
       const dbData = await getFabricsFromFirestore();
       if (dbData && dbData.length > 0) {
-        setFabrics(dbData);
+        // DEDUPLICATION LOGIC:
+        // Filter out duplicates based on normalized name.
+        // If "Alanis" appears twice, only keep the first one found.
+        const uniqueFabrics: Fabric[] = [];
+        const seenNames = new Set<string>();
+
+        dbData.forEach(fabric => {
+            // Use name + supplier as unique key to be safe, or just name if names are strictly unique
+            const normalizedName = fabric.name.trim().toLowerCase();
+            if (!seenNames.has(normalizedName)) {
+                seenNames.add(normalizedName);
+                uniqueFabrics.push(fabric);
+            }
+        });
+
+        setFabrics(uniqueFabrics);
       } else {
         // DO NOT LOAD INITIAL_FABRICS AUTOMATICALLY
         setFabrics([]); 
@@ -82,8 +97,12 @@ function App() {
 
   const handleSaveFabric = async (newFabric: Fabric) => {
     try {
-      // Optimistic Update
-      setFabrics(prev => [newFabric, ...prev]);
+      // Optimistic Update - Check for duplicates first
+      setFabrics(prev => {
+          const exists = prev.some(f => f.name.toLowerCase() === newFabric.name.toLowerCase());
+          if (exists) return prev; // Do not add if already exists in state
+          return [newFabric, ...prev];
+      });
       // Save to Firestore
       await saveFabricToFirestore(newFabric);
     } catch (e: any) {
@@ -94,8 +113,12 @@ function App() {
 
   const handleBulkSaveFabrics = async (newFabrics: Fabric[]) => {
     try {
-      // Optimistic Update
-      setFabrics(prev => [...newFabrics, ...prev]);
+      // Optimistic Update - Deduplicate against current state
+      setFabrics(prev => {
+          const currentNames = new Set(prev.map(f => f.name.toLowerCase()));
+          const uniqueNew = newFabrics.filter(f => !currentNames.has(f.name.toLowerCase()));
+          return [...uniqueNew, ...prev];
+      });
       // Save to Firestore
       await saveBatchFabricsToFirestore(newFabrics);
     } catch (e: any) {
