@@ -1,6 +1,5 @@
 import { initializeApp } from "firebase/app";
 import { 
-  getFirestore, 
   collection, 
   getDocs, 
   getDocsFromCache,
@@ -8,12 +7,9 @@ import {
   doc, 
   deleteDoc, 
   writeBatch,
-  enableIndexedDbPersistence,
-  initializeFirestore,
-  CACHE_SIZE_UNLIMITED,
-  QuerySnapshot,
-  DocumentData
+  initializeFirestore
 } from "firebase/firestore";
+import type { QuerySnapshot, DocumentData } from "firebase/firestore";
 import { Fabric } from "../types";
 
 const firebaseConfig = {
@@ -29,22 +25,9 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with specific settings
-const db = initializeFirestore(app, {
-    cacheSizeBytes: CACHE_SIZE_UNLIMITED
-});
-
-// Attempt to enable persistence
-enableIndexedDbPersistence(db).catch((err) => {
-    const msg = err?.message || 'Unknown persistence error';
-    if (err.code === 'failed-precondition') {
-        console.warn('Persistence failed: Multiple tabs open');
-    } else if (err.code === 'unimplemented') {
-        console.warn('Persistence not supported by browser');
-    } else {
-        console.warn('Persistence error:', msg);
-    }
-});
+// Initialize Firestore with default settings to avoid connectivity issues
+// Removed CACHE_SIZE_UNLIMITED and enableIndexedDbPersistence to prevent "Backend didn't respond" errors
+const db = initializeFirestore(app, {});
 
 const COLLECTION_NAME = "fabrics";
 
@@ -118,8 +101,7 @@ const createCleanFabricObject = (source: any): Fabric => {
               
               if (!key || !val) continue;
 
-              // Individual image hard limit (e.g. 150KB to allow at least ~6 images in worst case, 
-              // but likely many more if compression works well)
+              // Individual image hard limit (e.g. 150KB)
               if (val.length > 150000) {
                   console.warn(`Skipping large image for color ${key} (${val.length} bytes)`);
                   continue;
@@ -133,8 +115,6 @@ const createCleanFabricObject = (source: any): Fabric => {
                   currentSize += entrySize;
               } else {
                   console.warn(`Doc size limit reached. Dropping image for: ${key}`);
-                  // Stop adding images to prevent overflow
-                  // We don't break immediately in case there are tiny images later, but usually better to stop
               }
           }
       } catch(e) { console.warn("Error processing colorImages map"); }
@@ -173,9 +153,12 @@ const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay
 
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   try {
+    // Attempt to fetch from server first
     const serverPromise = getDocs(collection(db, COLLECTION_NAME));
+    
+    // Create a timeout to fallback to cache/empty if network is too slow
     const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT_SLOW_NETWORK')), 2500)
+        setTimeout(() => reject(new Error('TIMEOUT_SLOW_NETWORK')), 5000)
     );
 
     let snapshot: QuerySnapshot<DocumentData>;
@@ -183,19 +166,19 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
     try {
         snapshot = await Promise.race([serverPromise, timeoutPromise]);
     } catch (raceError: any) {
-        if (raceError?.message === 'TIMEOUT_SLOW_NETWORK') {
-            console.log("Network slow. Switching to offline cache.");
-        }
+        console.warn("Network slow or unreachable. Switching to fallback.");
         try {
+            // Explicitly try cache if server failed
             snapshot = await getDocsFromCache(collection(db, COLLECTION_NAME));
         } catch (cacheError) {
-            return [];
+             console.warn("Cache also unavailable.");
+             return [];
         }
     }
     
     return snapshot.docs.map(doc => createCleanFabricObject(doc.data()));
   } catch (error: any) {
-    console.error("Critical error in getFabricsFromFirestore", error?.message || "Unknown");
+    console.error("Error in getFabricsFromFirestore", error?.message || "Unknown");
     return [];
   }
 };

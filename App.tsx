@@ -153,38 +153,32 @@ function App() {
 
   /**
    * Helper function to determine sorting weight based on color name.
-   * Higher value = Lighter/Cleaner. Lower value = Darker/Stronger.
    */
   const getColorWeight = (colorName: string): number => {
+      if (!colorName) return 50;
       const name = colorName.toLowerCase();
-      
-      // Whites / Lights (Highest priority)
+      // Whites / Lights
       if (name.includes('white') || name.includes('snow') || name.includes('ivory') || name.includes('blanco') || name.includes('nieve')) return 100;
       if (name.includes('cream') || name.includes('bone') || name.includes('hueso') || name.includes('crema') || name.includes('pearl')) return 95;
       if (name.includes('natural') || name.includes('linen') || name.includes('lino') || name.includes('ecru') || name.includes('cotton')) return 90;
-      
       // Light Neutrals
       if (name.includes('beige') || name.includes('sand') || name.includes('arena') || name.includes('oyster') || name.includes('flax')) return 85;
       if (name.includes('champagne') || name.includes('mist') || name.includes('fog')) return 80;
-
       // Greys / Silvers
       if (name.includes('silver') || name.includes('plata') || name.includes('platinum')) return 70;
       if (name.includes('light grey') || name.includes('pale')) return 65;
       if (name.includes('grey') || name.includes('gris') || name.includes('stone') || name.includes('piedra') || name.includes('zinc') || name.includes('pewter')) return 50;
-
-      // Colors (Mid-range)
+      // Colors
       if (name.includes('gold') || name.includes('yellow') || name.includes('mustard')) return 45;
       if (name.includes('orange') || name.includes('terra') || name.includes('brick')) return 40;
       if (name.includes('red') || name.includes('rose') || name.includes('pink') || name.includes('coral')) return 35;
       if (name.includes('green') || name.includes('olive') || name.includes('moss') || name.includes('emerald')) return 30;
       if (name.includes('blue') || name.includes('sky') || name.includes('aqua') || name.includes('teal')) return 25;
-
-      // Darks / Strongs (Lowest priority)
+      // Darks
       if (name.includes('navy') || name.includes('midnight') || name.includes('indigo') || name.includes('dark')) return 15;
       if (name.includes('charcoal') || name.includes('anthracite') || name.includes('slate') || name.includes('graphite')) return 10;
       if (name.includes('black') || name.includes('negro') || name.includes('ebony') || name.includes('onyx') || name.includes('caviar')) return 0;
-
-      return 50; // Default for unknowns
+      return 50;
   };
 
   const getFilteredItems = () => {
@@ -198,9 +192,80 @@ function App() {
     return items;
   };
 
-  // Prepared items for rendering
+  // Consolidated logic to get the list of cards for the "Color" view
+  // We need this extracted to enable Navigation Next/Prev in Lightbox
+  const getSortedColorCards = () => {
+      const items = getFilteredItems();
+      const allColorCards = items.flatMap((fabric) => 
+          (fabric.colors || []).map((colorName) => ({
+              fabric,
+              colorName
+          }))
+      );
+
+      allColorCards.sort((a, b) => {
+          if (sortBy === 'color') {
+              const weightA = getColorWeight(a.colorName);
+              const weightB = getColorWeight(b.colorName);
+              return weightB - weightA; 
+          }
+          if (sortBy === 'name') return a.colorName.localeCompare(b.colorName, 'es', { sensitivity: 'base' });
+          if (sortBy === 'model') {
+              const modelCompare = a.fabric.name.localeCompare(b.fabric.name, 'es', { sensitivity: 'base' });
+              if (modelCompare !== 0) return modelCompare;
+              return a.colorName.localeCompare(b.colorName, 'es', { sensitivity: 'base' });
+          }
+          if (sortBy === 'supplier') {
+              const suppCompare = a.fabric.supplier.localeCompare(b.fabric.supplier, 'es', { sensitivity: 'base' });
+              if (suppCompare !== 0) return suppCompare;
+               return a.fabric.name.localeCompare(b.fabric.name, 'es', { sensitivity: 'base' });
+          }
+          return 0;
+      });
+      return allColorCards;
+  };
+
+  // Helper for Global Lightbox Navigation
+  const handleGlobalNav = (direction: number, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!colorLightbox) return;
+    
+    const cards = getSortedColorCards();
+    const currentIndex = cards.findIndex(c => c.fabric.id === colorLightbox.fabricId && c.colorName === colorLightbox.colorName);
+    
+    if (currentIndex === -1) return;
+
+    const newIndex = (currentIndex + direction + cards.length) % cards.length;
+    const newItem = cards[newIndex];
+    
+    const img = newItem.colorName && newItem.fabric.colorImages?.[newItem.colorName]
+        ? newItem.fabric.colorImages[newItem.colorName]
+        : newItem.fabric.mainImage;
+
+    setColorLightbox({
+        isOpen: true,
+        image: img,
+        fabricId: newItem.fabric.id,
+        colorName: newItem.colorName
+    });
+  };
+
+  // Keyboard events for Global Lightbox
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if (colorLightbox) {
+            if (e.key === 'ArrowRight') handleGlobalNav(1);
+            if (e.key === 'ArrowLeft') handleGlobalNav(-1);
+            if (e.key === 'Escape') setColorLightbox(null);
+        }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [colorLightbox]);
+
+  // Prepared items for rendering (Uses the helper now)
   const renderGridContent = () => {
-    let items = getFilteredItems();
+    const items = getFilteredItems();
 
     if (activeTab === 'wood') {
         return (
@@ -210,11 +275,8 @@ function App() {
         );
     }
 
-    // --- MODEL VIEW ---
     if (activeTab === 'model') {
-        // Models are sorted by Name by default in this view since filter is hidden
         items.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
-
         return items.map((fabric, idx) => (
             <FabricCard 
                 key={fabric.id} 
@@ -226,45 +288,9 @@ function App() {
         ));
     }
 
-    // --- COLOR VIEW ---
     if (activeTab === 'color') {
-        // Flatten all colors into a single array of objects
-        const allColorCards = items.flatMap((fabric) => 
-            (fabric.colors || []).map((colorName) => ({
-                fabric,
-                colorName
-            }))
-        );
-
-        // Sort Logic for Individual Colors
-        allColorCards.sort((a, b) => {
-            if (sortBy === 'color') {
-                // Lightest to Darkest
-                const weightA = getColorWeight(a.colorName);
-                const weightB = getColorWeight(b.colorName);
-                return weightB - weightA; 
-            }
-            if (sortBy === 'name') {
-                // Sort by Color Name (Abecedario)
-                return a.colorName.localeCompare(b.colorName, 'es', { sensitivity: 'base' });
-            }
-            if (sortBy === 'model') {
-                // Group by Model Name
-                const modelCompare = a.fabric.name.localeCompare(b.fabric.name, 'es', { sensitivity: 'base' });
-                if (modelCompare !== 0) return modelCompare;
-                // Secondary sort by color name
-                return a.colorName.localeCompare(b.colorName, 'es', { sensitivity: 'base' });
-            }
-            if (sortBy === 'supplier') {
-                // Group by Supplier
-                const suppCompare = a.fabric.supplier.localeCompare(b.fabric.supplier, 'es', { sensitivity: 'base' });
-                if (suppCompare !== 0) return suppCompare;
-                 return a.fabric.name.localeCompare(b.fabric.name, 'es', { sensitivity: 'base' });
-            }
-            return 0;
-        });
-
-        return allColorCards.map((item, idx) => (
+        const sortedCards = getSortedColorCards();
+        return sortedCards.map((item, idx) => (
             <FabricCard
                 key={`${item.fabric.id}-${item.colorName}-${idx}`}
                 fabric={item.fabric}
@@ -280,7 +306,6 @@ function App() {
   const filteredItemCount = getFilteredItems().length;
 
   return (
-    // Updated background color to match index.html (rgb(241, 242, 244))
     <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans selection:bg-black selection:text-white relative">
       
       {/* Top Right Upload Button */}
@@ -327,7 +352,6 @@ function App() {
             
             {/* SEARCH AND FILTER BAR */}
             <div className="flex flex-row items-center gap-3 w-full max-w-2xl relative">
-                {/* Search Input */}
                 <div className="relative flex-grow">
                   <input 
                     type="text" 
@@ -339,7 +363,6 @@ function App() {
                   <svg className="absolute left-4 top-3.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 </div>
 
-                {/* Filter Button - ONLY VISIBLE IN COLOR TAB */}
                 {activeTab === 'color' && (
                     <div className="relative">
                         <button 
@@ -347,7 +370,6 @@ function App() {
                             className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${isFilterMenuOpen ? 'bg-black text-white border-black' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
                             title="Filtrar colores"
                         >
-                            {/* Sort Icon: Three lines decreasing width */}
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <line x1="4" y1="6" x2="20" y2="6"></line>
                                 <line x1="4" y1="12" x2="16" y2="12"></line>
@@ -355,7 +377,6 @@ function App() {
                             </svg>
                         </button>
 
-                        {/* Dropdown Menu */}
                         {isFilterMenuOpen && (
                             <div className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden animate-fade-in">
                                 <div className="px-4 py-2 text-[10px] uppercase font-bold text-gray-400 tracking-wider">Ordenar Por</div>
@@ -390,7 +411,6 @@ function App() {
                             </div>
                         )}
                         
-                        {/* Backdrop to close menu */}
                         {isFilterMenuOpen && (
                             <div className="fixed inset-0 z-40" onClick={() => setFilterMenuOpen(false)}></div>
                         )}
@@ -403,7 +423,6 @@ function App() {
       {/* Main Content */}
       <main>
         {view === 'grid' && (
-          // Added 'flex flex-col items-center' to enforce centering of the grid container content
           <div className="container mx-auto px-6 pb-20 flex flex-col items-center">
             {loading ? (
                 <div className="flex justify-center items-center py-20">
@@ -422,7 +441,6 @@ function App() {
                      <p className="text-xs mt-4">O usa el botón "." arriba a la derecha para cargar datos nuevos.</p>
                 </div>
             ) : (
-                // CHANGED: Limited max columns to 5 (2xl:grid-cols-5)
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-5 gap-6 xl:gap-8 w-full max-w-[1920px] justify-center">
                     {renderGridContent()}
                 </div>
@@ -446,31 +464,52 @@ function App() {
 
       {/* Color View Lightbox Overlay */}
       {colorLightbox && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center">
+        <div 
+            className="fixed inset-0 z-[100] flex flex-col items-center justify-center cursor-pointer p-4 md:p-8"
+            onClick={() => setColorLightbox(null)}
+        >
             {/* Background: Transparent 70% blurred */}
-            <div 
-                className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-all duration-500"
-                onClick={() => setColorLightbox(null)}
-            ></div>
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-all duration-500"></div>
             
-            {/* Top Button - SMALLER */}
+            {/* Top Button - SMALLER (View Detail) */}
             <div className="absolute top-10 z-[110] animate-fade-in-down">
                 <button 
-                    onClick={goToDetailFromLightbox}
+                    onClick={(e) => { e.stopPropagation(); goToDetailFromLightbox(); }}
                     className="bg-black text-white px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-gray-800 transition-transform hover:scale-105 border border-white/10"
                 >
                     Ver Detalle de la tela
                 </button>
             </div>
 
-            {/* Large Image */}
-            <div className="relative z-[105] p-8 max-w-5xl w-full h-full flex items-center justify-center pointer-events-none">
+            {/* Prev Button (Small Arrow) */}
+            <button 
+              onClick={(e) => handleGlobalNav(-1, e)}
+              className="absolute left-2 md:left-8 text-white/80 hover:text-white hover:scale-110 transition-all p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
+            >
+               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+
+            {/* Large Image - FIXED SQUARE + ZOOM */}
+            <div 
+                className="relative z-[105] bg-white shadow-2xl rounded-sm overflow-hidden flex items-center justify-center border border-white/10 
+                           w-[90vw] h-[90vw] md:w-[80vh] md:h-[80vh]"
+                onClick={(e) => e.stopPropagation()}
+            >
                  <img 
                     src={colorLightbox.image} 
                     alt={colorLightbox.colorName} 
-                    className="max-h-[85vh] max-w-full object-contain shadow-2xl rounded-sm pointer-events-auto border border-white/10"
+                    // OBJECT-COVER ensures consistency and zoom for small images
+                    className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
                  />
             </div>
+
+            {/* Next Button (Small Arrow) */}
+            <button 
+              onClick={(e) => handleGlobalNav(1, e)}
+              className="absolute right-2 md:right-8 text-white/80 hover:text-white hover:scale-110 transition-all p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
+            >
+               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            </button>
             
             {/* Close Button (X) */}
             <button 
