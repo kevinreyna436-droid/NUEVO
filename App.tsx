@@ -6,6 +6,7 @@ import ChatBot from './components/ChatBot';
 import ImageGenModal from './components/ImageGenModal';
 import { INITIAL_FABRICS } from './constants';
 import { Fabric, AppView } from './types';
+import { enhanceFabricTexture } from './services/geminiService';
 import { 
   getFabricsFromFirestore, 
   saveFabricToFirestore, 
@@ -37,6 +38,7 @@ function App() {
     fabricId: string;
     colorName: string;
   } | null>(null);
+  const [isEnhancingGlobal, setIsEnhancingGlobal] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -44,13 +46,10 @@ function App() {
       const dbData = await getFabricsFromFirestore();
       if (dbData && dbData.length > 0) {
         // DEDUPLICATION LOGIC:
-        // Filter out duplicates based on normalized name.
-        // If "Alanis" appears twice, only keep the first one found.
         const uniqueFabrics: Fabric[] = [];
         const seenNames = new Set<string>();
 
         dbData.forEach(fabric => {
-            // Use name + supplier as unique key to be safe, or just name if names are strictly unique
             const normalizedName = fabric.name.trim().toLowerCase();
             if (!seenNames.has(normalizedName)) {
                 seenNames.add(normalizedName);
@@ -60,7 +59,6 @@ function App() {
 
         setFabrics(uniqueFabrics);
       } else {
-        // DO NOT LOAD INITIAL_FABRICS AUTOMATICALLY
         setFabrics([]); 
       }
     } catch (e: any) {
@@ -77,11 +75,9 @@ function App() {
 
   const handleFabricClick = (fabric: Fabric, specificColor?: string) => {
     if (activeTab === 'model') {
-        // Direct to detail page
         setSelectedFabricId(fabric.id);
         setView('detail');
     } else {
-        // Open Lightbox for Color View
         const img = specificColor && fabric.colorImages?.[specificColor] 
             ? fabric.colorImages[specificColor] 
             : fabric.mainImage;
@@ -92,46 +88,39 @@ function App() {
             fabricId: fabric.id,
             colorName: specificColor || 'Unknown'
         });
+        setIsEnhancingGlobal(false);
     }
   };
 
   const handleSaveFabric = async (newFabric: Fabric) => {
     try {
-      // Optimistic Update - Check for duplicates first
       setFabrics(prev => {
           const exists = prev.some(f => f.name.toLowerCase() === newFabric.name.toLowerCase());
-          if (exists) return prev; // Do not add if already exists in state
+          if (exists) return prev;
           return [newFabric, ...prev];
       });
-      // Save to Firestore
       await saveFabricToFirestore(newFabric);
     } catch (e: any) {
       console.error("Error saving fabric:", e?.message || "Unknown error");
-      // Optional: Revert state if needed, or just warn
     }
   };
 
   const handleBulkSaveFabrics = async (newFabrics: Fabric[]) => {
     try {
-      // Optimistic Update - Deduplicate against current state
       setFabrics(prev => {
           const currentNames = new Set(prev.map(f => f.name.toLowerCase()));
           const uniqueNew = newFabrics.filter(f => !currentNames.has(f.name.toLowerCase()));
           return [...uniqueNew, ...prev];
       });
-      // Save to Firestore
       await saveBatchFabricsToFirestore(newFabrics);
     } catch (e: any) {
       console.error("Error bulk saving:", e?.message || "Unknown error");
     }
   };
 
-  // Logic to update an existing fabric (from Edit Modal)
   const handleUpdateFabric = async (updatedFabric: Fabric) => {
     try {
-      // Optimistic Update
       setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
-      // Save to Firestore
       await saveFabricToFirestore(updatedFabric);
     } catch (e: any) {
       console.error("Error updating fabric:", e?.message || "Unknown error");
@@ -140,7 +129,6 @@ function App() {
 
   const handleDeleteFabric = async (fabricId: string) => {
       try {
-          // Optimistic delete
           setFabrics(prev => prev.filter(f => f.id !== fabricId));
           setView('grid');
           setSelectedFabricId(null);
@@ -151,7 +139,6 @@ function App() {
       }
   };
 
-  // Full Reset
   const handleReset = async () => {
       if(window.confirm("¿Estás seguro de que quieres borrar TODA la información de la base de datos (Nube)? Esta acción no se puede deshacer.")) {
           try {
@@ -170,34 +157,46 @@ function App() {
     if (colorLightbox) {
         setSelectedFabricId(colorLightbox.fabricId);
         setView('detail');
-        setColorLightbox(null); // Close lightbox
+        setColorLightbox(null);
     }
   };
 
-  /**
-   * Helper function to determine sorting weight based on color name.
-   */
+  const handleEnhanceGlobalImage = async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!colorLightbox || isEnhancingGlobal) return;
+      
+      setIsEnhancingGlobal(true);
+      try {
+          const enhancedBase64 = await enhanceFabricTexture(colorLightbox.image);
+          if (enhancedBase64) {
+              setColorLightbox(prev => prev ? ({ ...prev, image: enhancedBase64 }) : null);
+          } else {
+              alert("No se pudo mejorar la imagen.");
+          }
+      } catch (error) {
+          console.error("Upscale failed", error);
+          alert("Error al conectar con Nano Bana Pro.");
+      } finally {
+          setIsEnhancingGlobal(false);
+      }
+  };
+
   const getColorWeight = (colorName: string): number => {
       if (!colorName) return 50;
       const name = colorName.toLowerCase();
-      // Whites / Lights
       if (name.includes('white') || name.includes('snow') || name.includes('ivory') || name.includes('blanco') || name.includes('nieve')) return 100;
       if (name.includes('cream') || name.includes('bone') || name.includes('hueso') || name.includes('crema') || name.includes('pearl')) return 95;
       if (name.includes('natural') || name.includes('linen') || name.includes('lino') || name.includes('ecru') || name.includes('cotton')) return 90;
-      // Light Neutrals
       if (name.includes('beige') || name.includes('sand') || name.includes('arena') || name.includes('oyster') || name.includes('flax')) return 85;
       if (name.includes('champagne') || name.includes('mist') || name.includes('fog')) return 80;
-      // Greys / Silvers
       if (name.includes('silver') || name.includes('plata') || name.includes('platinum')) return 70;
       if (name.includes('light grey') || name.includes('pale')) return 65;
       if (name.includes('grey') || name.includes('gris') || name.includes('stone') || name.includes('piedra') || name.includes('zinc') || name.includes('pewter')) return 50;
-      // Colors
       if (name.includes('gold') || name.includes('yellow') || name.includes('mustard')) return 45;
       if (name.includes('orange') || name.includes('terra') || name.includes('brick')) return 40;
       if (name.includes('red') || name.includes('rose') || name.includes('pink') || name.includes('coral')) return 35;
       if (name.includes('green') || name.includes('olive') || name.includes('moss') || name.includes('emerald')) return 30;
       if (name.includes('blue') || name.includes('sky') || name.includes('aqua') || name.includes('teal')) return 25;
-      // Darks
       if (name.includes('navy') || name.includes('midnight') || name.includes('indigo') || name.includes('dark')) return 15;
       if (name.includes('charcoal') || name.includes('anthracite') || name.includes('slate') || name.includes('graphite')) return 10;
       if (name.includes('black') || name.includes('negro') || name.includes('ebony') || name.includes('onyx') || name.includes('caviar')) return 0;
@@ -215,8 +214,6 @@ function App() {
     return items;
   };
 
-  // Consolidated logic to get the list of cards for the "Color" view
-  // We need this extracted to enable Navigation Next/Prev in Lightbox
   const getSortedColorCards = () => {
       const items = getFilteredItems();
       const allColorCards = items.flatMap((fabric) => 
@@ -248,11 +245,12 @@ function App() {
       return allColorCards;
   };
 
-  // Helper for Global Lightbox Navigation
   const handleGlobalNav = (direction: number, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (!colorLightbox) return;
     
+    setIsEnhancingGlobal(false); // Reset AI state on nav
+
     const cards = getSortedColorCards();
     const currentIndex = cards.findIndex(c => c.fabric.id === colorLightbox.fabricId && c.colorName === colorLightbox.colorName);
     
@@ -273,7 +271,6 @@ function App() {
     });
   };
 
-  // Keyboard events for Global Lightbox
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
         if (colorLightbox) {
@@ -286,7 +283,6 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [colorLightbox]);
 
-  // Prepared items for rendering (Uses the helper now)
   const renderGridContent = () => {
     const items = getFilteredItems();
 
@@ -331,7 +327,6 @@ function App() {
   return (
     <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans selection:bg-black selection:text-white relative">
       
-      {/* Top Right Upload Button */}
       <button 
         onClick={() => setUploadModalOpen(true)}
         className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"
@@ -340,7 +335,6 @@ function App() {
         .
       </button>
 
-      {/* Header */}
       {view === 'grid' && (
         <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down">
             <h1 className="font-serif text-6xl md:text-8xl font-bold text-center tracking-tight text-slate-900 leading-none">
@@ -373,7 +367,6 @@ function App() {
                 </button>
             </div>
             
-            {/* SEARCH AND FILTER BAR */}
             <div className="flex flex-row items-center gap-3 w-full max-w-2xl relative">
                 <div className="relative flex-grow">
                   <input 
@@ -443,7 +436,6 @@ function App() {
         </header>
       )}
 
-      {/* Main Content */}
       <main>
         {view === 'grid' && (
           <div className="container mx-auto px-6 pb-20 flex flex-col items-center">
@@ -485,17 +477,14 @@ function App() {
         )}
       </main>
 
-      {/* Color View Lightbox Overlay */}
       {colorLightbox && (
         <div 
             className="fixed inset-0 z-[100] flex flex-col items-center justify-center cursor-pointer p-4 md:p-8"
             onClick={() => setColorLightbox(null)}
         >
-            {/* Background: Transparent 70% blurred */}
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-all duration-500"></div>
             
-            {/* Top Button - SMALLER (View Detail) */}
-            <div className="absolute top-10 z-[110] animate-fade-in-down">
+            <div className="absolute top-10 z-[110] animate-fade-in-down flex gap-2">
                 <button 
                     onClick={(e) => { e.stopPropagation(); goToDetailFromLightbox(); }}
                     className="bg-black text-white px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-gray-800 transition-transform hover:scale-105 border border-white/10"
@@ -503,8 +492,28 @@ function App() {
                     Ver Detalle de la tela
                 </button>
             </div>
+            
+            {/* AI Enhance Button (Floating Bottom Center or Top) */}
+            <div className="absolute bottom-12 z-[110]">
+                 <button
+                    onClick={handleEnhanceGlobalImage}
+                    disabled={isEnhancingGlobal}
+                    className="flex items-center space-x-2 bg-gradient-to-r from-yellow-600 to-amber-500 text-white px-5 py-2 rounded-full text-xs font-bold uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform border border-white/20 disabled:opacity-50"
+                 >
+                    {isEnhancingGlobal ? (
+                        <>
+                           <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                           <span>Mejorando...</span>
+                        </>
+                    ) : (
+                        <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            <span>Mejorar Calidad (IA)</span>
+                        </>
+                    )}
+                 </button>
+            </div>
 
-            {/* Prev Button (Small Arrow) */}
             <button 
               onClick={(e) => handleGlobalNav(-1, e)}
               className="absolute left-2 md:left-8 text-white/80 hover:text-white hover:scale-110 transition-all p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
@@ -512,7 +521,6 @@ function App() {
                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
 
-            {/* Large Image - FIXED SQUARE + ZOOM */}
             <div 
                 className="relative z-[105] bg-white shadow-2xl rounded-sm overflow-hidden flex items-center justify-center border border-white/10 
                            w-[90vw] h-[90vw] md:w-[80vh] md:h-[80vh]"
@@ -521,12 +529,10 @@ function App() {
                  <img 
                     src={colorLightbox.image} 
                     alt={colorLightbox.colorName} 
-                    // OBJECT-COVER ensures consistency and zoom for small images
-                    className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                    className={`w-full h-full object-cover transition-transform duration-500 hover:scale-105 ${isEnhancingGlobal ? 'blur-sm scale-105' : ''}`}
                  />
             </div>
 
-            {/* Next Button (Small Arrow) */}
             <button 
               onClick={(e) => handleGlobalNav(1, e)}
               className="absolute right-2 md:right-8 text-white/80 hover:text-white hover:scale-110 transition-all p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
@@ -534,7 +540,6 @@ function App() {
                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
             
-            {/* Close Button (X) */}
             <button 
                 onClick={() => setColorLightbox(null)}
                 className="absolute top-8 right-8 z-[110] text-white/70 hover:text-white"
@@ -544,7 +549,6 @@ function App() {
         </div>
       )}
 
-      {/* Modals */}
       <UploadModal 
         isOpen={isUploadModalOpen} 
         onClose={() => setUploadModalOpen(false)} 

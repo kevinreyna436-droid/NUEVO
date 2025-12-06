@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Fabric } from '../types';
 import EditFabricModal from './EditFabricModal';
+import { enhanceFabricTexture } from '../services/geminiService';
 
 interface FabricDetailProps {
   fabric: Fabric;
@@ -13,6 +14,10 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
   const [showSpecs, setShowSpecs] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
+  
+  // Temporary state to hold enhanced images during the session so we don't spam API
+  const [enhancedCache, setEnhancedCache] = useState<Record<string, string>>({});
+  const [isEnhancing, setIsEnhancing] = useState(false);
 
   // Sort colors alphabetically for display, handle undefined colors safely
   const sortedColors = [...(fabric.colors || [])].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
@@ -34,6 +39,7 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
     e?.stopPropagation();
     if (lightboxIndex !== null && sortedColors.length > 0) {
       setLightboxIndex((prev) => (prev! + 1) % sortedColors.length);
+      setIsEnhancing(false);
     }
   };
 
@@ -41,13 +47,46 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
     e?.stopPropagation();
     if (lightboxIndex !== null && sortedColors.length > 0) {
       setLightboxIndex((prev) => (prev! - 1 + sortedColors.length) % sortedColors.length);
+      setIsEnhancing(false);
     }
   };
 
   const getLightboxImage = () => {
     if (lightboxIndex === null) return null;
     const colorName = sortedColors[lightboxIndex];
+    // Return enhanced version if available in session cache, otherwise original
+    if (enhancedCache[colorName]) return enhancedCache[colorName];
     return fabric.colorImages?.[colorName] || fabric.mainImage;
+  };
+
+  const handleEnhanceImage = async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (lightboxIndex === null || isEnhancing) return;
+
+      const colorName = sortedColors[lightboxIndex];
+      // Check cache first
+      if (enhancedCache[colorName]) return;
+
+      const originalImage = fabric.colorImages?.[colorName] || fabric.mainImage;
+      if (!originalImage) return;
+
+      setIsEnhancing(true);
+      try {
+          const enhancedBase64 = await enhanceFabricTexture(originalImage);
+          if (enhancedBase64) {
+              setEnhancedCache(prev => ({
+                  ...prev,
+                  [colorName]: enhancedBase64
+              }));
+          } else {
+              alert("No se pudo mejorar la imagen.");
+          }
+      } catch (error) {
+          console.error("Enhancement failed", error);
+          alert("Error conectando con Nano Bana Pro.");
+      } finally {
+          setIsEnhancing(false);
+      }
   };
 
   const handleDownloadFicha = (e: React.MouseEvent) => {
@@ -122,6 +161,36 @@ Generado automáticamente por Creata App
                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
 
+            {/* AI Enhance Button */}
+            <div className="absolute bottom-8 z-[110]">
+                 <button
+                    onClick={handleEnhanceImage}
+                    disabled={isEnhancing || !!enhancedCache[sortedColors[lightboxIndex]]}
+                    className={`flex items-center space-x-2 px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform border border-white/20 disabled:opacity-80 disabled:cursor-default ${
+                        enhancedCache[sortedColors[lightboxIndex]] 
+                        ? 'bg-green-500 text-white cursor-default' 
+                        : 'bg-gradient-to-r from-yellow-600 to-amber-500 text-white'
+                    }`}
+                 >
+                    {isEnhancing ? (
+                        <>
+                           <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                           <span>Mejorando con IA...</span>
+                        </>
+                    ) : enhancedCache[sortedColors[lightboxIndex]] ? (
+                        <>
+                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                             <span>Calidad Mejorada (2K)</span>
+                        </>
+                    ) : (
+                        <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            <span>Mejorar Calidad (IA)</span>
+                        </>
+                    )}
+                 </button>
+            </div>
+
             {/* Image Container - Fixed Size Square for Consistency */}
             <div 
                 className="relative bg-white shadow-2xl rounded-sm overflow-hidden flex items-center justify-center border border-white/10
@@ -133,7 +202,7 @@ Generado automáticamente por Creata App
                   alt="Full Texture" 
                   // object-cover forces the image to fill the square (Zoom effect)
                   // w-full h-full ensures all images appear exactly the same size
-                  className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                  className={`w-full h-full object-cover transition-transform duration-500 hover:scale-105 ${isEnhancing ? 'blur-sm scale-105' : ''}`}
                />
             </div>
 

@@ -119,6 +119,45 @@ export const generateFabricDesign = async (prompt: string, aspectRatio: string =
 };
 
 /**
+ * Enhances an existing fabric image to High Quality (2K) using Nano Bana Pro.
+ * Preserves color and texture.
+ */
+export const enhanceFabricTexture = async (base64Image: string) => {
+  try {
+    // Determine mime type roughly from base64 header or default to png
+    const mimeType = base64Image.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
+    const cleanBase64 = base64Image.split(',')[1] || base64Image;
+
+    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
+      model: 'gemini-3-pro-image-preview',
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: cleanBase64 } },
+          { text: "Generate a high-fidelity, 2K resolution close-up reproduction of this fabric texture. STRICTLY preserve the original color tone, weave pattern, and material characteristics. Do not change the design. Improve sharpness, lighting and definition to look like a professional macro photograph." }
+        ]
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: '1:1',
+          imageSize: '2K',
+        }
+      }
+    }));
+
+     // Extract image
+     for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+   }
+   return null;
+  } catch (error: any) {
+    console.error("Error enhancing fabric:", error?.message || String(error));
+    throw error;
+  }
+};
+
+/**
  * Edits an existing fabric image using text prompts.
  * Uses gemini-2.5-flash-image.
  */
