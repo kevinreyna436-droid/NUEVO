@@ -48,25 +48,24 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
 
       let rawData: any = { name: "Unknown", supplier: "Unknown", technicalSummary: "", specs: {} };
 
-      // 1. Extract Info from PDF or First Image
+      // 1. Extract Info from PDF or First Image (AI Analysis)
       try {
         if (pdfFile) {
             const base64Data = await fileToBase64(pdfFile);
             rawData = await extractFabricData(base64Data.split(',')[1], 'application/pdf');
         } else if (imgFiles.length > 0) {
-            // Optional: Try extracting from first image using raw base64 (better for OCR)
-            // const base64Data = await fileToBase64(imgFiles[0]);
-            // rawData = await extractFabricData(base64Data.split(',')[1], imgFiles[0].type);
+            // For images, we try to extract data from the first image which might be a cover or swatch card
+            const base64Data = await fileToBase64(imgFiles[0]);
+            rawData = await extractFabricData(base64Data.split(',')[1], imgFiles[0].type);
         }
       } catch (e: any) {
           console.warn(`Extraction failed for ${groupName}`, e?.message || "Unknown error");
       }
 
-      // HELPER: Remove "Fromatex", "Fotmatex" prefix if present
+      // HELPER: Remove "Fromatex", "Fotmatex" prefix if present manually as fallback
       const cleanFabricName = (inputName: string) => {
           if (!inputName) return "";
-          // Remove "Fromatex" or "Fotmatex" followed by _, -, space or nothing, case insensitive
-          return inputName.replace(/^(fromatex|fotmatex|formatex)[_\-\s]*/i, '').trim();
+          return inputName.replace(/^(fromatex|fotmatex|formatex|creata)[_\-\s]*/i, '').trim();
       };
 
       // Clean extracted name
@@ -74,12 +73,12 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
           rawData.name = cleanFabricName(rawData.name);
       }
 
-      // 2. Name Inference
+      // 2. Name Inference Fallback
       if (!rawData.name || rawData.name === "Unknown") {
-          rawData.name = cleanFabricName(groupName); // Use cleaned folder name as fallback
+          rawData.name = cleanFabricName(groupName); 
       }
 
-      // 3. Cross-reference DB
+      // 3. Cross-reference DB (Optional, keeps existing logic safe)
       let detectedColors: string[] = [];
       const dbName = Object.keys(MASTER_FABRIC_DB).find(
         key => key.toLowerCase() === rawData.name?.toLowerCase()
@@ -99,9 +98,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         try {
             const fileNameLower = file.name.toLowerCase().replace(/\.[^/.]+$/, "");
             
-            // Use Compressed Image for Storage
-            // AGGRESSIVE COMPRESSION: 200px width, 0.5 quality
-            const base64Img = await compressImage(file, 200, 0.5);
+            // ORIGINAL QUALITY REQUESTED: 2048px width, 0.95 quality
+            const base64Img = await compressImage(file, 2048, 0.95);
 
             if (dbName) {
                 const matchedColor = detectedColors.find(color => fileNameLower.includes(color.toLowerCase()));
@@ -109,17 +107,17 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                     colorImages[matchedColor] = base64Img;
                 }
             } else {
-                // Unknown fabric: Use filename as color
-                // Clean filename
+                // Unknown fabric: Use filename as color (fallback if AI didn't catch it via prompt context)
                 let cleanColorName = fileNameLower;
                 
                 if (rawData.name) {
                     const nameRegex = new RegExp(`^${rawData.name}[_\\-\\s]*`, 'i');
                     cleanColorName = cleanColorName.replace(nameRegex, '');
                 }
-                cleanColorName = cleanColorName.replace(/^(fromatex|fotmatex|formatex)[_\-\s]*/i, '');
+                cleanColorName = cleanColorName.replace(/^(fromatex|fotmatex|formatex|creata)[_\-\s]*/i, '');
                 
                 const cleanName = cleanColorName.replace(/[-_]/g, " ").trim();
+                // Ensure proper capitalization
                 const formattedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
 
                 if (formattedName) {
@@ -129,22 +127,22 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             }
         } catch (imgError) {
             console.warn(`Failed to process image ${file.name}`, imgError);
-            // Continue to next image instead of failing entire group
         }
       }
 
-      // Main Image
+      // Main Image Selection
       let mainImageToUse = '';
       if (Object.keys(colorImages).length > 0) {
           mainImageToUse = Object.values(colorImages)[0];
       } else if (imgFiles.length > 0) {
           try {
-            mainImageToUse = await compressImage(imgFiles[0], 200, 0.5);
+            // HIGH QUALITY HERE TOO
+            mainImageToUse = await compressImage(imgFiles[0], 2048, 0.95);
           } catch(e) {
             mainImageToUse = '';
           }
       } else {
-          mainImageToUse = ''; // No placeholder to save space
+          mainImageToUse = ''; 
       }
 
       return {
@@ -211,7 +209,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         const finalFabrics: Fabric[] = extractedFabrics.map(data => ({
             id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
             name: data.name || 'Sin Nombre',
-            supplier: data.supplier || 'Proveedor Desconocido',
+            supplier: data.supplier || 'Consultar',
             technicalSummary: data.technicalSummary || 'Sin datos técnicos disponibles.',
             specs: data.specs || { composition: 'N/A', martindale: 'N/A', usage: 'N/A' },
             colors: data.colors || [],
@@ -238,7 +236,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         onClose();
     } catch (error: any) {
         console.error("Save error:", error?.message || "Unknown error");
-        alert("Ocurrió un error al guardar en la nube. Posiblemente los archivos sean demasiado pesados.");
+        alert("Ocurrió un error al guardar en la nube. Los archivos de alta calidad pueden estar saturando la conexión. Intenta subir menos telas a la vez.");
     } finally {
         setIsSaving(false);
     }
@@ -259,8 +257,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
              <div className="flex flex-col items-center justify-center flex-1 h-64 space-y-6 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
                 <div>
-                    <p className="font-serif text-lg font-bold">Guardando en la nube...</p>
-                    <p className="text-xs text-gray-400 mt-2">Por favor no cierres la ventana.</p>
+                    <p className="font-serif text-lg font-bold">Guardando Calidad Original...</p>
+                    <p className="text-xs text-gray-400 mt-2">Esto puede tardar un poco debido al tamaño de las imágenes.</p>
                 </div>
              </div>
         ) : (

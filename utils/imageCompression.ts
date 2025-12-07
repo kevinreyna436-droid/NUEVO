@@ -1,5 +1,5 @@
 
-export const compressImage = (file: File, maxWidth = 600, quality = 0.7): Promise<string> => {
+export const compressImage = (file: File, maxWidth = 2048, quality = 0.95): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -11,6 +11,7 @@ export const compressImage = (file: File, maxWidth = 600, quality = 0.7): Promis
         let width = img.width;
         let height = img.height;
 
+        // Cap at 2048px (2K) to ensure High Def but prevent browser crash on massive raw files
         if (width > maxWidth) {
           height = (height * maxWidth) / width;
           width = maxWidth;
@@ -20,8 +21,11 @@ export const compressImage = (file: File, maxWidth = 600, quality = 0.7): Promis
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-            ctx.fillStyle = '#FFFFFF'; // Prevent transparency turning black/ugly if converted to jpeg
+            ctx.fillStyle = '#FFFFFF'; // Prevent transparency turning black
             ctx.fillRect(0, 0, width, height);
+            // Use highest quality smoothing
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
             resolve(canvas.toDataURL('image/jpeg', quality));
         } else {

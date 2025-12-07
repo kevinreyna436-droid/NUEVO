@@ -101,8 +101,9 @@ const createCleanFabricObject = (source: any): Fabric => {
               
               if (!key || !val) continue;
 
-              // Individual image hard limit (e.g. 150KB)
-              if (val.length > 150000) {
+              // Individual image hard limit (Increased to 800KB to allow for new 1024px images)
+              // This still relies on MAX_BYTES to stop the total doc from exploding.
+              if (val.length > 800000) {
                   console.warn(`Skipping large image for color ${key} (${val.length} bytes)`);
                   continue;
               }

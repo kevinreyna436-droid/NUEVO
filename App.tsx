@@ -6,7 +6,6 @@ import ChatBot from './components/ChatBot';
 import ImageGenModal from './components/ImageGenModal';
 import { INITIAL_FABRICS } from './constants';
 import { Fabric, AppView } from './types';
-import { enhanceFabricTexture } from './services/geminiService';
 import { 
   getFabricsFromFirestore, 
   saveFabricToFirestore, 
@@ -38,7 +37,6 @@ function App() {
     fabricId: string;
     colorName: string;
   } | null>(null);
-  const [isEnhancingGlobal, setIsEnhancingGlobal] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -88,7 +86,6 @@ function App() {
             fabricId: fabric.id,
             colorName: specificColor || 'Unknown'
         });
-        setIsEnhancingGlobal(false);
     }
   };
 
@@ -161,26 +158,6 @@ function App() {
     }
   };
 
-  const handleEnhanceGlobalImage = async (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (!colorLightbox || isEnhancingGlobal) return;
-      
-      setIsEnhancingGlobal(true);
-      try {
-          const enhancedBase64 = await enhanceFabricTexture(colorLightbox.image);
-          if (enhancedBase64) {
-              setColorLightbox(prev => prev ? ({ ...prev, image: enhancedBase64 }) : null);
-          } else {
-              alert("No se pudo mejorar la imagen.");
-          }
-      } catch (error) {
-          console.error("Upscale failed", error);
-          alert("Error al conectar con Nano Bana Pro.");
-      } finally {
-          setIsEnhancingGlobal(false);
-      }
-  };
-
   const getColorWeight = (colorName: string): number => {
       if (!colorName) return 50;
       const name = colorName.toLowerCase();
@@ -249,8 +226,6 @@ function App() {
     e?.stopPropagation();
     if (!colorLightbox) return;
     
-    setIsEnhancingGlobal(false); // Reset AI state on nav
-
     const cards = getSortedColorCards();
     const currentIndex = cards.findIndex(c => c.fabric.id === colorLightbox.fabricId && c.colorName === colorLightbox.colorName);
     
@@ -493,27 +468,6 @@ function App() {
                 </button>
             </div>
             
-            {/* AI Enhance Button (Floating Bottom Center or Top) */}
-            <div className="absolute bottom-12 z-[110]">
-                 <button
-                    onClick={handleEnhanceGlobalImage}
-                    disabled={isEnhancingGlobal}
-                    className="flex items-center space-x-2 bg-gradient-to-r from-yellow-600 to-amber-500 text-white px-5 py-2 rounded-full text-xs font-bold uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform border border-white/20 disabled:opacity-50"
-                 >
-                    {isEnhancingGlobal ? (
-                        <>
-                           <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                           <span>Mejorando...</span>
-                        </>
-                    ) : (
-                        <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                            <span>Mejorar Calidad (IA)</span>
-                        </>
-                    )}
-                 </button>
-            </div>
-
             <button 
               onClick={(e) => handleGlobalNav(-1, e)}
               className="absolute left-2 md:left-8 text-white/80 hover:text-white hover:scale-110 transition-all p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
@@ -529,7 +483,7 @@ function App() {
                  <img 
                     src={colorLightbox.image} 
                     alt={colorLightbox.colorName} 
-                    className={`w-full h-full object-cover transition-transform duration-500 hover:scale-105 ${isEnhancingGlobal ? 'blur-sm scale-105' : ''}`}
+                    className="w-full h-full object-contain"
                  />
             </div>
 

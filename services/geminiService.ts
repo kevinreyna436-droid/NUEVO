@@ -35,16 +35,33 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 3, del
 export const extractFabricData = async (base64Data: string, mimeType: string) => {
   try {
     const prompt = `
-    You are a textile expert assistant for the "Creata Collection" catalog app.
-    Analyze the attached document (PDF or Image). 
+    You are a strict data extraction expert for "Creata Collection".
+    Analyze the provided document (PDF) or Image (Color Swatch).
+
+    RULES FOR EXTRACTION:
     
-    Extract the following details and **Translate all values to Spanish**:
-    1. Fabric Name (Look for headers, bold text, or near the word "Article").
-    2. Supplier Name (Look for logos, footers, or legal text).
-    3. Technical Summary (Create a 3-4 line summary including composition, weight, martindale cycles, and usage. **In Spanish**).
-    4. Composition (Specific string, translate materials to Spanish).
-    5. Martindale (Specific string).
-    6. Usage (Specific string, e.g., "Tapicería", "Cortinas").
+    1. **FABRIC NAME (Nombre de la tela):**
+       - Extract ONLY the specific model name (e.g., "Analis", "Slate", "Bikendi").
+       - **FORBIDDEN:** Do NOT include the supplier name (e.g., DO NOT include "Formatex", "Creata", "Textiles").
+       - **FORBIDDEN:** Do NOT include color names in the main fabric name.
+       - If you are unsure, check the largest bold text but strip generic words.
+       
+    2. **SUPPLIER NAME (Nombre del proveedor):**
+       - Look for the legal entity, logo, or footer in the PDF/Image.
+       - If found, output the name.
+       - If strictly NOT found, return "Consultar".
+       
+    3. **COLOR NAMES (Nombre de color):**
+       - Look at the TEXT INSIDE THE IMAGE (OCR).
+       - If the image contains text labels (e.g., "Slate", "Ash", "102 Grey"), use that EXACT name.
+       - **FORBIDDEN:** Do not include the supplier name in the color name.
+       - If looking at a PDF list, extract the color names listed.
+    
+    4. **TECHNICAL SUMMARY:**
+       - Create a concise 3-4 line summary in **SPANISH**.
+       - Include Composition, Weight, and Martindale if available.
+
+    5. **SPECS:** Extract Composition, Martindale, Usage, Weight.
 
     Return JSON strictly adhering to this schema.
     `;
@@ -62,8 +79,8 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            name: { type: Type.STRING },
-            supplier: { type: Type.STRING },
+            name: { type: Type.STRING, description: "The clean model name only. No supplier." },
+            supplier: { type: Type.STRING, description: "The manufacturer name." },
             technicalSummary: { type: Type.STRING },
             specs: {
               type: Type.OBJECT,
@@ -118,43 +135,9 @@ export const generateFabricDesign = async (prompt: string, aspectRatio: string =
   }
 };
 
-/**
- * Enhances an existing fabric image to High Quality (2K) using Nano Bana Pro.
- * Preserves color and texture.
- */
+// enhanceFabricTexture function removed as requested to disable AI enhancement button/logic
 export const enhanceFabricTexture = async (base64Image: string) => {
-  try {
-    // Determine mime type roughly from base64 header or default to png
-    const mimeType = base64Image.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
-    const cleanBase64 = base64Image.split(',')[1] || base64Image;
-
-    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: {
-        parts: [
-          { inlineData: { mimeType, data: cleanBase64 } },
-          { text: "Generate a high-fidelity, 2K resolution close-up reproduction of this fabric texture. STRICTLY preserve the original color tone, weave pattern, and material characteristics. Do not change the design. Improve sharpness, lighting and definition to look like a professional macro photograph." }
-        ]
-      },
-      config: {
-        imageConfig: {
-          aspectRatio: '1:1',
-          imageSize: '2K',
-        }
-      }
-    }));
-
-     // Extract image
-     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
-   }
-   return null;
-  } catch (error: any) {
-    console.error("Error enhancing fabric:", error?.message || String(error));
-    throw error;
-  }
+    return base64Image; // Pass-through stub
 };
 
 /**

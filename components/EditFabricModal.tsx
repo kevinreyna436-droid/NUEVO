@@ -70,8 +70,8 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
     if (e.target.files && e.target.files[0] && editingColorIndex !== null) {
       const file = e.target.files[0];
       try {
-          // REDUCED TO 200px / 0.5 to fit Firestore limit (Aggressive)
-          const base64 = await compressImage(file, 200, 0.5);
+          // HIGH QUALITY: 1024px, 0.85
+          const base64 = await compressImage(file, 1024, 0.85);
           const colorName = formData.colors[editingColorIndex];
           setFormData(prev => ({
             ...prev,
