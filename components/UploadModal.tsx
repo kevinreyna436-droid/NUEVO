@@ -53,11 +53,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             const file = e.target.files[0];
             const { fabricIndex, type, colorName } = activeUpload;
             
-            // OPTIMIZED COMPRESSION FOR STORAGE
-            // Main: 1024px (Good balance)
-            // Color: 350px (Small enough for grid/avatar, fits ~30 colors in 1MB limit)
-            const quality = type === 'main' ? 0.80 : 0.70;
-            const size = type === 'main' ? 1024 : 350;
+            // Reverted to standard high quality settings
+            const quality = type === 'main' ? 0.85 : 0.80;
+            const size = type === 'main' ? 2048 : 600;
 
             const base64 = await compressImage(file, size, quality);
 
@@ -118,8 +116,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                 rawData.pdfUrl = base64Data;
             }
         } else if (imgFiles.length > 0) {
-            // Use a medium quality image for AI analysis
-            const aiAnalysisImg = await compressImage(imgFiles[0], 1024, 0.8);
+            // Use a high quality image for AI analysis
+            const aiAnalysisImg = await compressImage(imgFiles[0], 1024, 0.85);
             rawData = await extractFabricData(aiAnalysisImg.split(',')[1], 'image/jpeg');
         }
       } catch (e: any) {
@@ -166,15 +164,11 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         }
 
         try {
-            // DUAL COMPRESSION STRATEGY
-            // 1. Medium res for OCR (needs readability)
-            const ocrBase64 = await compressImage(file, 800, 0.80);
-            
-            // 2. Low res for Storage (needs to fit in DB)
-            const storageBase64 = await compressImage(file, 350, 0.70);
+            // Revert to single compression step at 600px
+            const base64Img = await compressImage(file, 600, 0.85);
             
             // --- AI OCR STEP ---
-            let detectedName = await extractColorFromSwatch(ocrBase64.split(',')[1]);
+            let detectedName = await extractColorFromSwatch(base64Img.split(',')[1]);
             
             // If AI failed to read text, fallback to filename logic
             if (!detectedName) {
@@ -208,7 +202,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             if (detectedName) {
                 // Avoid overwriting if multiple images map to same color
                 if (!colorImages[detectedName]) {
-                    colorImages[detectedName] = storageBase64; // SAVE THE SMALLER IMAGE
+                    colorImages[detectedName] = base64Img;
                     detectedColorsList.push(detectedName);
                 }
             }
@@ -225,25 +219,15 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
            detectedColorsList.sort();
       }
 
-      // Main Image Selection - Keep Medium Quality
+      // Main Image Selection - Keep High Quality
       let mainImageToUse = '';
       if (Object.keys(colorImages).length > 0) {
-          // Use the first color, but ideally we want a higher res one. 
-          // Since we compressed colors to 350px, this might be blurry for main image.
-          // Try to get a high res version of the first image found.
-          if (imgFiles.length > 0) {
-              try {
-                  mainImageToUse = await compressImage(imgFiles[0], 1024, 0.80);
-              } catch(e) {
-                  mainImageToUse = Object.values(colorImages)[0];
-              }
-          } else {
-              mainImageToUse = Object.values(colorImages)[0];
-          }
+          // If we are using a color image as main, we try to use it directly
+          mainImageToUse = Object.values(colorImages)[0];
       } else if (imgFiles.length > 0) {
           try {
             // Explicitly compress the first found image as high res for Main Image
-            mainImageToUse = await compressImage(imgFiles[0], 1024, 0.80);
+            mainImageToUse = await compressImage(imgFiles[0], 2048, 0.85);
           } catch(e) {
             mainImageToUse = '';
           }
