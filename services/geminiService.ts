@@ -104,6 +104,52 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
 };
 
 /**
+ * Extracts ONLY the color name from a specific swatch image.
+ * Uses OCR capabilities of Gemini to read the text label on the photo.
+ */
+export const extractColorFromSwatch = async (base64Data: string): Promise<string | null> => {
+    try {
+        const prompt = `
+        Look at this fabric swatch image.
+        Find the text label that represents the COLOR NAME.
+        
+        Rules:
+        1. It is usually located at the bottom right, bottom left, or bottom center.
+        2. Ignore supplier names like "Formatex", "Creata", "Textiles".
+        3. Ignore codes that look like ISBNs or phone numbers.
+        4. Return ONLY the extracted text of the color (e.g., "Ash", "Navy", "102 Grey").
+        5. If NO text is clearly a color name, return null.
+        `;
+
+        const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
+                    { text: prompt }
+                ]
+            },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        colorName: { type: Type.STRING, nullable: true }
+                    }
+                }
+            }
+        }));
+        
+        const result = JSON.parse(response.text || '{}');
+        return result.colorName || null;
+
+    } catch (error) {
+        // Silently fail for individual colors to keep the process moving
+        return null; 
+    }
+};
+
+/**
  * Generates a new fabric design image.
  * Uses gemini-3-pro-image-preview.
  */

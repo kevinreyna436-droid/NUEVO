@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { extractFabricData } from '../services/geminiService';
+import { extractFabricData, extractColorFromSwatch } from '../services/geminiService';
 import { MASTER_FABRIC_DB } from '../constants';
 import { Fabric } from '../types';
 import { compressImage } from '../utils/imageCompression';
@@ -22,9 +22,21 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
   
   // NEW: Manual Category State
   const [selectedCategory, setSelectedCategory] = useState<'model' | 'wood'>('model');
+  
+  // NEW: State to track which item has specs expanded
+  const [expandedSpecsIndex, setExpandedSpecsIndex] = useState<number | null>(null);
+  
+  // NEW: State to track active image upload target
+  const [activeUpload, setActiveUpload] = useState<{ 
+      fabricIndex: number; 
+      type: 'main' | 'color' | 'add_color'; 
+      colorName?: string; 
+  } | null>(null);
 
   // Ref for directory upload
   const folderInputRef = useRef<HTMLInputElement>(null);
+  // Ref for single image replacement
+  const singleImageInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -32,6 +44,49 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
     if (e.target.files && e.target.files.length > 0) {
       const uploadedFiles: File[] = Array.from(e.target.files);
       setFiles(uploadedFiles);
+    }
+  };
+  
+  const handleSingleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && activeUpload) {
+        try {
+            const file = e.target.files[0];
+            // High quality for image replacement
+            const base64 = await compressImage(file, 2048, 0.85);
+            
+            const { fabricIndex, type, colorName } = activeUpload;
+
+            setExtractedFabrics(prev => {
+                const updated = [...prev];
+                const fabric = { ...updated[fabricIndex] };
+                
+                if (type === 'main') {
+                    fabric.mainImage = base64;
+                } else if (type === 'color' && colorName) {
+                    const newImages = { ...fabric.colorImages, [colorName]: base64 };
+                    fabric.colorImages = newImages;
+                } else if (type === 'add_color') {
+                    // For adding a new color, we need a name. 
+                    // Since we can't easily prompt inside the render efficiently without more state,
+                    // we'll use a simple prompt or default name.
+                    const newName = window.prompt("Nombre del nuevo color:", `Color ${(fabric.colors?.length || 0) + 1}`);
+                    if (newName) {
+                        const newColors = [...(fabric.colors || []), newName];
+                        const newImages = { ...fabric.colorImages, [newName]: base64 };
+                        fabric.colors = newColors;
+                        fabric.colorImages = newImages;
+                    }
+                }
+                
+                updated[fabricIndex] = fabric;
+                return updated;
+            });
+
+        } catch (err) {
+            console.error("Error updating image", err);
+        }
+        setActiveUpload(null);
+        if (singleImageInputRef.current) singleImageInputRef.current.value = '';
     }
   };
 
@@ -56,6 +111,10 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         if (pdfFile) {
             const base64Data = await fileToBase64(pdfFile);
             rawData = await extractFabricData(base64Data.split(',')[1], 'application/pdf');
+            // Store PDF URL if extracted from PDF directly
+            if (base64Data.length < 1000000) { // Limit size for auto-attach
+                rawData.pdfUrl = base64Data;
+            }
         } else if (imgFiles.length > 0) {
             const base64Data = await fileToBase64(imgFiles[0]);
             rawData = await extractFabricData(base64Data.split(',')[1], imgFiles[0].type);
@@ -81,64 +140,86 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       }
 
       // 3. Cross-reference DB with SMART MATCHING
-      let detectedColors: string[] = [];
+      // We will still check if we have a DB match to help normalize OCR results
+      let dbColors: string[] = [];
       const dbName = Object.keys(MASTER_FABRIC_DB).find(
         key => key.toLowerCase() === rawData.name?.toLowerCase()
       );
 
       if (dbName) {
-        // Sort colors by length descending. This ensures "Light Grey" is matched before "Grey"
-        // to prevent partial matches on the wrong color.
-        detectedColors = [...MASTER_FABRIC_DB[dbName]].sort((a, b) => b.length - a.length);
+        dbColors = [...MASTER_FABRIC_DB[dbName]];
         rawData.name = dbName;
-      } else {
-        detectedColors = [];
       }
 
-      // 4. Map Images to Colors
+      // 4. Map Images to Colors (USING OCR)
       const colorImages: Record<string, string> = {};
+      const detectedColorsList: string[] = [];
       
+      let processedCount = 0;
       for (const file of imgFiles) {
+        processedCount++;
+        // Update progress inside the loop because OCR takes time
+        if (processedCount % 3 === 0) {
+             setCurrentProgress(`Escaneando colores (${processedCount}/${imgFiles.length}) para ${rawData.name}...`);
+        }
+
         try {
-            const fileNameLower = file.name.toLowerCase().replace(/\.[^/.]+$/, "");
-            
             // USE HIGH QUALITY SETTINGS (2048px, 0.85)
             const base64Img = await compressImage(file, 2048, 0.85);
-
-            if (dbName && detectedColors.length > 0) {
-                // Try to find the specific color name in the filename
-                const matchedColor = detectedColors.find(color => fileNameLower.includes(color.toLowerCase()));
+            
+            // --- AI OCR STEP ---
+            // Attempt to read the color name from the image text
+            let detectedName = await extractColorFromSwatch(base64Img.split(',')[1]);
+            
+            // If AI failed to read text, fallback to filename logic
+            if (!detectedName) {
+                const fileNameLower = file.name.toLowerCase().replace(/\.[^/.]+$/, "");
                 
-                if (matchedColor) {
-                    colorImages[matchedColor] = base64Img;
+                // If we have DB colors, try to match filename substring
+                if (dbColors.length > 0) {
+                     const matchedColor = dbColors.find(color => fileNameLower.includes(color.toLowerCase()));
+                     if (matchedColor) detectedName = matchedColor;
                 }
-            } else {
-                // Unknown fabric: Use filename as color (fallback)
-                let cleanColorName = fileNameLower;
                 
-                if (rawData.name) {
-                    const nameRegex = new RegExp(`^${rawData.name}[_\\-\\s]*`, 'i');
-                    cleanColorName = cleanColorName.replace(nameRegex, '');
-                }
-                cleanColorName = cleanColorName.replace(/^(fromatex|fotmatex|formatex|creata)[_\-\s]*/i, '');
-                
-                const cleanName = cleanColorName.replace(/[-_]/g, " ").trim();
-                const formattedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
-
-                if (formattedName) {
-                    colorImages[formattedName] = base64Img;
-                    // Re-sort detected colors alphabetically for display if purely inferred
-                    if (!detectedColors.includes(formattedName)) detectedColors.push(formattedName);
+                // If still no name, just clean the filename
+                if (!detectedName) {
+                    let cleanColorName = fileNameLower;
+                    if (rawData.name) {
+                        const nameRegex = new RegExp(`^${rawData.name}[_\\-\\s]*`, 'i');
+                        cleanColorName = cleanColorName.replace(nameRegex, '');
+                    }
+                    cleanColorName = cleanColorName.replace(/^(fromatex|fotmatex|formatex|creata)[_\-\s]*/i, '');
+                    const cleanName = cleanColorName.replace(/[-_]/g, " ").trim();
+                    detectedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
                 }
             }
+
+            // Normalization: If we have a DB match, try to snap the detected name (OCR or File) to the DB list
+            // This fixes OCR typos like "Ash " -> "Ash" or casing issues
+            if (detectedName && dbColors.length > 0) {
+                 const exactMatch = dbColors.find(c => c.toLowerCase() === detectedName!.toLowerCase().trim());
+                 if (exactMatch) detectedName = exactMatch;
+            }
+
+            if (detectedName) {
+                // Avoid overwriting if multiple images map to same color (keep first or last, here keeping first)
+                if (!colorImages[detectedName]) {
+                    colorImages[detectedName] = base64Img;
+                    detectedColorsList.push(detectedName);
+                }
+            }
+
         } catch (imgError) {
             console.warn(`Failed to process image ${file.name}`, imgError);
         }
       }
 
-      // Restore alphabetical order for detected colors if they came from DB
-      if(dbName) {
-          detectedColors = MASTER_FABRIC_DB[dbName];
+      // Restore alphabetical order or DB order
+      if (dbName && dbColors.length > 0) {
+           // Sort detected colors based on their order in DB (if relevant) or just alphabetical
+           detectedColorsList.sort(); 
+      } else {
+           detectedColorsList.sort();
       }
 
       // Main Image Selection
@@ -157,10 +238,11 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
 
       return {
           ...rawData,
-          colors: detectedColors,
+          colors: detectedColorsList,
           colorImages: colorImages,
           mainImage: mainImageToUse,
-          category: selectedCategory // USE SELECTED CATEGORY
+          category: selectedCategory, // USE SELECTED CATEGORY
+          customCatalog: '' // Initialize custom catalog as empty
       };
   };
 
@@ -216,7 +298,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       setExtractedFabrics(prev => prev.filter((_, i) => i !== index));
   };
 
-  const updateFabricField = (index: number, field: keyof Fabric, value: string) => {
+  const updateFabricField = (index: number, field: keyof Fabric, value: any) => {
       setExtractedFabrics(prev => {
           const updated = [...prev];
           updated[index] = { ...updated[index], [field]: value };
@@ -249,7 +331,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             colors: data.colors || [],
             colorImages: data.colorImages || {},
             mainImage: data.mainImage || '',
-            category: selectedCategory // Ensure consistency
+            category: selectedCategory, // Ensure consistency
+            customCatalog: data.customCatalog, // Save custom catalog
+            pdfUrl: data.pdfUrl // Persist PDF if present
         }));
 
         if (finalFabrics.length === 1) {
@@ -273,6 +357,11 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
     } finally {
         setIsSaving(false);
     }
+  };
+
+  const triggerUpload = (fabricIndex: number, type: 'main' | 'color' | 'add_color', colorName?: string) => {
+      setActiveUpload({ fabricIndex, type, colorName });
+      singleImageInputRef.current?.click();
   };
 
   return (
@@ -384,63 +473,130 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                          </div>
                          
                          {extractedFabrics.map((f, i) => (
-                             <div key={i} className="flex flex-col md:flex-row gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 transition-all hover:shadow-md hover:bg-white">
-                                 {/* Main Image */}
-                                 <div className="w-20 h-20 md:w-24 md:h-24 flex-shrink-0 bg-gray-200 rounded-xl overflow-hidden">
-                                     {f.mainImage ? (
-                                         <img src={f.mainImage} alt="Main" className="w-full h-full object-cover" />
-                                     ) : (
-                                         <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No Img</div>
-                                     )}
-                                 </div>
+                             <div key={i} className="flex flex-col gap-4 p-6 bg-gray-50 rounded-3xl border border-gray-100 transition-all hover:shadow-lg hover:bg-white relative">
+                                 <div className="flex flex-col md:flex-row gap-6">
+                                    {/* Main Image with + Button */}
+                                    <div className="relative group">
+                                        <div className="w-24 h-24 md:w-32 md:h-32 flex-shrink-0 bg-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                                            {f.mainImage ? (
+                                                <img src={f.mainImage} alt="Main" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No Img</div>
+                                            )}
+                                        </div>
+                                        {/* Circular Plus Button for Main Image */}
+                                        <button 
+                                            onClick={() => triggerUpload(i, 'main')}
+                                            className="absolute -top-3 -left-3 w-8 h-8 bg-white text-blue-600 rounded-full flex items-center justify-center shadow-md border border-gray-100 hover:scale-110 transition-transform z-10"
+                                            title="Cambiar imagen principal"
+                                        >
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                        </button>
+                                    </div>
 
-                                 {/* Edit Fields */}
-                                 <div className="flex-1 flex flex-col space-y-2">
-                                     <div className="flex flex-col md:flex-row md:items-center gap-2">
-                                         <input 
-                                            type="text" 
-                                            value={f.name} 
-                                            onChange={(e) => updateFabricField(i, 'name', e.target.value)}
-                                            className="font-serif text-xl font-bold bg-transparent border-b border-dashed border-gray-300 focus:border-black focus:outline-none w-full md:w-auto"
-                                            placeholder="Nombre del Modelo"
-                                         />
-                                         <input 
-                                            type="text" 
-                                            value={f.supplier} 
-                                            onChange={(e) => updateFabricField(i, 'supplier', e.target.value)}
-                                            className="text-xs font-bold uppercase tracking-widest text-gray-500 bg-transparent border-b border-dashed border-gray-300 focus:border-black focus:outline-none w-full md:w-auto"
-                                            placeholder="PROVEEDOR"
-                                         />
-                                     </div>
-                                     
-                                     {/* Color Preview Swatches */}
-                                     <div>
-                                         <p className="text-[10px] text-gray-400 uppercase font-bold mb-1">
-                                             {f.colors?.length || 0} Colores Detectados
-                                         </p>
-                                         <div className="flex flex-wrap gap-2">
-                                             {f.colors?.map((c, idx) => (
-                                                 <div key={idx} className="group relative w-6 h-6 rounded-full bg-gray-200 border border-white shadow-sm overflow-hidden" title={c}>
-                                                     {f.colorImages && f.colorImages[c] ? (
-                                                         <img src={f.colorImages[c]} alt={c} className="w-full h-full object-cover" />
-                                                     ) : (
-                                                         <div className="w-full h-full bg-gray-300"></div>
-                                                     )}
-                                                 </div>
-                                             ))}
-                                         </div>
-                                     </div>
-                                 </div>
+                                    {/* Edit Fields - Restyled */}
+                                    <div className="flex-1 flex flex-col space-y-3">
+                                        <div className="flex flex-col gap-2">
+                                            {/* Name Input - Boxed and Larger (5% bigger) */}
+                                            <input 
+                                                type="text" 
+                                                value={f.name} 
+                                                onChange={(e) => updateFabricField(i, 'name', e.target.value)}
+                                                className="w-full p-4 bg-white rounded-xl border border-gray-200 font-serif text-3xl font-bold focus:ring-2 focus:ring-black focus:border-transparent outline-none shadow-sm transition-all"
+                                                placeholder="Nombre del Modelo"
+                                            />
+                                            {/* Supplier Input - Boxed and Larger */}
+                                            <input 
+                                                type="text" 
+                                                value={f.supplier} 
+                                                onChange={(e) => updateFabricField(i, 'supplier', e.target.value)}
+                                                className="w-full md:w-2/3 p-3 bg-white rounded-lg border border-gray-200 text-sm font-bold uppercase tracking-widest text-gray-500 focus:ring-1 focus:ring-black outline-none shadow-sm"
+                                                placeholder="PROVEEDOR"
+                                            />
+                                        </div>
+                                        
+                                        {/* Custom Catalog Field (Review Step) */}
+                                        <div className="flex items-center">
+                                            <input 
+                                                type="text" 
+                                                value={f.customCatalog || ''} 
+                                                onChange={(e) => updateFabricField(i, 'customCatalog', e.target.value)}
+                                                className="text-sm text-blue-800 bg-blue-50/50 px-3 py-2 rounded-lg border border-blue-100 focus:border-blue-400 focus:outline-none w-full md:w-2/3 placeholder-blue-300 font-medium"
+                                                placeholder="Catálogo (yo lo escribo)"
+                                            />
+                                        </div>
 
-                                 {/* Delete Button */}
-                                 <div className="flex items-center justify-end">
-                                     <button 
-                                        onClick={() => removeFabricFromReview(i)}
-                                        className="text-red-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-colors"
-                                        title="No subir esta tela"
-                                     >
-                                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                     </button>
+                                        {/* Color Preview Swatches */}
+                                        <div className="mt-2">
+                                            <div className="flex items-center space-x-2 mb-2">
+                                                <p className="text-[10px] text-gray-400 uppercase font-bold">
+                                                    {f.colors?.length || 0} Colores Detectados
+                                                </p>
+                                                {/* Plus Button for Adding Color */}
+                                                <button 
+                                                    onClick={() => triggerUpload(i, 'add_color')}
+                                                    className="w-5 h-5 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center border border-blue-100 hover:bg-blue-100 transition-colors shadow-sm"
+                                                    title="Añadir color nuevo"
+                                                >
+                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                                </button>
+                                            </div>
+
+                                            <div className="flex flex-wrap gap-2">
+                                                {f.colors?.map((c, idx) => (
+                                                    <div 
+                                                        key={idx} 
+                                                        onClick={() => triggerUpload(i, 'color', c)}
+                                                        className="group relative w-8 h-8 rounded-full bg-gray-200 border-2 border-white shadow-sm overflow-hidden cursor-pointer hover:border-black transition-all" 
+                                                        title={`${c} - Click para cambiar foto`}
+                                                    >
+                                                        {f.colorImages && f.colorImages[c] ? (
+                                                            <img src={f.colorImages[c]} alt={c} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full bg-gray-300"></div>
+                                                        )}
+                                                        {/* Hover Edit Icon Overlay */}
+                                                        <div className="absolute inset-0 bg-black/30 hidden group-hover:flex items-center justify-center">
+                                                             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Toggleable Specs Area */}
+                                        {expandedSpecsIndex === i && (
+                                            <div className="mt-2 animate-fade-in">
+                                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Resumen Técnico (Edición Rápida)</label>
+                                                <textarea 
+                                                    value={f.technicalSummary} 
+                                                    onChange={(e) => updateFabricField(i, 'technicalSummary', e.target.value)}
+                                                    className="w-full p-3 rounded-xl border border-gray-200 text-sm focus:ring-1 focus:ring-black outline-none bg-white min-h-[80px]"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex flex-row md:flex-col items-start justify-start gap-2 pt-2">
+                                         {/* Delete Button */}
+                                         <button 
+                                            onClick={() => removeFabricFromReview(i)}
+                                            className="text-red-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors w-10 h-10 flex items-center justify-center"
+                                            title="Eliminar"
+                                         >
+                                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                         </button>
+                                         
+                                         {/* Notebook Button (Edit Specs) - Sized Same as Trash */}
+                                         <button 
+                                            onClick={() => setExpandedSpecsIndex(expandedSpecsIndex === i ? null : i)}
+                                            className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${expandedSpecsIndex === i ? 'bg-black text-white' : 'text-gray-400 hover:text-black hover:bg-gray-100'}`}
+                                            title="Editar ficha técnica"
+                                        >
+                                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                         </button>
+                                    </div>
                                  </div>
                              </div>
                          ))}
@@ -467,6 +623,15 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                             Confirmar y Guardar ({extractedFabrics.length})
                         </button>
                      </div>
+                     
+                     {/* Hidden File Input for Image Replacement */}
+                     <input 
+                        ref={singleImageInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleSingleImageChange}
+                     />
                   </div>
                 )}
             </>
