@@ -9,6 +9,12 @@ import {
   writeBatch,
   initializeFirestore
 } from "firebase/firestore";
+import { 
+  getStorage, 
+  ref, 
+  uploadString, 
+  getDownloadURL 
+} from "firebase/storage";
 import type { QuerySnapshot, DocumentData } from "firebase/firestore";
 import { Fabric } from "../types";
 
@@ -25,9 +31,11 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with default settings to avoid connectivity issues
-// Removed CACHE_SIZE_UNLIMITED and enableIndexedDbPersistence to prevent "Backend didn't respond" errors
+// Initialize Firestore
 const db = initializeFirestore(app, {});
+
+// Initialize Storage
+const storage = getStorage(app);
 
 const COLLECTION_NAME = "fabrics";
 
@@ -35,11 +43,69 @@ const COLLECTION_NAME = "fabrics";
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Creates a clean, plain Javascript object strictly adhering to the Fabric interface.
- * Enforces strict size limits to prevent Firestore crashes.
+ * Uploads a Base64 image to Firebase Storage and returns the Public URL.
+ */
+const uploadImageToStorage = async (base64String: string, path: string): Promise<string> => {
+    try {
+        // If it's already a URL (http...), just return it.
+        if (base64String.startsWith('http')) return base64String;
+        
+        // Remove header if present (e.g. "data:image/jpeg;base64,") usually handled by uploadString 'data_url' format
+        const storageRef = ref(storage, path);
+        
+        await uploadString(storageRef, base64String, 'data_url');
+        const downloadURL = await getDownloadURL(storageRef);
+        return downloadURL;
+    } catch (error) {
+        console.error("Error uploading to storage:", error);
+        return base64String; // Fallback to base64 if upload fails (though this might fail Firestore save)
+    }
+};
+
+/**
+ * Iterates through a Fabric object, uploads all Base64 images to Storage,
+ * and returns a new Fabric object with URLs instead of Base64.
+ */
+const processFabricImagesForStorage = async (fabric: Fabric): Promise<Fabric> => {
+    const updatedFabric = { ...fabric };
+    const timestamp = Date.now();
+
+    // 1. Upload Main Image
+    if (updatedFabric.mainImage && updatedFabric.mainImage.startsWith('data:')) {
+        const path = `fabrics/${updatedFabric.id}/main_${timestamp}.jpg`;
+        updatedFabric.mainImage = await uploadImageToStorage(updatedFabric.mainImage, path);
+    }
+
+    // 2. Upload Specs Image
+    if (updatedFabric.specsImage && updatedFabric.specsImage.startsWith('data:')) {
+        const path = `fabrics/${updatedFabric.id}/specs_${timestamp}.jpg`;
+        updatedFabric.specsImage = await uploadImageToStorage(updatedFabric.specsImage, path);
+    }
+
+    // 3. Upload Color Images
+    if (updatedFabric.colorImages) {
+        const newColorImages: Record<string, string> = {};
+        for (const [colorName, base64] of Object.entries(updatedFabric.colorImages)) {
+            if (base64 && base64.startsWith('data:')) {
+                // Sanitize color name for filename
+                const safeColorName = colorName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                const path = `fabrics/${updatedFabric.id}/colors/${safeColorName}_${timestamp}.jpg`;
+                newColorImages[colorName] = await uploadImageToStorage(base64, path);
+            } else {
+                newColorImages[colorName] = base64;
+            }
+        }
+        updatedFabric.colorImages = newColorImages;
+    }
+
+    return updatedFabric;
+};
+
+/**
+ * Creates a clean object. Now that we use Storage, we don't need aggressive size checks,
+ * but we keep basic sanitization.
  */
 const createCleanFabricObject = (source: any): Fabric => {
-  // 1. Basic Object Structure
   if (!source || typeof source !== 'object') {
       return {
           id: 'error-' + Date.now(),
@@ -58,14 +124,11 @@ const createCleanFabricObject = (source: any): Fabric => {
       try {
           if (val === null || val === undefined) return '';
           if (typeof val === 'string') return val;
-          if (typeof val === 'number') return String(val);
-          if (typeof val === 'boolean') return String(val);
-          return ''; 
+          return String(val);
       } catch (e) { return ''; }
   };
 
-  // 2. Extract Basic Data
-  const baseData = {
+  return {
     id: safeString(source.id),
     name: safeString(source.name) || 'Sin Nombre',
     supplier: safeString(source.supplier),
@@ -77,61 +140,15 @@ const createCleanFabricObject = (source: any): Fabric => {
       usage: safeString(source?.specs?.usage),
     },
     colors: Array.isArray(source.colors) ? source.colors.map(safeString).filter((s: string) => s) : [],
+    colorImages: source.colorImages || {},
     pdfUrl: safeString(source.pdfUrl),
-    specsImage: safeString(source.specsImage), // New Field
-    customCatalog: safeString(source.customCatalog), // New Field
+    specsImage: safeString(source.specsImage),
+    customCatalog: safeString(source.customCatalog),
     category: source.category === 'wood' ? 'wood' as const : 'model' as const,
     mainImage: safeString(source.mainImage)
   };
-
-  // 3. SIZE BUDGET LOGIC
-  // Firestore limit is 1,048,576 bytes. We aim for < 950,000 bytes safe zone.
-  const MAX_BYTES = 950000;
-  
-  // Calculate size of everything except colorImages
-  let currentSize = JSON.stringify(baseData).length;
-
-  const cleanColorImages: Record<string, string> = {};
-
-  if (source.colorImages && typeof source.colorImages === 'object') {
-      try {
-          const entries = Object.entries(source.colorImages);
-          // Prioritize adding images in order
-          for (const [k, v] of entries) {
-              const key = safeString(k);
-              const val = safeString(v);
-              
-              if (!key || !val) continue;
-
-              // Individual image hard limit (Increased to 800KB to allow for new 1024px images)
-              // This still relies on MAX_BYTES to stop the total doc from exploding.
-              if (val.length > 800000) {
-                  console.warn(`Skipping large image for color ${key} (${val.length} bytes)`);
-                  continue;
-              }
-
-              // Overhead estimation for JSON key/value pair chars
-              const entrySize = key.length + val.length + 8; 
-
-              if (currentSize + entrySize < MAX_BYTES) {
-                  cleanColorImages[key] = val;
-                  currentSize += entrySize;
-              } else {
-                  console.warn(`Doc size limit reached. Dropping image for: ${key}`);
-              }
-          }
-      } catch(e) { console.warn("Error processing colorImages map"); }
-  }
-
-  return {
-    ...baseData,
-    colorImages: cleanColorImages
-  };
 };
 
-/**
- * Retries an async operation with exponential backoff.
- */
 const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delayMs = 1000): Promise<T> => {
     try {
         return await operation();
@@ -141,11 +158,9 @@ const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay
         const isConnectionError = errorCode === 'unavailable' || 
                                   errorMsg.includes('backend') || 
                                   errorMsg.includes('network') ||
-                                  errorMsg.includes('offline') ||
-                                  errorMsg.includes('resource-exhausted'); // Treat resource exhaustion as retryable logic sometimes, but main logic handles it via chunking
+                                  errorMsg.includes('offline');
         
         if (retries > 0 && isConnectionError) {
-            console.warn(`Retrying Firestore op... ${retries} attempts left.`);
             await delay(delayMs);
             return retryOperation(operation, retries - 1, delayMs * 2);
         }
@@ -157,78 +172,59 @@ const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay
 
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   try {
-    // Attempt to fetch from server first
     const serverPromise = getDocs(collection(db, COLLECTION_NAME));
-    
-    // Create a timeout to fallback to cache/empty if network is too slow
     const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT_SLOW_NETWORK')), 5000)
+        setTimeout(() => reject(new Error('TIMEOUT_SLOW_NETWORK')), 8000)
     );
 
     let snapshot: QuerySnapshot<DocumentData>;
-
     try {
         snapshot = await Promise.race([serverPromise, timeoutPromise]);
-    } catch (raceError: any) {
-        console.warn("Network slow or unreachable. Switching to fallback.");
+    } catch (raceError) {
         try {
-            // Explicitly try cache if server failed
             snapshot = await getDocsFromCache(collection(db, COLLECTION_NAME));
         } catch (cacheError) {
-             console.warn("Cache also unavailable.");
              return [];
         }
     }
-    
     return snapshot.docs.map(doc => createCleanFabricObject(doc.data()));
-  } catch (error: any) {
-    console.error("Error in getFabricsFromFirestore", error?.message || "Unknown");
+  } catch (error) {
+    console.error("Error getting fabrics", error);
     return [];
   }
 };
 
 export const saveFabricToFirestore = async (fabric: Fabric) => {
   try {
-    const cleanFabric = createCleanFabricObject(fabric);
+    // 1. Upload images to Storage first (High Quality)
+    const storedFabric = await processFabricImagesForStorage(fabric);
+    
+    // 2. Clean object (metadata only)
+    const cleanFabric = createCleanFabricObject(storedFabric);
+    
+    // 3. Save to Firestore (now lightweight because images are URLs)
     if (!cleanFabric.id) throw new Error("Invalid ID");
     await retryOperation(() => setDoc(doc(db, COLLECTION_NAME, cleanFabric.id), cleanFabric, { merge: true }));
-  } catch (error: any) {
-    console.error("Error writing document", error?.message || 'Unknown write error'); 
+  } catch (error) {
+    console.error("Error writing document", error); 
     throw error;
   }
 };
 
 export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
-  // CRITICAL: Set CHUNK_SIZE to 1 to avoid "Write stream exhausted" errors with large images.
-  // Large high-res images can make a single document ~1MB. Batching them causes the stream to choke.
-  const CHUNK_SIZE = 1; 
-  const cleanFabrics = fabrics.map(createCleanFabricObject).filter(f => f.id);
-
-  for (let i = 0; i < cleanFabrics.length; i += CHUNK_SIZE) {
-    const chunk = cleanFabrics.slice(i, i + CHUNK_SIZE);
-    const batch = writeBatch(db);
-    
-    chunk.forEach((fabric) => {
-      const docRef = doc(db, COLLECTION_NAME, fabric.id);
-      batch.set(docRef, fabric); 
-    });
-
-    try {
-        await retryOperation(() => batch.commit(), 3, 2000);
-        // Add a delay to let the write stream clear between large uploads
-        await delay(500); 
-    } catch (error: any) {
-        console.error("Error batch writing chunk", error?.message || 'Unknown batch error');
-        throw new Error("Error al guardar lote (Posible saturación de red).");
-    }
+  // We can process these sequentially to ensure storage uploads succeed
+  for (const fabric of fabrics) {
+      await saveFabricToFirestore(fabric);
   }
 };
 
 export const deleteFabricFromFirestore = async (fabricId: string) => {
   try {
     await retryOperation(() => deleteDoc(doc(db, COLLECTION_NAME, fabricId)));
-  } catch (error: any) {
-    console.error("Error deleting document", error?.message || 'Unknown delete error');
+    // Note: We are not automatically deleting images from Storage here to keep logic simple/safe.
+    // They can be cleaned up manually or via Cloud Functions.
+  } catch (error) {
+    console.error("Error deleting document", error);
     throw error;
   }
 };
@@ -241,8 +237,8 @@ export const clearFirestoreCollection = async () => {
         batch.delete(doc.ref);
     });
     await batch.commit();
-  } catch (error: any) {
-    console.error("Error clearing collection", error?.message || 'Unknown clear error');
+  } catch (error) {
+    console.error("Error clearing collection", error);
     throw error;
   }
 };

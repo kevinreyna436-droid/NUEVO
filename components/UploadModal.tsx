@@ -15,35 +15,25 @@ interface UploadModalProps {
 const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBulkSave, onReset }) => {
   const [step, setStep] = useState<'upload' | 'processing' | 'review'>('upload');
   const [files, setFiles] = useState<File[]>([]);
-  // Store multiple extracted fabrics for bulk mode
   const [extractedFabrics, setExtractedFabrics] = useState<Partial<Fabric>[]>([]);
   const [currentProgress, setCurrentProgress] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
-  
-  // NEW: Manual Category State
   const [selectedCategory, setSelectedCategory] = useState<'model' | 'wood'>('model');
-  
-  // NEW: State to track which item has specs expanded
   const [expandedSpecsIndex, setExpandedSpecsIndex] = useState<number | null>(null);
-  
-  // NEW: State to track active image upload target
   const [activeUpload, setActiveUpload] = useState<{ 
       fabricIndex: number; 
       type: 'main' | 'color' | 'add_color'; 
       colorName?: string; 
   } | null>(null);
 
-  // Ref for directory upload
   const folderInputRef = useRef<HTMLInputElement>(null);
-  // Ref for single image replacement
   const singleImageInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
   const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const uploadedFiles: File[] = Array.from(e.target.files);
-      setFiles(uploadedFiles);
+      setFiles(Array.from(e.target.files));
     }
   };
   
@@ -53,11 +43,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             const file = e.target.files[0];
             const { fabricIndex, type, colorName } = activeUpload;
             
-            // Reverted to standard high quality settings
-            const quality = type === 'main' ? 0.85 : 0.80;
-            const size = type === 'main' ? 2048 : 600;
-
-            const base64 = await compressImage(file, size, quality);
+            // HIGH QUALITY: 2560px, 0.95 quality
+            const base64 = await compressImage(file, 2560, 0.95);
 
             setExtractedFabrics(prev => {
                 const updated = [...prev];
@@ -99,24 +86,21 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
     });
   };
 
-  // Logic to process a specific group of files (representing one fabric)
   const analyzeFileGroup = async (groupFiles: File[], groupName: string): Promise<Partial<Fabric>> => {
       const pdfFile = groupFiles.find(f => f.type === 'application/pdf');
       const imgFiles = groupFiles.filter(f => f.type.startsWith('image/'));
 
       let rawData: any = { name: "Unknown", supplier: "Unknown", technicalSummary: "", specs: {} };
 
-      // 1. Extract Info from PDF or First Image (AI Analysis)
+      // 1. Extract Info (Keep standard quality for AI to be fast)
       try {
         if (pdfFile) {
             const base64Data = await fileToBase64(pdfFile);
             rawData = await extractFabricData(base64Data.split(',')[1], 'application/pdf');
-            // Store PDF URL if extracted from PDF directly
-            if (base64Data.length < 1000000) { // Limit size for auto-attach
+            if (base64Data.length < 1000000) { 
                 rawData.pdfUrl = base64Data;
             }
         } else if (imgFiles.length > 0) {
-            // Use a high quality image for AI analysis
             const aiAnalysisImg = await compressImage(imgFiles[0], 1024, 0.85);
             rawData = await extractFabricData(aiAnalysisImg.split(',')[1], 'image/jpeg');
         }
@@ -124,23 +108,18 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
           console.warn(`Extraction failed for ${groupName}`, e?.message || "Unknown error");
       }
 
-      // HELPER: Remove "Fromatex", "Fotmatex" prefix if present manually as fallback
       const cleanFabricName = (inputName: string) => {
           if (!inputName) return "";
           return inputName.replace(/^(fromatex|fotmatex|formatex|creata)[_\-\s]*/i, '').trim();
       };
 
-      // Clean extracted name
       if (rawData.name && rawData.name !== "Unknown") {
           rawData.name = cleanFabricName(rawData.name);
       }
-
-      // 2. Name Inference Fallback
       if (!rawData.name || rawData.name === "Unknown") {
           rawData.name = cleanFabricName(groupName); 
       }
 
-      // 3. Cross-reference DB with SMART MATCHING
       let dbColors: string[] = [];
       const dbName = Object.keys(MASTER_FABRIC_DB).find(
         key => key.toLowerCase() === rawData.name?.toLowerCase()
@@ -151,36 +130,30 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         rawData.name = dbName;
       }
 
-      // 4. Map Images to Colors (USING OCR)
       const colorImages: Record<string, string> = {};
       const detectedColorsList: string[] = [];
       
       let processedCount = 0;
       for (const file of imgFiles) {
         processedCount++;
-        // Update progress inside the loop because OCR takes time
         if (processedCount % 3 === 0) {
              setCurrentProgress(`Escaneando colores (${processedCount}/${imgFiles.length}) para ${rawData.name}...`);
         }
 
         try {
-            // Revert to single compression step at 600px
-            const base64Img = await compressImage(file, 600, 0.85);
+            // HIGH QUALITY STORAGE: 2560px, 0.95
+            const base64Img = await compressImage(file, 2560, 0.95);
             
-            // --- AI OCR STEP ---
+            // For OCR, we can use the same string or a smaller one, but let's reuse to keep it simple
+            // We pass split base64 to AI
             let detectedName = await extractColorFromSwatch(base64Img.split(',')[1]);
             
-            // If AI failed to read text, fallback to filename logic
             if (!detectedName) {
                 const fileNameLower = file.name.toLowerCase().replace(/\.[^/.]+$/, "");
-                
-                // If we have DB colors, try to match filename substring
                 if (dbColors.length > 0) {
                      const matchedColor = dbColors.find(color => fileNameLower.includes(color.toLowerCase()));
                      if (matchedColor) detectedName = matchedColor;
                 }
-                
-                // If still no name, just clean the filename
                 if (!detectedName) {
                     let cleanColorName = fileNameLower;
                     if (rawData.name) {
@@ -193,46 +166,37 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                 }
             }
 
-            // Normalization
             if (detectedName && dbColors.length > 0) {
                  const exactMatch = dbColors.find(c => c.toLowerCase() === detectedName!.toLowerCase().trim());
                  if (exactMatch) detectedName = exactMatch;
             }
 
             if (detectedName) {
-                // Avoid overwriting if multiple images map to same color
                 if (!colorImages[detectedName]) {
                     colorImages[detectedName] = base64Img;
                     detectedColorsList.push(detectedName);
                 }
             }
-
         } catch (imgError) {
             console.warn(`Failed to process image ${file.name}`, imgError);
         }
       }
 
-      // Restore alphabetical order or DB order
       if (dbName && dbColors.length > 0) {
            detectedColorsList.sort(); 
       } else {
            detectedColorsList.sort();
       }
 
-      // Main Image Selection - Keep High Quality
       let mainImageToUse = '';
       if (Object.keys(colorImages).length > 0) {
-          // If we are using a color image as main, we try to use it directly
           mainImageToUse = Object.values(colorImages)[0];
       } else if (imgFiles.length > 0) {
           try {
-            // Explicitly compress the first found image as high res for Main Image
-            mainImageToUse = await compressImage(imgFiles[0], 2048, 0.85);
+            mainImageToUse = await compressImage(imgFiles[0], 2560, 0.95);
           } catch(e) {
             mainImageToUse = '';
           }
-      } else {
-          mainImageToUse = ''; 
       }
 
       return {
@@ -240,8 +204,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
           colors: detectedColorsList,
           colorImages: colorImages,
           mainImage: mainImageToUse,
-          category: selectedCategory, // USE SELECTED CATEGORY
-          customCatalog: '' // Initialize custom catalog as empty
+          category: selectedCategory,
+          customCatalog: '' 
       };
   };
 
@@ -251,18 +215,12 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
     setExtractedFabrics([]);
 
     try {
-      // 1. Group files by immediate subfolder relative to upload root
       const groups: Record<string, File[]> = {};
-      
       files.forEach(f => {
           const parts = f.webkitRelativePath.split('/');
           let key = 'root';
-          if (parts.length > 2) {
-              key = parts[1]; // The immediate subfolder inside the root
-          } else if (parts.length === 2) {
-              key = 'root';
-          }
-          
+          if (parts.length > 2) key = parts[1];
+          else if (parts.length === 2) key = 'root';
           if (!groups[key]) groups[key] = [];
           groups[key].push(f);
       });
@@ -273,19 +231,13 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       for (let i = 0; i < groupKeys.length; i++) {
           const key = groupKeys[i];
           const groupFiles = groups[key];
-          
-          // Skip if no useful files
           if (!groupFiles.some(f => f.type.startsWith('image/') || f.type === 'application/pdf')) continue;
-
           setCurrentProgress(`Analizando ${key !== 'root' ? key : 'archivos base'} (${i + 1}/${groupKeys.length})...`);
-          
           const fabricData = await analyzeFileGroup(groupFiles, key === 'root' ? (groupFiles[0].webkitRelativePath.split('/')[0] || 'Unknown') : key);
           results.push(fabricData);
       }
-
       setExtractedFabrics(results);
       setStep('review');
-
     } catch (err: any) {
       console.error("Processing error:", err?.message || "Unknown error");
       alert('Error procesando archivos. Intenta de nuevo.');
@@ -305,21 +257,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       });
   };
 
-  const cleanUpAndClose = () => {
-      setStep('upload');
-      setFiles([]);
-      setExtractedFabrics([]);
-      onClose();
-  };
-
   const handleFinalSave = async () => {
-    if (extractedFabrics.length === 0) {
-        alert("No hay telas seleccionadas para guardar.");
-        return;
-    }
-    
+    if (extractedFabrics.length === 0) return;
     setIsSaving(true);
-    
     try {
         const finalFabrics: Fabric[] = extractedFabrics.map(data => ({
             id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -330,24 +270,22 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             colors: data.colors || [],
             colorImages: data.colorImages || {},
             mainImage: data.mainImage || '',
-            category: selectedCategory, // Ensure consistency
-            customCatalog: data.customCatalog, // Save custom catalog
-            pdfUrl: data.pdfUrl // Persist PDF if present
+            category: selectedCategory,
+            customCatalog: data.customCatalog, 
+            pdfUrl: data.pdfUrl
         }));
 
         if (finalFabrics.length === 1) {
             await onSave(finalFabrics[0]);
         } else if (finalFabrics.length > 1 && onBulkSave) {
             await onBulkSave(finalFabrics);
-        } else {
-            for (const f of finalFabrics) {
-                await onSave(f);
-            }
         }
         
-        // Wait a tick to ensure UI updates
         setTimeout(() => {
-            cleanUpAndClose();
+            setStep('upload');
+            setFiles([]);
+            setExtractedFabrics([]);
+            onClose();
         }, 500);
 
     } catch (error: any) {
@@ -375,7 +313,6 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         <h2 className="font-serif text-3xl mb-2 text-primary text-center flex-shrink-0">
             {step === 'review' ? 'Revisar antes de Guardar' : 'Subir Archivos'}
         </h2>
-        {/* NEW: Category Selector */}
         {step === 'upload' && !isSaving && (
             <div className="flex justify-center mb-6">
                 <div className="flex bg-gray-100 p-1 rounded-full">
@@ -395,13 +332,13 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             </div>
         )}
 
-
         {isSaving ? (
              <div className="flex flex-col items-center justify-center flex-1 h-64 space-y-6 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
                 <div>
-                    <p className="font-serif text-lg font-bold">Guardando en Catálogo...</p>
-                    <p className="text-xs text-gray-400 mt-2">Subiendo imágenes de alta calidad paso a paso.</p>
+                    <p className="font-serif text-lg font-bold">Guardando en la Nube...</p>
+                    <p className="text-xs text-gray-400 mt-2">Subiendo imágenes de ALTA CALIDAD a Firebase Storage.</p>
+                    <p className="text-xs text-gray-300 mt-1">Esto puede tardar unos segundos dependiendo de tu conexión.</p>
                 </div>
              </div>
         ) : (
@@ -416,7 +353,6 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                             <>
                                 <svg className="w-12 h-12 text-green-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                 <p className="font-bold text-lg">{files.length} archivos seleccionados</p>
-                                <p className="text-sm text-gray-500 mt-2">Puede contener múltiples carpetas</p>
                             </>
                         ) : (
                             <>
@@ -468,13 +404,11 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                 <h3 className="text-lg font-serif text-green-800">¡Análisis Completo!</h3>
                                 <p className="text-xs text-green-600">Se han detectado {extractedFabrics.length} modelos. Revisa y selecciona qué subir.</p>
                             </div>
-                            <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                          </div>
                          
                          {extractedFabrics.map((f, i) => (
                              <div key={i} className="flex flex-col gap-4 p-6 bg-gray-50 rounded-3xl border border-gray-100 transition-all hover:shadow-lg hover:bg-white relative">
                                  <div className="flex flex-col md:flex-row gap-6">
-                                    {/* Main Image with + Button */}
                                     <div className="relative group">
                                         <div className="w-24 h-24 md:w-32 md:h-32 flex-shrink-0 bg-gray-200 rounded-2xl overflow-hidden shadow-sm">
                                             {f.mainImage ? (
@@ -483,7 +417,6 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                                 <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No Img</div>
                                             )}
                                         </div>
-                                        {/* Circular Plus Button for Main Image */}
                                         <button 
                                             onClick={() => triggerUpload(i, 'main')}
                                             className="absolute -top-3 -left-3 w-8 h-8 bg-white text-blue-600 rounded-full flex items-center justify-center shadow-md border border-gray-100 hover:scale-110 transition-transform z-10"
@@ -493,49 +426,42 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                         </button>
                                     </div>
 
-                                    {/* Edit Fields - Restyled */}
                                     <div className="flex-1 flex flex-col space-y-3">
                                         <div className="flex flex-col gap-2">
-                                            {/* Name Input - Boxed and Larger (5% bigger) */}
                                             <input 
                                                 type="text" 
                                                 value={f.name} 
                                                 onChange={(e) => updateFabricField(i, 'name', e.target.value)}
-                                                className="w-full p-4 bg-white rounded-xl border border-gray-200 font-serif text-3xl font-bold focus:ring-2 focus:ring-black focus:border-transparent outline-none shadow-sm transition-all"
+                                                className="w-full p-4 bg-white rounded-xl border border-gray-200 font-serif text-3xl font-bold focus:ring-2 focus:ring-black outline-none shadow-sm"
                                                 placeholder="Nombre del Modelo"
                                             />
-                                            {/* Supplier Input - Boxed and Larger */}
                                             <input 
                                                 type="text" 
                                                 value={f.supplier} 
                                                 onChange={(e) => updateFabricField(i, 'supplier', e.target.value)}
-                                                className="w-full md:w-2/3 p-3 bg-white rounded-lg border border-gray-200 text-sm font-bold uppercase tracking-widest text-gray-500 focus:ring-1 focus:ring-black outline-none shadow-sm"
+                                                className="w-full md:w-2/3 p-3 bg-white rounded-lg border border-gray-200 text-sm font-bold uppercase tracking-widest text-gray-500 focus:ring-1 focus:ring-black outline-none"
                                                 placeholder="PROVEEDOR"
                                             />
                                         </div>
                                         
-                                        {/* Custom Catalog Field (Review Step) */}
                                         <div className="flex items-center">
                                             <input 
                                                 type="text" 
                                                 value={f.customCatalog || ''} 
                                                 onChange={(e) => updateFabricField(i, 'customCatalog', e.target.value)}
-                                                className="text-sm text-blue-800 bg-blue-50/50 px-3 py-2 rounded-lg border border-blue-100 focus:border-blue-400 focus:outline-none w-full md:w-2/3 placeholder-blue-300 font-medium"
+                                                className="text-sm text-blue-800 bg-blue-50/50 px-3 py-2 rounded-lg border border-blue-100 focus:border-blue-400 focus:outline-none w-full md:w-2/3 font-medium"
                                                 placeholder="Catálogo (yo lo escribo)"
                                             />
                                         </div>
 
-                                        {/* Color Preview Swatches */}
                                         <div className="mt-2">
                                             <div className="flex items-center space-x-2 mb-2">
                                                 <p className="text-[10px] text-gray-400 uppercase font-bold">
                                                     {f.colors?.length || 0} Colores Detectados
                                                 </p>
-                                                {/* Plus Button for Adding Color */}
                                                 <button 
                                                     onClick={() => triggerUpload(i, 'add_color')}
                                                     className="w-5 h-5 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center border border-blue-100 hover:bg-blue-100 transition-colors shadow-sm"
-                                                    title="Añadir color nuevo"
                                                 >
                                                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                                                 </button>
@@ -547,14 +473,12 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                                         key={idx} 
                                                         onClick={() => triggerUpload(i, 'color', c)}
                                                         className="group relative w-8 h-8 rounded-full bg-gray-200 border-2 border-white shadow-sm overflow-hidden cursor-pointer hover:border-black transition-all" 
-                                                        title={`${c} - Click para cambiar foto`}
                                                     >
                                                         {f.colorImages && f.colorImages[c] ? (
                                                             <img src={f.colorImages[c]} alt={c} className="w-full h-full object-cover" />
                                                         ) : (
                                                             <div className="w-full h-full bg-gray-300"></div>
                                                         )}
-                                                        {/* Hover Edit Icon Overlay */}
                                                         <div className="absolute inset-0 bg-black/30 hidden group-hover:flex items-center justify-center">
                                                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                                                         </div>
@@ -563,7 +487,6 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                             </div>
                                         </div>
                                         
-                                        {/* Toggleable Specs Area */}
                                         {expandedSpecsIndex === i && (
                                             <div className="mt-2 animate-fade-in">
                                                 <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Resumen Técnico (Edición Rápida)</label>
@@ -576,22 +499,16 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                         )}
                                     </div>
 
-                                    {/* Action Buttons */}
                                     <div className="flex flex-row md:flex-col items-start justify-start gap-2 pt-2">
-                                         {/* Delete Button */}
                                          <button 
                                             onClick={() => removeFabricFromReview(i)}
                                             className="text-red-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors w-10 h-10 flex items-center justify-center"
-                                            title="Eliminar"
                                          >
                                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                          </button>
-                                         
-                                         {/* Notebook Button (Edit Specs) - Sized Same as Trash */}
                                          <button 
                                             onClick={() => setExpandedSpecsIndex(expandedSpecsIndex === i ? null : i)}
                                             className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${expandedSpecsIndex === i ? 'bg-black text-white' : 'text-gray-400 hover:text-black hover:bg-gray-100'}`}
-                                            title="Editar ficha técnica"
                                         >
                                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                                          </button>
@@ -599,12 +516,6 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                  </div>
                              </div>
                          ))}
-
-                         {extractedFabrics.length === 0 && (
-                             <div className="text-center py-10 text-gray-400">
-                                 No quedan telas en la lista.
-                             </div>
-                         )}
                      </div>
 
                      <div className="pt-4 border-t border-gray-100 mt-2 flex gap-4">
@@ -623,14 +534,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                         </button>
                      </div>
                      
-                     {/* Hidden File Input for Image Replacement */}
-                     <input 
-                        ref={singleImageInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleSingleImageChange}
-                     />
+                     <input ref={singleImageInputRef} type="file" accept="image/*" className="hidden" onChange={handleSingleImageChange} />
                   </div>
                 )}
             </>

@@ -10,7 +10,6 @@ interface EditFabricModalProps {
 }
 
 const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSave, onDelete }) => {
-  // Ensure default values for arrays/objects to prevent crashes
   const [formData, setFormData] = useState<Fabric>({ 
       ...fabric,
       colors: fabric.colors || [],
@@ -38,7 +37,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
     const oldName = newColors[index];
     newColors[index] = newName;
 
-    // Update image key if name changes
     const newColorImages = { ...formData.colorImages };
     if (newColorImages[oldName]) {
       newColorImages[newName] = newColorImages[oldName];
@@ -72,14 +70,12 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
     if (e.target.files && e.target.files[0] && editingColorIndex !== null) {
       const file = e.target.files[0];
       try {
-          // Reverted to 600px quality
-          const base64 = await compressImage(file, 600, 0.80);
+          // HIGH QUALITY: 2560px, 0.95
+          const base64 = await compressImage(file, 2560, 0.95);
           const colorName = formData.colors[editingColorIndex];
           
           setFormData(prev => {
-              // If it's the first color and main image is empty/default, use a higher res version for main
               let newMain = prev.mainImage;
-              
               return {
                 ...prev,
                 colorImages: { ...prev.colorImages, [colorName]: base64 },
@@ -87,7 +83,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
               };
           });
       } catch (err: any) {
-          console.error("Error compressing image", err?.message || "Unknown error");
           alert("Error al procesar la imagen.");
       }
       setEditingColorIndex(null);
@@ -98,7 +93,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
       if (e.target.files && e.target.files[0]) {
           const file = e.target.files[0];
           try {
-              const base64 = await compressImage(file, 1600, 0.90);
+              const base64 = await compressImage(file, 2560, 0.95);
               setFormData(prev => ({ ...prev, specsImage: base64 }));
           } catch(err) {
               alert("Error subiendo imagen de ficha técnica.");
@@ -113,11 +108,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
             alert('Solo se permiten archivos PDF.');
             return;
         }
-        if (file.size > 1000000) { // 1MB Soft Limit check
-             if(!window.confirm("El archivo PDF es mayor a 1MB. Podría haber problemas al guardar en la nube. ¿Desea continuar?")) {
-                 return;
-             }
-        }
         
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -131,8 +121,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
   const handleDeleteClick = (e: React.MouseEvent) => {
       e.stopPropagation();
       e.preventDefault();
-      
-      // Confirmation moved here to ensure UI interaction is caught
       if (window.confirm("¿Estás seguro de que quieres eliminar esta ficha completamente? Esta acción no se puede deshacer.")) {
         onDelete();
       }
@@ -149,7 +137,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
         </div>
 
         <div className="flex-1 overflow-y-auto p-8 space-y-6">
-          {/* Basic Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Nombre Tela</label>
@@ -171,7 +158,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
             </div>
           </div>
           
-          {/* Custom Catalog Field - Emphasized */}
           <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
             <label className="block text-xs font-bold uppercase text-blue-800 mb-2">Catálogo (Lo escribes tú)</label>
             <input 
@@ -192,7 +178,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
              />
           </div>
 
-          {/* Specs */}
           <div className="grid grid-cols-2 gap-4">
              <div>
                 <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Composición</label>
@@ -212,12 +197,10 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
              </div>
           </div>
           
-          {/* Tech Sheet Uploads (Image & PDF) */}
           <div className="border-t border-gray-100 pt-4">
               <label className="block text-xs font-bold uppercase text-gray-400 mb-4">Archivos de Ficha Técnica</label>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Image Upload */}
                   <div className="flex flex-col space-y-2 p-3 border border-gray-100 rounded-xl bg-gray-50">
                       <span className="text-[10px] font-bold uppercase text-gray-400">Imagen (JPG/PNG)</span>
                       <div className="flex items-center space-x-3">
@@ -242,7 +225,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                       </div>
                   </div>
 
-                  {/* PDF Upload */}
                   <div className="flex flex-col space-y-2 p-3 border border-gray-100 rounded-xl bg-gray-50">
                       <span className="text-[10px] font-bold uppercase text-gray-400">Documento (PDF)</span>
                       <div className="flex items-center space-x-3">
@@ -274,7 +256,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
 
           <hr className="border-gray-100" />
 
-          {/* Colors Management */}
           <div>
               <div className="flex justify-between items-center mb-4">
                   <label className="block text-xs font-bold uppercase text-gray-400">Fotos y Colores</label>
@@ -284,7 +265,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
               <div className="space-y-3">
                   {formData.colors.map((color, idx) => (
                       <div key={idx} className="flex items-center space-x-3 bg-gray-50 p-2 rounded-lg">
-                          {/* Image Preview / Upload */}
                           <div 
                               onClick={() => triggerImageUpload(idx)}
                               className="w-10 h-10 bg-gray-200 rounded cursor-pointer overflow-hidden flex-shrink-0 hover:opacity-80 relative group"
@@ -299,7 +279,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                               </div>
                           </div>
 
-                          {/* Name Input */}
                           <input 
                               type="text" 
                               value={color} 
@@ -307,7 +286,6 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                               className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-medium"
                           />
 
-                          {/* Delete */}
                           <button onClick={() => handleRemoveColor(idx)} className="text-red-400 hover:text-red-600 p-2" title="Quitar Color">
                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
@@ -335,14 +313,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
             </button>
         </div>
 
-        {/* Hidden File Input */}
-        <input 
-            type="file" 
-            ref={fileInputRef} 
-            className="hidden" 
-            accept="image/*"
-            onChange={handleImageFileChange}
-        />
+        <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleImageFileChange} />
       </div>
     </div>
   );
