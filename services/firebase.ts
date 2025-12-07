@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import * as firebaseApp from "firebase/app";
 import { 
   collection, 
   getDocs, 
@@ -29,10 +29,12 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+const app = firebaseApp.initializeApp(firebaseConfig);
 
-// Initialize Firestore
-const db = initializeFirestore(app, {});
+// Initialize Firestore with long polling to avoid connection timeouts in restricted environments
+const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+});
 
 // Initialize Storage
 const storage = getStorage(app);
