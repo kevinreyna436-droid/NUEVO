@@ -12,7 +12,7 @@ import {
 import { 
   getStorage, 
   ref, 
-  uploadString, 
+  uploadBytes, 
   getDownloadURL 
 } from "firebase/storage";
 import type { QuerySnapshot, DocumentData } from "firebase/firestore";
@@ -43,22 +43,45 @@ const COLLECTION_NAME = "fabrics";
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
+ * Converts a Base64 Data URI to a Blob
+ */
+const dataURItoBlob = (dataURI: string): Blob => {
+  try {
+    const byteString = atob(dataURI.split(',')[1]);
+    const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([ab], { type: mimeString });
+  } catch (e) {
+    console.error("Error converting dataURI to blob", e);
+    return new Blob([]);
+  }
+};
+
+/**
  * Uploads a Base64 image to Firebase Storage and returns the Public URL.
+ * Uses uploadBytes for better performance and stability with large files.
  */
 const uploadImageToStorage = async (base64String: string, path: string): Promise<string> => {
     try {
         // If it's already a URL (http...), just return it.
         if (base64String.startsWith('http')) return base64String;
         
-        // Remove header if present (e.g. "data:image/jpeg;base64,") usually handled by uploadString 'data_url' format
         const storageRef = ref(storage, path);
+        const blob = dataURItoBlob(base64String);
         
-        await uploadString(storageRef, base64String, 'data_url');
+        if (blob.size === 0) return base64String; // Failed conversion fallback
+
+        await uploadBytes(storageRef, blob);
         const downloadURL = await getDownloadURL(storageRef);
         return downloadURL;
     } catch (error) {
         console.error("Error uploading to storage:", error);
-        return base64String; // Fallback to base64 if upload fails (though this might fail Firestore save)
+        // Throwing allows the retry logic in saveFabricToFirestore to handle it or fail gracefully
+        throw error;
     }
 };
 
@@ -73,13 +96,21 @@ const processFabricImagesForStorage = async (fabric: Fabric): Promise<Fabric> =>
     // 1. Upload Main Image
     if (updatedFabric.mainImage && updatedFabric.mainImage.startsWith('data:')) {
         const path = `fabrics/${updatedFabric.id}/main_${timestamp}.jpg`;
-        updatedFabric.mainImage = await uploadImageToStorage(updatedFabric.mainImage, path);
+        try {
+            updatedFabric.mainImage = await uploadImageToStorage(updatedFabric.mainImage, path);
+        } catch (e) {
+            console.warn("Failed to upload main image, skipping...");
+        }
     }
 
     // 2. Upload Specs Image
     if (updatedFabric.specsImage && updatedFabric.specsImage.startsWith('data:')) {
         const path = `fabrics/${updatedFabric.id}/specs_${timestamp}.jpg`;
-        updatedFabric.specsImage = await uploadImageToStorage(updatedFabric.specsImage, path);
+        try {
+            updatedFabric.specsImage = await uploadImageToStorage(updatedFabric.specsImage, path);
+        } catch (e) {
+             console.warn("Failed to upload specs image, skipping...");
+        }
     }
 
     // 3. Upload Color Images
@@ -90,7 +121,12 @@ const processFabricImagesForStorage = async (fabric: Fabric): Promise<Fabric> =>
                 // Sanitize color name for filename
                 const safeColorName = colorName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
                 const path = `fabrics/${updatedFabric.id}/colors/${safeColorName}_${timestamp}.jpg`;
-                newColorImages[colorName] = await uploadImageToStorage(base64, path);
+                try {
+                    newColorImages[colorName] = await uploadImageToStorage(base64, path);
+                } catch (e) {
+                    console.warn(`Failed to upload color ${colorName}, skipping...`);
+                    newColorImages[colorName] = base64; // Keep base64 if fail, though it might fail Firestore
+                }
             } else {
                 newColorImages[colorName] = base64;
             }
@@ -174,7 +210,7 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   try {
     const serverPromise = getDocs(collection(db, COLLECTION_NAME));
     const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT_SLOW_NETWORK')), 8000)
+        setTimeout(() => reject(new Error('TIMEOUT_SLOW_NETWORK')), 15000) // Increased timeout for reading
     );
 
     let snapshot: QuerySnapshot<DocumentData>;
@@ -221,8 +257,6 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
 export const deleteFabricFromFirestore = async (fabricId: string) => {
   try {
     await retryOperation(() => deleteDoc(doc(db, COLLECTION_NAME, fabricId)));
-    // Note: We are not automatically deleting images from Storage here to keep logic simple/safe.
-    // They can be cleaned up manually or via Cloud Functions.
   } catch (error) {
     console.error("Error deleting document", error);
     throw error;
