@@ -12,7 +12,8 @@ import {
   saveFabricToFirestore, 
   saveBatchFabricsToFirestore, 
   deleteFabricFromFirestore, 
-  clearFirestoreCollection 
+  clearFirestoreCollection,
+  isOfflineMode
 } from './services/firebase';
 
 // Type for Sorting
@@ -27,6 +28,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'wood'>('model');
   const [loading, setLoading] = useState(true);
+  const [offlineStatus, setOfflineStatus] = useState(false);
   
   // Sorting State - Default "color"
   const [sortBy, setSortBy] = useState<SortOption>('color');
@@ -44,6 +46,10 @@ function App() {
     setLoading(true);
     try {
       const dbData = await getFabricsFromFirestore();
+      
+      // Update offline status after fetch attempt
+      setOfflineStatus(isOfflineMode());
+
       if (dbData && dbData.length > 0) {
         // DEDUPLICATION LOGIC:
         const uniqueFabrics: Fabric[] = [];
@@ -143,12 +149,14 @@ function App() {
   };
 
   const handleReset = async () => {
-      if(window.confirm("¿Estás seguro de que quieres borrar TODA la información de la base de datos (Nube)? Esta acción no se puede deshacer.")) {
+      if(window.confirm("¿Estás seguro de que quieres borrar TODA la información? Esto reiniciará la base de datos y permitirá reconectar si la nube estaba caída.")) {
           try {
             setFabrics([]);
             await clearFirestoreCollection();
             setUploadModalOpen(false);
-            alert("Catálogo reseteado correctamente en la nube.");
+            setOfflineStatus(false); // Optimistically reset status
+            alert("Catálogo reseteado. Recarga la página para verificar conexión.");
+            window.location.reload();
           } catch (e: any) {
             console.error("Error resetting collection:", e?.message || "Unknown error");
             alert("Error al resetear la base de datos.");
@@ -328,6 +336,13 @@ function App() {
             <h1 className="font-serif text-6xl md:text-8xl font-bold text-center tracking-tight text-slate-900 leading-none">
                 Catálogo de telas
             </h1>
+            
+            {offlineStatus && (
+                <div className="px-4 py-1 bg-gray-200 rounded-full text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                    Modo Offline (Local)
+                </div>
+            )}
+
             <div className="flex space-x-8 md:space-x-12 border-b border-transparent">
                 <button 
                     onClick={() => { setActiveTab('model'); setFilterMenuOpen(false); }}
@@ -433,15 +448,16 @@ function App() {
                 </div>
             ) : filteredItemCount === 0 && activeTab !== 'wood' ? (
                 <div className="text-center py-20 text-gray-300">
-                     <p>El catálogo está vacío o no se pudo cargar.</p>
-                     <p className="text-xs mt-2 mb-4">Verifica tu conexión a internet.</p>
-                     <button 
-                        onClick={loadData}
-                        className="bg-black text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-gray-800"
-                     >
-                        Reintentar
-                     </button>
-                     <p className="text-xs mt-4">O usa el botón "." arriba a la derecha para cargar datos nuevos.</p>
+                     <p>El catálogo está vacío.</p>
+                     {offlineStatus && <p className="text-xs mt-2 text-gray-400">Modo Offline activado (Base de datos no disponible).</p>}
+                     <div className="mt-4">
+                        <button 
+                           onClick={handleReset}
+                           className="text-xs text-red-300 hover:text-red-500 underline"
+                        >
+                           Resetear App
+                        </button>
+                     </div>
                 </div>
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-5 gap-6 xl:gap-8 w-full max-w-[1920px] justify-center">

@@ -8,7 +8,8 @@ import {
   writeBatch,
   initializeFirestore,
   disableNetwork,
-  setLogLevel
+  setLogLevel,
+  enableNetwork
 } from "firebase/firestore";
 import { 
   getStorage, 
@@ -28,17 +29,16 @@ const firebaseConfig = {
   projectId: "creata-catalogo",
   storageBucket: "creata-catalogo.firebasestorage.app",
   messagingSenderId: "667237641772",
-  appId: "1:667237641772:web:4772ca31a28594bccfab89",
-  measurementId: "G-74WPNT7EF6"
+  appId: "1:667237641772:web:50a3ce92c5839d49cfab89",
+  measurementId: "G-RH13X81KLF"
 };
 
 // Initialize Firebase
 const app = firebaseApp.initializeApp(firebaseConfig);
 
-// Initialize Firestore with settings to optimize for potential offline usage
+// Initialize Firestore - Removed experimentalAutoDetectLongPolling to reduce noise
 const db = initializeFirestore(app, {
-  ignoreUndefinedProperties: true,
-  experimentalAutoDetectLongPolling: true // Helps with connection stability
+  ignoreUndefinedProperties: true
 });
 
 // Initialize Storage
@@ -46,8 +46,13 @@ const storage = getStorage(app);
 
 const COLLECTION_NAME = "fabrics";
 const LOCAL_STORAGE_KEY = "creata_fabrics_offline_backup";
+const BROKEN_DB_KEY = "creata_firestore_broken";
 
-// CIRCUIT BREAKER: If backend fails once (e.g. DB missing), stay offline for session.
+// Reset any persistent offline flag to ensure we try the new configuration
+try {
+    localStorage.removeItem(BROKEN_DB_KEY);
+} catch(e) {}
+
 let globalOfflineMode = false;
 
 // --- Local Storage Helpers ---
@@ -231,7 +236,7 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
     // Use a Promise race to fail fast if backend is unreachable
     const serverPromise = getDocs(collection(db, COLLECTION_NAME));
     const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT_CONNECT')), 1500)
+        setTimeout(() => reject(new Error('TIMEOUT_CONNECT')), 2000)
     );
 
     const snapshot = await Promise.race([serverPromise, timeoutPromise]);
@@ -243,7 +248,9 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
     
     // Check specifically for "missing database" or "not found" which implies misconfiguration
     if (code === 'not-found' || msg.includes('does not exist') || code === 'unavailable') {
-        console.warn("Backend unavailable or not configured. Switching to Offline Mode.");
+        console.warn("Backend configuration issue detected (DB missing). Switching to Offline Mode.");
+        
+        // ENABLE OFFLINE MODE FOR THIS SESSION
         globalOfflineMode = true;
         
         // Permanently disable network for this session to stop SDK retries/logs
@@ -280,8 +287,6 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
     
   } catch (error: any) {
     console.warn("Firestore save failed, saving to LocalStorage.");
-    globalOfflineMode = true; // Trip circuit breaker on save fail too
-    try { await disableNetwork(db); } catch(e) {}
     saveLocalFabric(fabricToSave); 
   }
 };
@@ -306,16 +311,17 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
   try {
     await deleteDoc(doc(db, COLLECTION_NAME, fabricId));
   } catch (error) {
-    globalOfflineMode = true;
-    try { await disableNetwork(db); } catch(e) {}
     deleteLocalFabric(fabricId);
   }
 };
 
 export const clearFirestoreCollection = async () => {
+  localStorage.removeItem(BROKEN_DB_KEY);
+  localStorage.removeItem(LOCAL_STORAGE_KEY);
+  
   if (globalOfflineMode) {
-      clearLocalFabrics();
-      return;
+      globalOfflineMode = false;
+      try { await enableNetwork(db); } catch(e) {}
   }
 
   try {
@@ -324,8 +330,8 @@ export const clearFirestoreCollection = async () => {
     snap.docs.forEach((doc) => batch.delete(doc.ref));
     await batch.commit();
   } catch (error) {
-    globalOfflineMode = true;
-    try { await disableNetwork(db); } catch(e) {}
-    clearLocalFabrics();
+    // Ignore
   }
 };
+
+export const isOfflineMode = () => globalOfflineMode;
