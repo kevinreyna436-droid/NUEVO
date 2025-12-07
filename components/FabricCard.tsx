@@ -26,16 +26,24 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
     >
       {/* SECTION SUPERIOR (Imagen) - 70% height */}
       <div className="relative h-[70%] w-full bg-gray-100 overflow-hidden">
-        {/* Image */}
-        <img 
-          src={displayImage} 
-          alt={mode === 'model' ? fabric.name : `${fabric.name} - ${specificColorName}`} 
-          // UPDATED: 
-          // 1. object-center: Centers the image (removed object-top).
-          // 2. scale-[1.1]: Reduced zoom to 110% (Zoom out 30% from previous 1.4).
-          // 3. Removed translate-y classes to keep it centered.
-          className="w-full h-full object-cover object-center transition-transform duration-700 scale-[1.1] group-hover:scale-[1.15]"
-        />
+        {displayImage ? (
+          <img 
+            src={displayImage} 
+            alt={mode === 'model' ? fabric.name : `${fabric.name} - ${specificColorName}`} 
+            className="w-full h-full object-cover object-center transition-transform duration-700 scale-[1.1] group-hover:scale-[1.15]"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gray-50 group-hover:bg-gray-100 transition-colors">
+            <div className="text-center">
+              <span className="block font-serif text-3xl md:text-4xl text-gray-200 font-bold opacity-50 mb-2">
+                 {fabric.name.charAt(0)}
+              </span>
+              <span className="text-[10px] uppercase tracking-widest text-gray-300">
+                 Sin Foto
+              </span>
+            </div>
+          </div>
+        )}
         
         {/* Curved Wave Separator (SVG) */}
         <div className="absolute bottom-[-1px] left-0 w-full text-white pointer-events-none z-10">

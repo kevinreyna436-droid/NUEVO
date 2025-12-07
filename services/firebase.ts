@@ -36,9 +36,10 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = firebaseApp.initializeApp(firebaseConfig);
 
-// Initialize Firestore - Removed experimentalAutoDetectLongPolling to reduce noise
+// Initialize Firestore
 const db = initializeFirestore(app, {
-  ignoreUndefinedProperties: true
+  ignoreUndefinedProperties: true,
+  experimentalAutoDetectLongPolling: true 
 });
 
 // Initialize Storage
@@ -46,13 +47,13 @@ const storage = getStorage(app);
 
 const COLLECTION_NAME = "fabrics";
 const LOCAL_STORAGE_KEY = "creata_fabrics_offline_backup";
-const BROKEN_DB_KEY = "creata_firestore_broken";
 
-// Reset any persistent offline flag to ensure we try the new configuration
+// CLEANUP: Force remove any legacy blocking flags from previous versions
 try {
-    localStorage.removeItem(BROKEN_DB_KEY);
+    localStorage.removeItem("creata_firestore_broken");
 } catch(e) {}
 
+// SESSION-ONLY OFFLINE MODE
 let globalOfflineMode = false;
 
 // --- Local Storage Helpers ---
@@ -116,7 +117,6 @@ const dataURItoBlob = (dataURI: string): Blob => {
 };
 
 const uploadImageToStorage = async (base64String: string, path: string): Promise<string> => {
-    // Optimization: If we already know backend is dead, skip upload attempts
     if (globalOfflineMode) return base64String;
 
     try {
@@ -131,32 +131,27 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
         const downloadURL = await getDownloadURL(storageRef);
         return downloadURL;
     } catch (error) {
-        // If upload fails, just return the base64 string so the app keeps working locally
         return base64String;
     }
 };
 
 const processFabricImagesForStorage = async (fabric: Fabric): Promise<Fabric> => {
-    // If offline, skip image processing to save time and errors
     if (globalOfflineMode) return fabric;
 
     const updatedFabric = { ...fabric };
     const timestamp = Date.now();
 
     try {
-        // 1. Upload Main Image
         if (updatedFabric.mainImage && updatedFabric.mainImage.startsWith('data:')) {
             const path = `fabrics/${updatedFabric.id}/main_${timestamp}.jpg`;
             updatedFabric.mainImage = await uploadImageToStorage(updatedFabric.mainImage, path);
         }
 
-        // 2. Upload Specs Image
         if (updatedFabric.specsImage && updatedFabric.specsImage.startsWith('data:')) {
             const path = `fabrics/${updatedFabric.id}/specs_${timestamp}.jpg`;
             updatedFabric.specsImage = await uploadImageToStorage(updatedFabric.specsImage, path);
         }
 
-        // 3. Upload Color Images
         if (updatedFabric.colorImages) {
             const newColorImages: Record<string, string> = {};
             for (const [colorName, base64] of Object.entries(updatedFabric.colorImages)) {
@@ -171,7 +166,6 @@ const processFabricImagesForStorage = async (fabric: Fabric): Promise<Fabric> =>
             updatedFabric.colorImages = newColorImages;
         }
     } catch (e) {
-        // If any image upload fails, just return what we have (base64s)
         console.warn("Image upload failed, falling back to local images");
         return fabric;
     }
@@ -226,38 +220,30 @@ const createCleanFabricObject = (source: any): Fabric => {
 // --- Exported Operations with Fallback ---
 
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
-  // 1. Immediate circuit breaker
+  // If we already failed in this session, don't try again until reload
   if (globalOfflineMode) {
       return getLocalFabrics();
   }
 
   try {
-    // 2. Attempt connection with a very short timeout
-    // Use a Promise race to fail fast if backend is unreachable
+    // Attempt connection with a slightly longer timeout
     const serverPromise = getDocs(collection(db, COLLECTION_NAME));
     const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT_CONNECT')), 2000)
+        setTimeout(() => reject(new Error('TIMEOUT_CONNECT')), 4000)
     );
 
     const snapshot = await Promise.race([serverPromise, timeoutPromise]);
     return snapshot.docs.map(doc => createCleanFabricObject(doc.data()));
 
   } catch (error: any) {
-    const code = error.code || '';
-    const msg = error.message || '';
+    console.warn("Firestore connection failed. Switching to Session Offline Mode.", error?.message);
     
-    // Check specifically for "missing database" or "not found" which implies misconfiguration
-    if (code === 'not-found' || msg.includes('does not exist') || code === 'unavailable') {
-        console.warn("Backend configuration issue detected (DB missing). Switching to Offline Mode.");
-        
-        // ENABLE OFFLINE MODE FOR THIS SESSION
-        globalOfflineMode = true;
-        
-        // Permanently disable network for this session to stop SDK retries/logs
-        try { await disableNetwork(db); } catch(e) {}
-    }
+    // Switch to offline mode ONLY for this session
+    globalOfflineMode = true;
     
-    // 4. Return Fallback
+    // We disable the network to stop the SDK from spamming console errors for THIS session only
+    try { await disableNetwork(db); } catch(e) {}
+    
     return getLocalFabrics();
   }
 };
@@ -281,7 +267,7 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
     if (!cleanFabric.id) throw new Error("Invalid ID");
     
     const savePromise = setDoc(doc(db, COLLECTION_NAME, cleanFabric.id), cleanFabric, { merge: true });
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_SAVE')), 2000));
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_SAVE')), 4000));
     
     await Promise.race([savePromise, timeoutPromise]);
     
@@ -316,9 +302,9 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
 };
 
 export const clearFirestoreCollection = async () => {
-  localStorage.removeItem(BROKEN_DB_KEY);
   localStorage.removeItem(LOCAL_STORAGE_KEY);
   
+  // If manual clear, try to re-enable network in case they want to retry
   if (globalOfflineMode) {
       globalOfflineMode = false;
       try { await enableNetwork(db); } catch(e) {}
@@ -330,7 +316,7 @@ export const clearFirestoreCollection = async () => {
     snap.docs.forEach((doc) => batch.delete(doc.ref));
     await batch.commit();
   } catch (error) {
-    // Ignore
+    // Ignore error
   }
 };
 

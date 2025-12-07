@@ -65,10 +65,13 @@ function App() {
 
         setFabrics(uniqueFabrics);
       } else {
-        setFabrics([]); 
+        // FALLBACK: Load static data if DB is empty or connection failed
+        console.log("Loading static catalog data...");
+        setFabrics(INITIAL_FABRICS); 
       }
     } catch (e: any) {
-      console.error("Error loading initial data:", e?.message || "Unknown error");
+      console.error("Error loading data, falling back to static:", e?.message || "Unknown error");
+      setFabrics(INITIAL_FABRICS);
     } finally {
       setLoading(false);
     }
@@ -94,7 +97,7 @@ function App() {
             
         setColorLightbox({
             isOpen: true,
-            image: img,
+            image: img || '', // Handle potentially empty image for lightbox
             fabricId: fabric.id,
             colorName: specificColor || 'Unknown'
         });
@@ -254,7 +257,7 @@ function App() {
 
     setColorLightbox({
         isOpen: true,
-        image: img,
+        image: img || '',
         fabricId: newItem.fabric.id,
         colorName: newItem.colorName
     });
@@ -338,8 +341,13 @@ function App() {
             </h1>
             
             {offlineStatus && (
-                <div className="px-4 py-1 bg-gray-200 rounded-full text-[10px] font-bold uppercase tracking-widest text-gray-500">
-                    Modo Offline (Local)
+                <div className="px-4 py-2 bg-red-50 border border-red-100 rounded-lg flex flex-col items-center">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-red-400 mb-1">
+                        Modo Offline (Sin Conexión)
+                    </div>
+                    <div className="text-[9px] text-red-300 text-center max-w-md">
+                        Mostrando catálogo base. La sincronización se activará cuando la base de datos esté disponible.
+                    </div>
                 </div>
             )}
 
@@ -449,7 +457,7 @@ function App() {
             ) : filteredItemCount === 0 && activeTab !== 'wood' ? (
                 <div className="text-center py-20 text-gray-300">
                      <p>El catálogo está vacío.</p>
-                     {offlineStatus && <p className="text-xs mt-2 text-gray-400">Modo Offline activado (Base de datos no disponible).</p>}
+                     {offlineStatus && <p className="text-xs mt-2 text-red-300">Revisa que la base de datos esté creada en Firebase Console.</p>}
                      <div className="mt-4">
                         <button 
                            onClick={handleReset}
@@ -509,11 +517,18 @@ function App() {
                            w-[90vw] h-[90vw] md:w-[80vh] md:h-[80vh]"
                 onClick={(e) => e.stopPropagation()}
             >
-                 <img 
-                    src={colorLightbox.image} 
-                    alt={colorLightbox.colorName} 
-                    className="w-full h-full object-contain"
-                 />
+                 {colorLightbox.image ? (
+                     <img 
+                        src={colorLightbox.image} 
+                        alt={colorLightbox.colorName} 
+                        className="w-full h-full object-contain"
+                     />
+                 ) : (
+                     <div className="flex flex-col items-center justify-center text-gray-300">
+                         <svg className="w-16 h-16 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                         <span className="text-xs uppercase tracking-widest">Sin Imagen</span>
+                     </div>
+                 )}
             </div>
 
             <button 

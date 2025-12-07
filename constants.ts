@@ -149,7 +149,6 @@ export const MASTER_FABRIC_DB: Record<string, string[]> = {
   "Presto": ["Charcoal", "Flax", "Stone"],
   "Prohibition": ["Ivory", "Pearl", "Snow"],
   "Rayos": ["Ivory", "Moccasin", "Pewter", "Sugar", "Tan"],
-  "Reflect": ["Charcoal", "Dove", "Ecru", "Fossil", "Nature", "Snow", "Mystic Green", "Beige", "Cream", "Gold", "Silver", "Platinum"],
   "Rhapsody": ["Kaleidoscope", "Placid Blue"],
   "Ricochet": ["Flax", "Natural"],
   "Rio": ["Ash", "Driftwood", "Graphite", "Salt", "Spinach"],
@@ -203,5 +202,21 @@ export const MASTER_FABRIC_DB: Record<string, string[]> = {
   "Zenith": ["Aqua", "Black", "Brick", "Buttercup", "Cobalt", "Cocoa", "Emerald", "Grape", "Marine", "Mineral", "Natural", "Ocean", "Red", "Snow", "Stone", "Toffe", "Tusk", "Zinc", "Coral"]
 };
 
-// INITIAL_FABRICS reverted to empty
-export const INITIAL_FABRICS: Fabric[] = [];
+// INITIAL_FABRICS now generated from Master DB so the app is never empty
+export const INITIAL_FABRICS: Fabric[] = Object.entries(MASTER_FABRIC_DB).map(([name, colors]) => ({
+  id: `static-${name.toLowerCase().replace(/\s+/g, '-')}`,
+  name: name,
+  supplier: 'Creata', 
+  technicalSummary: 'Colección de catálogo general.',
+  specs: {
+    composition: 'Consultar',
+    martindale: 'N/A',
+    usage: 'Tapicería',
+    weight: 'N/A'
+  },
+  colors: colors,
+  colorImages: {},
+  mainImage: '', // Will use fallback
+  category: 'model',
+  customCatalog: 'Colección General'
+}));
