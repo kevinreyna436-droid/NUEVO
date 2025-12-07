@@ -341,17 +341,6 @@ function App() {
                 Catálogo de telas
             </h1>
             
-            {offlineStatus && (
-                <div className="px-4 py-2 bg-red-50 border border-red-100 rounded-lg flex flex-col items-center">
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-red-400 mb-1">
-                        Modo Offline (Sin Conexión)
-                    </div>
-                    <div className="text-[9px] text-red-300 text-center max-w-md">
-                        Mostrando catálogo base. La sincronización se activará cuando la base de datos esté disponible.
-                    </div>
-                </div>
-            )}
-
             <div className="flex space-x-8 md:space-x-12 border-b border-transparent">
                 <button 
                     onClick={() => { setActiveTab('model'); setFilterMenuOpen(false); }}
