@@ -48,7 +48,7 @@ const storage = getStorage(app);
 const COLLECTION_NAME = "fabrics";
 const LOCAL_STORAGE_KEY = "creata_fabrics_offline_backup";
 
-// CLEANUP: Force remove any legacy blocking flags from previous versions
+// CLEANUP: Force remove any legacy blocking flags from previous versions to ensure fresh connection attempt
 try {
     localStorage.removeItem("creata_firestore_broken");
 } catch(e) {}
