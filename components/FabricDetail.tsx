@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Fabric } from '../types';
 import EditFabricModal from './EditFabricModal';
+import { generateFormatexSKU, isFormatexSupplier } from '../utils/skuUtils';
 
 interface FabricDetailProps {
   fabric: Fabric;
@@ -16,6 +17,9 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
   
   // Sort colors alphabetically for display, handle undefined colors safely
   const sortedColors = [...(fabric.colors || [])].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+  
+  // Check if supplier matches Formatex rules
+  const isFormatex = isFormatexSupplier(fabric.supplier);
 
   // Keydown listener for arrow keys in lightbox
   useEffect(() => {
@@ -55,6 +59,16 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
       
       e.preventDefault();
       
+      // Generate SKUs text if applicable
+      let skuSection = '';
+      if (isFormatex) {
+          skuSection = '\nCÓDIGOS DE REFERENCIA (SKU)\n';
+          sortedColors.forEach(color => {
+              const sku = generateFormatexSKU(fabric.name, color);
+              skuSection += `- ${color}: ${sku}\n`;
+          });
+      }
+
       // Generate a text file with the specs
       const content = `
 CREATA COLLECTION - FICHA TÉCNICA
@@ -73,7 +87,7 @@ ESPECIFICACIONES
 
 VARIANTES DE COLOR
 ${sortedColors.join(', ')}
-
+${skuSection}
 ---------------------------------
 Generado automáticamente por Creata App
 `;
@@ -133,6 +147,12 @@ Generado automáticamente por Creata App
                   alt="Full Texture" 
                   className="w-full h-full object-contain"
                />
+               {/* Show SKU in Lightbox if Formatex */}
+               {isFormatex && (
+                   <div className="absolute bottom-4 right-4 bg-black/60 text-white px-3 py-1 rounded-full text-xs font-bold tracking-widest backdrop-blur-md">
+                       {generateFormatexSKU(fabric.name, sortedColors[lightboxIndex])}
+                   </div>
+               )}
             </div>
 
             {/* Next Button (Small Arrow) */}
@@ -229,6 +249,23 @@ Generado automáticamente por Creata App
                             </div>
                         </div>
 
+                        {/* SKU SECTION FOR FORMATEX */}
+                        {isFormatex && (
+                            <div className="mt-8 border-t border-gray-100 pt-6">
+                                <h4 className="font-serif text-xl mb-4 text-slate-800">Referencia SKU (Formatex)</h4>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                    {sortedColors.map((color, idx) => (
+                                        <div key={idx} className="bg-gray-50 p-2 rounded-lg border border-gray-100">
+                                            <div className="text-[10px] text-gray-400 font-bold uppercase truncate">{color}</div>
+                                            <div className="text-sm font-mono text-slate-800 font-bold">
+                                                {generateFormatexSKU(fabric.name, color)}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="mt-8 flex justify-end">
                              <a 
                                href={fabric.pdfUrl || "#"} 
@@ -278,6 +315,12 @@ Generado automáticamente por Creata App
                     <p className="mt-6 text-lg font-bold text-slate-900 uppercase tracking-widest text-center group-hover:text-black transition-colors">
                       {color}
                     </p>
+                    {/* Optional: Show SKU below color name if Formatex */}
+                    {isFormatex && (
+                        <p className="text-[10px] text-gray-400 font-mono mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {generateFormatexSKU(fabric.name, color)}
+                        </p>
+                    )}
                   </div>
                 );
               })}
