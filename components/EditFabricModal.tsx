@@ -72,15 +72,20 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
     if (e.target.files && e.target.files[0] && editingColorIndex !== null) {
       const file = e.target.files[0];
       try {
-          // HIGH QUALITY: 1024px, 0.85
-          const base64 = await compressImage(file, 1024, 0.85);
+          // COMPRESSION UPDATE: 350px for colors to fit Firestore
+          const base64 = await compressImage(file, 350, 0.70);
           const colorName = formData.colors[editingColorIndex];
-          setFormData(prev => ({
-            ...prev,
-            colorImages: { ...prev.colorImages, [colorName]: base64 },
-            // If it's the first color, update main image too optionally, or logic to keep mainImage separate
-            mainImage: editingColorIndex === 0 ? base64 : prev.mainImage
-          }));
+          
+          setFormData(prev => {
+              // If it's the first color and main image is empty/default, use a higher res version for main
+              let newMain = prev.mainImage;
+              
+              return {
+                ...prev,
+                colorImages: { ...prev.colorImages, [colorName]: base64 },
+                mainImage: newMain
+              };
+          });
       } catch (err: any) {
           console.error("Error compressing image", err?.message || "Unknown error");
           alert("Error al procesar la imagen.");

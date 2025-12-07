@@ -180,7 +180,7 @@ Generado automáticamente por Creata App
       {showSpecs && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-fade-in" onClick={() => setShowSpecs(false)}>
             <div 
-                className="bg-white w-full max-w-2xl rounded-3xl p-8 md:p-10 shadow-2xl relative"
+                className="bg-white w-full max-w-2xl rounded-3xl p-10 md:p-12 shadow-2xl relative"
                 onClick={(e) => e.stopPropagation()}
             >
                 <button 
@@ -190,7 +190,7 @@ Generado automáticamente por Creata App
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
 
-                <h3 className="font-serif text-3xl font-bold mb-6 text-slate-900">Resumen Técnico</h3>
+                <h3 className="font-serif text-3xl font-bold mb-6 text-slate-900 leading-tight">Resumen Técnico</h3>
                 
                 {fabric.specsImage ? (
                      <div className="mb-6 rounded-lg overflow-hidden border border-gray-100">
@@ -198,11 +198,11 @@ Generado automáticamente por Creata App
                      </div>
                 ) : (
                     <>
-                        <p className="text-gray-600 mb-8 leading-relaxed font-sans text-lg">
-                            {fabric.technicalSummary || "Información técnica no disponible."}
+                        <p className="text-gray-600 mb-10 leading-relaxed font-sans text-lg border-b border-gray-100 pb-8">
+                            {fabric.technicalSummary || "Información técnica detallada no disponible para este modelo."}
                         </p>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 border-t border-gray-100 pt-8 mb-8">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
                             <div className="flex flex-col">
                                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Composición</span>
                                 <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.composition || "N/A"}</span>
@@ -219,7 +219,7 @@ Generado automáticamente por Creata App
                     </>
                 )}
 
-                <div className="flex justify-end">
+                <div className="flex justify-end pt-2">
                      <a 
                        href={fabric.pdfUrl || "#"} 
                        download={`${fabric.name}-ficha-tecnica.pdf`}
