@@ -3,6 +3,7 @@ import FabricCard from './components/FabricCard';
 import FabricDetail from './components/FabricDetail';
 import UploadModal from './components/UploadModal';
 import ChatBot from './components/ChatBot';
+import PinModal from './components/PinModal';
 import ImageGenModal from './components/ImageGenModal';
 import { INITIAL_FABRICS } from './constants';
 import { Fabric, AppView } from './types';
@@ -22,6 +23,7 @@ function App() {
   const [fabrics, setFabrics] = useState<Fabric[]>([]);
   const [selectedFabricId, setSelectedFabricId] = useState<string | null>(null);
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
+  const [isPinModalOpen, setPinModalOpen] = useState(false); // PIN Modal State
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'wood'>('model');
   const [loading, setLoading] = useState(true);
@@ -71,18 +73,8 @@ function App() {
     loadData();
   }, []);
 
-  // Security Check Helper
-  const checkAuth = (): boolean => {
-      const pin = prompt("Ingrese PIN de seguridad:");
-      return pin === "3942";
-  };
-
   const handleUploadClick = () => {
-      if (checkAuth()) {
-          setUploadModalOpen(true);
-      } else {
-          alert("PIN incorrecto.");
-      }
+      setPinModalOpen(true);
   };
 
   const handleFabricClick = (fabric: Fabric, specificColor?: string) => {
@@ -323,6 +315,13 @@ function App() {
       >
         .
       </button>
+
+      {/* PIN Modal for Upload */}
+      <PinModal 
+        isOpen={isPinModalOpen} 
+        onClose={() => setPinModalOpen(false)} 
+        onSuccess={() => setUploadModalOpen(true)} 
+      />
 
       {view === 'grid' && (
         <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down">

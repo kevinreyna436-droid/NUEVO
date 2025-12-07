@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Fabric } from '../types';
 import EditFabricModal from './EditFabricModal';
+import PinModal from './PinModal';
 import { generateFormatexSKU, isFormatexSupplier } from '../utils/skuUtils';
 
 interface FabricDetailProps {
@@ -14,6 +15,7 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
   const [showSpecs, setShowSpecs] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
+  const [isPinModalOpen, setPinModalOpen] = useState(false); // PIN Modal State
   
   // Sort colors alphabetically for display, handle undefined colors safely
   const sortedColors = [...(fabric.colors || [])].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
@@ -54,17 +56,8 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
     return fabric.colorImages?.[colorName] || fabric.mainImage;
   };
 
-  const checkAuth = (): boolean => {
-      const pin = prompt("Ingrese PIN de seguridad:");
-      return pin === "3942";
-  };
-
   const handleEditClick = () => {
-      if(checkAuth()){
-          setEditModalOpen(true);
-      } else {
-          alert("PIN incorrecto.");
-      }
+      setPinModalOpen(true);
   };
 
   const handleDownloadFicha = (e: React.MouseEvent) => {
@@ -120,6 +113,13 @@ Generado automáticamente por Creata App
   return (
     <div className="min-h-screen bg-[#f2f2f2] pb-20 animate-fade-in-up relative">
       
+      {/* PIN Modal for Edit */}
+      <PinModal 
+        isOpen={isPinModalOpen} 
+        onClose={() => setPinModalOpen(false)} 
+        onSuccess={() => setEditModalOpen(true)} 
+      />
+
       {/* Edit Modal */}
       {isEditModalOpen && (
         <EditFabricModal 
