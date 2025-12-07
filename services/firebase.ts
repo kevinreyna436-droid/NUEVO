@@ -78,6 +78,8 @@ const createCleanFabricObject = (source: any): Fabric => {
     },
     colors: Array.isArray(source.colors) ? source.colors.map(safeString).filter((s: string) => s) : [],
     pdfUrl: safeString(source.pdfUrl),
+    specsImage: safeString(source.specsImage), // New Field
+    customCatalog: safeString(source.customCatalog), // New Field
     category: source.category === 'wood' ? 'wood' as const : 'model' as const,
     mainImage: safeString(source.mainImage)
   };

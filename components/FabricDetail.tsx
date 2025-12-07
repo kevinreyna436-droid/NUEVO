@@ -82,7 +82,7 @@ CREATA COLLECTION - FICHA TÉCNICA
 ---------------------------------
 Modelo: ${fabric.name}
 Proveedor: ${fabric.supplier}
-Catálogo: ${fabric.category === 'wood' ? 'Colección Maderas' : 'Colección Textil'}
+Catálogo: ${fabric.customCatalog || (fabric.category === 'wood' ? 'Colección Maderas' : 'Colección Textil')}
 
 RESUMEN TÉCNICO
 ${fabric.technicalSummary || 'Información no disponible'}
@@ -214,9 +214,9 @@ Generado automáticamente por Creata App
             <p className="text-sm text-gray-500 font-bold uppercase tracking-[0.25em] pt-2">
                 {fabric.supplier}
             </p>
-            {/* NEW: CATALOG NAME BELOW SUPPLIER */}
+            {/* NEW: CUSTOM CATALOG NAME BELOW SUPPLIER */}
             <p className="text-xs text-gray-400 font-medium uppercase tracking-widest pt-1">
-                {fabric.category === 'wood' ? 'Colección Maderas' : 'Colección Textil'}
+                {fabric.customCatalog ? fabric.customCatalog : (fabric.category === 'wood' ? 'Colección Maderas' : 'Colección Textil')}
             </p>
         </div>
 
@@ -240,40 +240,31 @@ Generado automáticamente por Creata App
                     </button>
                     
                     <div className="pr-8">
-                        <h3 className="font-serif text-3xl font-bold mb-4 text-slate-900">Resumen Técnico</h3>
-                        <p className="text-lg font-sans text-gray-600 leading-relaxed mb-8">{fabric.technicalSummary || "Información técnica no disponible."}</p>
-                        
-                        {/* CHANGED GRID TO 3 COLS AND REMOVED USAGE */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-8 border-t border-gray-100 pt-8">
-                            <div>
-                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Composición</span>
-                                <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.composition || "N/A"}</span>
-                            </div>
-                            <div>
-                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Durabilidad</span>
-                                <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.martindale || "N/A"}</span>
-                            </div>
-                            <div>
-                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Peso</span>
-                                <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.weight || "N/A"}</span>
-                            </div>
-                        </div>
-
-                        {/* SKU SECTION FOR FORMATEX */}
-                        {isFormatex && (
-                            <div className="mt-8 border-t border-gray-100 pt-6">
-                                <h4 className="font-serif text-xl mb-4 text-slate-800">Referencia SKU (Formatex)</h4>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                                    {sortedColors.map((color, idx) => (
-                                        <div key={idx} className="bg-gray-50 p-2 rounded-lg border border-gray-100">
-                                            <div className="text-[10px] text-gray-400 font-bold uppercase truncate">{color}</div>
-                                            <div className="text-sm font-mono text-slate-800 font-bold">
-                                                {generateFormatexSKU(fabric.name, color)}
-                                            </div>
-                                        </div>
-                                    ))}
+                        {/* If Specs Image exists, show it */}
+                        {fabric.specsImage ? (
+                             <div className="mb-8 rounded-lg overflow-hidden border border-gray-100">
+                                 <img src={fabric.specsImage} alt="Ficha Técnica" className="w-full h-auto object-contain" />
+                             </div>
+                        ) : (
+                            <>
+                                <h3 className="font-serif text-3xl font-bold mb-4 text-slate-900">Resumen Técnico</h3>
+                                <p className="text-lg font-sans text-gray-600 leading-relaxed mb-8">{fabric.technicalSummary || "Información técnica no disponible."}</p>
+                                
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-8 border-t border-gray-100 pt-8">
+                                    <div>
+                                        <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Composición</span>
+                                        <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.composition || "N/A"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Durabilidad</span>
+                                        <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.martindale || "N/A"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Peso</span>
+                                        <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.weight || "N/A"}</span>
+                                    </div>
                                 </div>
-                            </div>
+                            </>
                         )}
 
                         <div className="mt-8 flex justify-end">
@@ -284,7 +275,7 @@ Generado automáticamente por Creata App
                                onClick={handleDownloadFicha}
                              >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                <span>Descargar Ficha</span>
+                                <span>Descargar Ficha Texto</span>
                              </a>
                         </div>
                     </div>
@@ -322,15 +313,10 @@ Generado automáticamente por Creata App
                        </div>
                     </div>
                     
-                    <p className="mt-6 text-lg font-bold text-slate-900 uppercase tracking-widest text-center group-hover:text-black transition-colors">
+                    {/* UPDATED: Reduced top margin, only color name */}
+                    <p className="mt-3 text-lg font-bold text-slate-900 uppercase tracking-widest text-center group-hover:text-black transition-colors">
                       {color}
                     </p>
-                    {/* Optional: Show SKU below color name if Formatex */}
-                    {isFormatex && (
-                        <p className="text-[10px] text-gray-400 font-mono mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {generateFormatexSKU(fabric.name, color)}
-                        </p>
-                    )}
                   </div>
                 );
               })}

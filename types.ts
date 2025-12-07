@@ -19,7 +19,9 @@ export interface Fabric {
   colorImages?: Record<string, string>; // Map color name -> base64/url image
   mainImage: string; // Base64 or URL
   pdfUrl?: string; // Simulated
+  specsImage?: string; // New: Image representation of the tech sheet
   category: 'model' | 'wood';
+  customCatalog?: string; // New: Manual catalog name
 }
 
 export interface ChatMessage {

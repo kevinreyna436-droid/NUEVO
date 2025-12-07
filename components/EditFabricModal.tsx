@@ -18,6 +18,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
   });
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const specsImageInputRef = useRef<HTMLInputElement>(null);
   const [editingColorIndex, setEditingColorIndex] = useState<number | null>(null);
 
   const handleChange = (field: keyof Fabric, value: any) => {
@@ -86,6 +87,18 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
       setEditingColorIndex(null);
     }
   };
+  
+  const handleSpecsImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          const file = e.target.files[0];
+          try {
+              const base64 = await compressImage(file, 1600, 0.90);
+              setFormData(prev => ({ ...prev, specsImage: base64 }));
+          } catch(err) {
+              alert("Error subiendo imagen de ficha técnica.");
+          }
+      }
+  };
 
   const handleDeleteClick = (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -129,6 +142,18 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
               />
             </div>
           </div>
+          
+          {/* New Field: Custom Catalog */}
+          <div>
+            <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Catálogo (Personalizado)</label>
+            <input 
+                type="text" 
+                value={formData.customCatalog || ''} 
+                onChange={(e) => handleChange('customCatalog', e.target.value)}
+                placeholder="Ej: Colección Verano 2025"
+                className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-black outline-none"
+            />
+          </div>
 
           <div>
              <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Resumen Técnico</label>
@@ -157,6 +182,35 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                 <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Peso</label>
                 <input type="text" value={formData.specs.weight || ''} onChange={(e) => handleSpecChange('weight', e.target.value)} className="w-full p-2 bg-gray-50 rounded border border-gray-200 text-sm"/>
              </div>
+          </div>
+          
+          {/* Tech Sheet Image Upload */}
+          <div className="border-t border-gray-100 pt-4">
+              <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Ficha Técnica (Imagen)</label>
+              <div className="flex items-center space-x-4">
+                  <div className="w-16 h-16 bg-gray-100 rounded-lg border border-dashed border-gray-300 overflow-hidden flex items-center justify-center">
+                      {formData.specsImage ? (
+                          <img src={formData.specsImage} alt="Specs" className="w-full h-full object-cover" />
+                      ) : (
+                          <span className="text-gray-300 text-xs">Sin Img</span>
+                      )}
+                  </div>
+                  <button 
+                    onClick={() => specsImageInputRef.current?.click()}
+                    className="px-4 py-2 bg-gray-100 rounded-lg text-xs font-bold uppercase hover:bg-gray-200 transition-colors"
+                  >
+                      Subir / Cambiar Imagen
+                  </button>
+                  {formData.specsImage && (
+                      <button 
+                        onClick={() => handleChange('specsImage', '')}
+                        className="text-red-400 text-xs font-bold uppercase hover:text-red-600"
+                      >
+                          Borrar
+                      </button>
+                  )}
+                  <input ref={specsImageInputRef} type="file" className="hidden" accept="image/*" onChange={handleSpecsImageChange} />
+              </div>
           </div>
 
           <hr className="border-gray-100" />

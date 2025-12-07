@@ -224,6 +224,13 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       });
   };
 
+  const cleanUpAndClose = () => {
+      setStep('upload');
+      setFiles([]);
+      setExtractedFabrics([]);
+      onClose();
+  };
+
   const handleFinalSave = async () => {
     if (extractedFabrics.length === 0) {
         alert("No hay telas seleccionadas para guardar.");
@@ -254,11 +261,12 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                 await onSave(f);
             }
         }
+        
+        // Wait a tick to ensure UI updates
+        setTimeout(() => {
+            cleanUpAndClose();
+        }, 500);
 
-        setStep('upload');
-        setFiles([]);
-        setExtractedFabrics([]);
-        onClose();
     } catch (error: any) {
         console.error("Save error:", error?.message || "Unknown error");
         alert("Ocurrió un error al guardar en la nube.");
