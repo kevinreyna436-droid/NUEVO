@@ -29,6 +29,8 @@ function App() {
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'wood'>('model');
   const [loading, setLoading] = useState(true);
   const [offlineStatus, setOfflineStatus] = useState(false);
+  const [showSyncButton, setShowSyncButton] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // Sorting State - Default "color"
   const [sortBy, setSortBy] = useState<SortOption>('color');
@@ -47,8 +49,8 @@ function App() {
     try {
       const dbData = await getFabricsFromFirestore();
       
-      // Update offline status after fetch attempt
-      setOfflineStatus(isOfflineMode());
+      const isOffline = isOfflineMode();
+      setOfflineStatus(isOffline);
 
       if (dbData && dbData.length > 0) {
         // DEDUPLICATION LOGIC:
@@ -64,10 +66,16 @@ function App() {
         });
 
         setFabrics(uniqueFabrics);
+        setShowSyncButton(false);
       } else {
         // FALLBACK: Load static data if DB is empty or connection failed
         console.log("Loading static catalog data...");
         setFabrics(INITIAL_FABRICS); 
+        
+        // If connected but empty, show sync button
+        if (!isOffline) {
+            setShowSyncButton(true);
+        }
       }
     } catch (e: any) {
       console.error("Error loading data, falling back to static:", e?.message || "Unknown error");
@@ -128,6 +136,22 @@ function App() {
     } catch (e: any) {
       console.error("Error bulk saving:", e?.message || "Unknown error");
     }
+  };
+
+  const handleSyncToCloud = async () => {
+      if (!showSyncButton || isSyncing) return;
+      if (!window.confirm("¿Deseas subir el catálogo base (200+ telas) a tu nube de Firebase? Esto llenará tu base de datos vacía.")) return;
+
+      setIsSyncing(true);
+      try {
+          await saveBatchFabricsToFirestore(fabrics);
+          setShowSyncButton(false);
+          alert("¡Sincronización completa! Tus datos ahora están en la nube.");
+      } catch (e) {
+          alert("Error al sincronizar. Intenta recargar.");
+      } finally {
+          setIsSyncing(false);
+      }
   };
 
   const handleUpdateFabric = async (updatedFabric: Fabric) => {
@@ -335,7 +359,40 @@ function App() {
       />
 
       {view === 'grid' && (
-        <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down">
+        <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative">
+            
+            {/* CONNECTION STATUS INDICATOR */}
+            {!offlineStatus && (
+                <div className="absolute top-4 left-4 flex items-center space-x-2 bg-green-50/80 px-3 py-1.5 rounded-full border border-green-100 backdrop-blur-sm">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-[10px] font-bold text-green-700 uppercase tracking-wider">Conectado a la nube</span>
+                </div>
+            )}
+            
+            {/* SYNC BUTTON */}
+            {showSyncButton && (
+                <div className="absolute top-16 left-4 z-40 animate-bounce">
+                    <button 
+                        onClick={handleSyncToCloud}
+                        disabled={isSyncing}
+                        className="bg-black text-white px-4 py-2 rounded-lg shadow-lg text-xs font-bold uppercase tracking-wide hover:scale-105 transition-transform flex items-center space-x-2"
+                    >
+                        {isSyncing ? (
+                             <>
+                                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                <span>Subiendo...</span>
+                             </>
+                        ) : (
+                             <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                                <span>Subir Catálogo a Nube</span>
+                             </>
+                        )}
+                    </button>
+                    <p className="text-[9px] text-gray-400 mt-1 ml-1 w-32 leading-tight">Tu base de datos está vacía. Clic para llenarla.</p>
+                </div>
+            )}
+
             <h1 className="font-serif text-6xl md:text-8xl font-bold text-center tracking-tight text-slate-900 leading-none">
                 Catálogo de telas
             </h1>
@@ -346,7 +403,7 @@ function App() {
                         Modo Offline (Sin Conexión)
                     </div>
                     <div className="text-[9px] text-red-300 text-center max-w-md">
-                        Mostrando catálogo base. La sincronización se activará cuando la base de datos esté disponible.
+                        Mostrando versión local. Revisa tu internet o la configuración de Firebase.
                     </div>
                 </div>
             )}

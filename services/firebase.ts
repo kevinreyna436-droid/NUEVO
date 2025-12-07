@@ -226,10 +226,10 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   }
 
   try {
-    // Attempt connection with a slightly longer timeout
+    // Attempt connection with a longer timeout (12s) to ensure cold starts work
     const serverPromise = getDocs(collection(db, COLLECTION_NAME));
     const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT_CONNECT')), 4000)
+        setTimeout(() => reject(new Error('TIMEOUT_CONNECT')), 12000)
     );
 
     const snapshot = await Promise.race([serverPromise, timeoutPromise]);
@@ -267,7 +267,7 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
     if (!cleanFabric.id) throw new Error("Invalid ID");
     
     const savePromise = setDoc(doc(db, COLLECTION_NAME, cleanFabric.id), cleanFabric, { merge: true });
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_SAVE')), 4000));
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_SAVE')), 5000));
     
     await Promise.race([savePromise, timeoutPromise]);
     
@@ -283,8 +283,32 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
       return;
   }
   
-  for (const fabric of fabrics) {
-      await saveFabricToFirestore(fabric);
+  // Use WriteBatch for speed and efficiency
+  // Firestore limit is 500 ops per batch
+  const BATCH_SIZE = 400;
+  const chunks = [];
+  
+  for (let i = 0; i < fabrics.length; i += BATCH_SIZE) {
+      chunks.push(fabrics.slice(i, i + BATCH_SIZE));
+  }
+
+  for (const chunk of chunks) {
+      const batch = writeBatch(db);
+      for (const fabric of chunk) {
+           // We do minimal image processing for batch initial uploads to avoid timeouts
+           // Assumes these are static text records or already processed
+           const cleanFabric = createCleanFabricObject(fabric);
+           const ref = doc(db, COLLECTION_NAME, cleanFabric.id);
+           batch.set(ref, cleanFabric, { merge: true });
+      }
+      try {
+          await batch.commit();
+          console.log(`Saved batch of ${chunk.length} fabrics.`);
+      } catch (e) {
+          console.error("Batch save failed", e);
+          // Fallback to local
+          chunk.forEach(f => saveLocalFabric(f));
+      }
   }
 };
 
