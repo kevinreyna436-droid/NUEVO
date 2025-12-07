@@ -1,5 +1,5 @@
 
-export const compressImage = (file: File, maxWidth = 2048, quality = 0.95): Promise<string> => {
+export const compressImage = (file: File, maxWidth = 2048, quality = 0.85): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);

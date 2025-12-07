@@ -139,7 +139,8 @@ const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay
         const isConnectionError = errorCode === 'unavailable' || 
                                   errorMsg.includes('backend') || 
                                   errorMsg.includes('network') ||
-                                  errorMsg.includes('offline');
+                                  errorMsg.includes('offline') ||
+                                  errorMsg.includes('resource-exhausted'); // Treat resource exhaustion as retryable logic sometimes, but main logic handles it via chunking
         
         if (retries > 0 && isConnectionError) {
             console.warn(`Retrying Firestore op... ${retries} attempts left.`);
@@ -196,22 +197,27 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
 };
 
 export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
-  const CHUNK_SIZE = 5; 
+  // CRITICAL: Set CHUNK_SIZE to 1 to avoid "Write stream exhausted" errors with large images.
+  // Large high-res images can make a single document ~1MB. Batching them causes the stream to choke.
+  const CHUNK_SIZE = 1; 
   const cleanFabrics = fabrics.map(createCleanFabricObject).filter(f => f.id);
 
   for (let i = 0; i < cleanFabrics.length; i += CHUNK_SIZE) {
     const chunk = cleanFabrics.slice(i, i + CHUNK_SIZE);
     const batch = writeBatch(db);
+    
     chunk.forEach((fabric) => {
       const docRef = doc(db, COLLECTION_NAME, fabric.id);
       batch.set(docRef, fabric); 
     });
+
     try {
         await retryOperation(() => batch.commit(), 3, 2000);
-        await delay(300); 
+        // Add a delay to let the write stream clear between large uploads
+        await delay(500); 
     } catch (error: any) {
         console.error("Error batch writing chunk", error?.message || 'Unknown batch error');
-        throw new Error("Error al guardar lote.");
+        throw new Error("Error al guardar lote (Posible saturación de red).");
     }
   }
 };
