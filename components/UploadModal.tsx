@@ -20,6 +20,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
   const [currentProgress, setCurrentProgress] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   
+  // NEW: Manual Category State
+  const [selectedCategory, setSelectedCategory] = useState<'model' | 'wood'>('model');
+
   // Ref for directory upload
   const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -157,7 +160,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
           colors: detectedColors,
           colorImages: colorImages,
           mainImage: mainImageToUse,
-          category: 'model'
+          category: selectedCategory // USE SELECTED CATEGORY
       };
   };
 
@@ -239,7 +242,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             colors: data.colors || [],
             colorImages: data.colorImages || {},
             mainImage: data.mainImage || '',
-            category: 'model'
+            category: selectedCategory // Ensure consistency
         }));
 
         if (finalFabrics.length === 1) {
@@ -273,9 +276,29 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             </button>
         )}
 
-        <h2 className="font-serif text-3xl mb-6 text-primary text-center flex-shrink-0">
+        <h2 className="font-serif text-3xl mb-2 text-primary text-center flex-shrink-0">
             {step === 'review' ? 'Revisar antes de Guardar' : 'Subir Archivos'}
         </h2>
+        {/* NEW: Category Selector */}
+        {step === 'upload' && !isSaving && (
+            <div className="flex justify-center mb-6">
+                <div className="flex bg-gray-100 p-1 rounded-full">
+                    <button 
+                        onClick={() => setSelectedCategory('model')}
+                        className={`px-6 py-2 rounded-full text-sm font-bold uppercase transition-all ${selectedCategory === 'model' ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:text-gray-800'}`}
+                    >
+                        Colección Textil
+                    </button>
+                    <button 
+                         onClick={() => setSelectedCategory('wood')}
+                        className={`px-6 py-2 rounded-full text-sm font-bold uppercase transition-all ${selectedCategory === 'wood' ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:text-gray-800'}`}
+                    >
+                        Colección Maderas
+                    </button>
+                </div>
+            </div>
+        )}
+
 
         {isSaving ? (
              <div className="flex flex-col items-center justify-center flex-1 h-64 space-y-6 text-center">

@@ -54,6 +54,19 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
     return fabric.colorImages?.[colorName] || fabric.mainImage;
   };
 
+  const checkAuth = (): boolean => {
+      const pin = prompt("Ingrese PIN de seguridad:");
+      return pin === "3942";
+  };
+
+  const handleEditClick = () => {
+      if(checkAuth()){
+          setEditModalOpen(true);
+      } else {
+          alert("PIN incorrecto.");
+      }
+  };
+
   const handleDownloadFicha = (e: React.MouseEvent) => {
       if (fabric.pdfUrl) return; // If real URL exists, let default behavior happen
       
@@ -70,11 +83,13 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
       }
 
       // Generate a text file with the specs
+      // REMOVED: Uso Recomendado
       const content = `
 CREATA COLLECTION - FICHA TÉCNICA
 ---------------------------------
 Modelo: ${fabric.name}
 Proveedor: ${fabric.supplier}
+Catálogo: ${fabric.category === 'wood' ? 'Colección Maderas' : 'Colección Textil'}
 
 RESUMEN TÉCNICO
 ${fabric.technicalSummary || 'Información no disponible'}
@@ -82,7 +97,6 @@ ${fabric.technicalSummary || 'Información no disponible'}
 ESPECIFICACIONES
 - Composición: ${fabric.specs.composition || 'N/A'}
 - Durabilidad (Martindale): ${fabric.specs.martindale || 'N/A'}
-- Uso Recomendado: ${fabric.specs.usage || 'N/A'}
 - Peso: ${fabric.specs.weight || 'N/A'}
 
 VARIANTES DE COLOR
@@ -147,12 +161,7 @@ Generado automáticamente por Creata App
                   alt="Full Texture" 
                   className="w-full h-full object-contain"
                />
-               {/* Show SKU in Lightbox if Formatex */}
-               {isFormatex && (
-                   <div className="absolute bottom-4 right-4 bg-black/60 text-white px-3 py-1 rounded-full text-xs font-bold tracking-widest backdrop-blur-md">
-                       {generateFormatexSKU(fabric.name, sortedColors[lightboxIndex])}
-                   </div>
-               )}
+               {/* SKU REMOVED from here as requested */}
             </div>
 
             {/* Next Button (Small Arrow) */}
@@ -176,8 +185,8 @@ Generado automáticamente por Creata App
       {/* Navigation Header */}
       <div className="sticky top-0 z-40 bg-[#f2f2f2]/90 backdrop-blur-sm px-6 py-3 flex items-center justify-center border-b border-gray-200/50">
         <div className="absolute left-6">
-            <button onClick={onBack} className="flex items-center text-gray-400 hover:text-black transition-colors text-xs font-medium uppercase tracking-wide">
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+            <button onClick={onBack} className="flex items-center text-gray-400 hover:text-black transition-colors text-lg font-medium uppercase tracking-wide">
+            <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
             Volver
             </button>
         </div>
@@ -185,7 +194,7 @@ Generado automáticamente por Creata App
         {/* Right side controls */}
         <div className="absolute right-6 flex items-center space-x-4">
             <button 
-                onClick={() => setEditModalOpen(true)} 
+                onClick={handleEditClick} 
                 className="text-gray-400 hover:text-black transition-colors font-bold text-3xl pb-4 h-8 flex items-center"
                 title="Modificar ficha completa"
             >
@@ -199,11 +208,15 @@ Generado automáticamente por Creata App
         {/* 1. Centered Header Info */}
         <div className="mb-6 space-y-2">
             <h2 className="text-gray-400 italic font-serif text-base tracking-wide">CREATA</h2>
-            <h1 className="font-serif text-6xl md:text-8xl font-bold text-slate-900 tracking-tight leading-none">
+            <h1 className="font-serif text-6xl md:text-8xl font-bold text-slate-900 tracking-tight leading-none uppercase">
                 {fabric.name}
             </h1>
             <p className="text-sm text-gray-500 font-bold uppercase tracking-[0.25em] pt-2">
                 {fabric.supplier}
+            </p>
+            {/* NEW: CATALOG NAME BELOW SUPPLIER */}
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-widest pt-1">
+                {fabric.category === 'wood' ? 'Colección Maderas' : 'Colección Textil'}
             </p>
         </div>
 
@@ -227,25 +240,22 @@ Generado automáticamente por Creata App
                     </button>
                     
                     <div className="pr-8">
-                        <h3 className="font-serif text-2xl mb-4 text-slate-800">Resumen Técnico</h3>
-                        <p className="text-lg text-gray-500 leading-relaxed mb-8">{fabric.technicalSummary || "Información técnica no disponible."}</p>
+                        <h3 className="font-serif text-3xl font-bold mb-4 text-slate-900">Resumen Técnico</h3>
+                        <p className="text-lg font-sans text-gray-600 leading-relaxed mb-8">{fabric.technicalSummary || "Información técnica no disponible."}</p>
                         
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 border-t border-gray-100 pt-6">
+                        {/* CHANGED GRID TO 3 COLS AND REMOVED USAGE */}
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-8 border-t border-gray-100 pt-8">
                             <div>
-                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Composición</span>
-                                <span className="text-base md:text-lg text-slate-800 font-medium">{fabric.specs.composition || "N/A"}</span>
+                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Composición</span>
+                                <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.composition || "N/A"}</span>
                             </div>
                             <div>
-                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Durabilidad</span>
-                                <span className="text-base md:text-lg text-slate-800 font-medium">{fabric.specs.martindale || "N/A"}</span>
+                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Durabilidad</span>
+                                <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.martindale || "N/A"}</span>
                             </div>
                             <div>
-                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Uso</span>
-                                <span className="text-base md:text-lg text-slate-800 font-medium">{fabric.specs.usage || "N/A"}</span>
-                            </div>
-                            <div>
-                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Peso</span>
-                                <span className="text-base md:text-lg text-slate-800 font-medium">{fabric.specs.weight || "N/A"}</span>
+                                <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Peso</span>
+                                <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.weight || "N/A"}</span>
                             </div>
                         </div>
 

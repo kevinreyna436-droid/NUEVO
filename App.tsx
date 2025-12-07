@@ -71,6 +71,20 @@ function App() {
     loadData();
   }, []);
 
+  // Security Check Helper
+  const checkAuth = (): boolean => {
+      const pin = prompt("Ingrese PIN de seguridad:");
+      return pin === "3942";
+  };
+
+  const handleUploadClick = () => {
+      if (checkAuth()) {
+          setUploadModalOpen(true);
+      } else {
+          alert("PIN incorrecto.");
+      }
+  };
+
   const handleFabricClick = (fabric: Fabric, specificColor?: string) => {
     if (activeTab === 'model') {
         setSelectedFabricId(fabric.id);
@@ -303,7 +317,7 @@ function App() {
     <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans selection:bg-black selection:text-white relative">
       
       <button 
-        onClick={() => setUploadModalOpen(true)}
+        onClick={handleUploadClick}
         className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"
         title="Subir Archivos / Gestionar"
       >
