@@ -51,10 +51,15 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
     if (e.target.files && e.target.files[0] && activeUpload) {
         try {
             const file = e.target.files[0];
-            // High quality for image replacement
-            const base64 = await compressImage(file, 2048, 0.85);
-            
             const { fabricIndex, type, colorName } = activeUpload;
+            
+            // Adjust quality based on type to save space
+            // Main image high res, Color swatches lower res
+            const quality = type === 'main' ? 0.85 : 0.80;
+            const size = type === 'main' ? 2048 : 600;
+
+            const base64 = await compressImage(file, size, quality);
+            
 
             setExtractedFabrics(prev => {
                 const updated = [...prev];
@@ -66,9 +71,6 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                     const newImages = { ...fabric.colorImages, [colorName]: base64 };
                     fabric.colorImages = newImages;
                 } else if (type === 'add_color') {
-                    // For adding a new color, we need a name. 
-                    // Since we can't easily prompt inside the render efficiently without more state,
-                    // we'll use a simple prompt or default name.
                     const newName = window.prompt("Nombre del nuevo color:", `Color ${(fabric.colors?.length || 0) + 1}`);
                     if (newName) {
                         const newColors = [...(fabric.colors || []), newName];
@@ -140,7 +142,6 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       }
 
       // 3. Cross-reference DB with SMART MATCHING
-      // We will still check if we have a DB match to help normalize OCR results
       let dbColors: string[] = [];
       const dbName = Object.keys(MASTER_FABRIC_DB).find(
         key => key.toLowerCase() === rawData.name?.toLowerCase()
@@ -164,11 +165,10 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         }
 
         try {
-            // USE HIGH QUALITY SETTINGS (2048px, 0.85)
-            const base64Img = await compressImage(file, 2048, 0.85);
+            // REDUCED SIZE FOR COLORS TO 600px TO PREVENT FIRESTORE BLOAT
+            const base64Img = await compressImage(file, 600, 0.85);
             
             // --- AI OCR STEP ---
-            // Attempt to read the color name from the image text
             let detectedName = await extractColorFromSwatch(base64Img.split(',')[1]);
             
             // If AI failed to read text, fallback to filename logic
@@ -194,15 +194,14 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                 }
             }
 
-            // Normalization: If we have a DB match, try to snap the detected name (OCR or File) to the DB list
-            // This fixes OCR typos like "Ash " -> "Ash" or casing issues
+            // Normalization
             if (detectedName && dbColors.length > 0) {
                  const exactMatch = dbColors.find(c => c.toLowerCase() === detectedName!.toLowerCase().trim());
                  if (exactMatch) detectedName = exactMatch;
             }
 
             if (detectedName) {
-                // Avoid overwriting if multiple images map to same color (keep first or last, here keeping first)
+                // Avoid overwriting if multiple images map to same color
                 if (!colorImages[detectedName]) {
                     colorImages[detectedName] = base64Img;
                     detectedColorsList.push(detectedName);
@@ -216,18 +215,20 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
 
       // Restore alphabetical order or DB order
       if (dbName && dbColors.length > 0) {
-           // Sort detected colors based on their order in DB (if relevant) or just alphabetical
            detectedColorsList.sort(); 
       } else {
            detectedColorsList.sort();
       }
 
-      // Main Image Selection
+      // Main Image Selection - Keep High Quality
       let mainImageToUse = '';
       if (Object.keys(colorImages).length > 0) {
+          // If we are using a color image as main, we might want to re-compress it higher quality if we have the original file ref,
+          // but here we just use what we have. Ideally main image is separate.
           mainImageToUse = Object.values(colorImages)[0];
       } else if (imgFiles.length > 0) {
           try {
+            // Explicitly compress the first found image as high res for Main Image
             mainImageToUse = await compressImage(imgFiles[0], 2048, 0.85);
           } catch(e) {
             mainImageToUse = '';

@@ -76,7 +76,6 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
       }
 
       // Generate a text file with the specs
-      // REMOVED: Uso Recomendado
       const content = `
 CREATA COLLECTION - FICHA TÉCNICA
 ---------------------------------
@@ -136,13 +135,12 @@ Generado automáticamente por Creata App
         />
       )}
 
-      {/* Lightbox Overlay (Full Screen Image with Navigation) */}
+      {/* Lightbox Overlay */}
       {lightboxIndex !== null && (
         <div 
             className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center cursor-pointer p-4 md:p-8"
             onClick={() => setLightboxIndex(null)}
         >
-            {/* Prev Button (Small Arrow) */}
             <button 
               onClick={handlePrevImage}
               className="absolute left-2 md:left-8 text-white/80 hover:text-white hover:scale-110 transition-all p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
@@ -150,7 +148,6 @@ Generado automáticamente por Creata App
                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
 
-            {/* Image Container - Fixed Size Square for Consistency */}
             <div 
                 className="relative bg-white shadow-2xl rounded-sm overflow-hidden flex items-center justify-center border border-white/10
                            w-[90vw] h-[90vw] md:w-[80vh] md:h-[80vh]"
@@ -161,10 +158,8 @@ Generado automáticamente por Creata App
                   alt="Full Texture" 
                   className="w-full h-full object-contain"
                />
-               {/* SKU REMOVED from here as requested */}
             </div>
 
-            {/* Next Button (Small Arrow) */}
             <button 
               onClick={handleNextImage}
               className="absolute right-2 md:right-8 text-white/80 hover:text-white hover:scale-110 transition-all p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
@@ -172,13 +167,70 @@ Generado automáticamente por Creata App
                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
 
-            {/* Close X */}
             <button 
               onClick={() => setLightboxIndex(null)}
               className="absolute top-6 right-6 text-white/70 hover:text-white z-[110]"
             >
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
+        </div>
+      )}
+
+      {/* Specs Modal (Replaces Inline Expansion) */}
+      {showSpecs && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-fade-in" onClick={() => setShowSpecs(false)}>
+            <div 
+                className="bg-white w-full max-w-2xl rounded-3xl p-8 md:p-10 shadow-2xl relative"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <button 
+                    onClick={() => setShowSpecs(false)} 
+                    className="absolute top-6 right-6 text-gray-400 hover:text-black transition-colors"
+                >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+
+                <h3 className="font-serif text-3xl font-bold mb-6 text-slate-900">Resumen Técnico</h3>
+                
+                {fabric.specsImage ? (
+                     <div className="mb-6 rounded-lg overflow-hidden border border-gray-100">
+                         <img src={fabric.specsImage} alt="Ficha Técnica" className="w-full h-auto object-contain" />
+                     </div>
+                ) : (
+                    <>
+                        <p className="text-gray-600 mb-8 leading-relaxed font-sans text-lg">
+                            {fabric.technicalSummary || "Información técnica no disponible."}
+                        </p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 border-t border-gray-100 pt-8 mb-8">
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Composición</span>
+                                <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.composition || "N/A"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Durabilidad</span>
+                                <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.martindale || "N/A"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Peso</span>
+                                <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.weight || "N/A"}</span>
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                <div className="flex justify-end">
+                     <a 
+                       href={fabric.pdfUrl || "#"} 
+                       download={`${fabric.name}-ficha-tecnica.pdf`}
+                       className="flex items-center space-x-2 bg-black text-white px-8 py-4 rounded-full text-xs font-bold uppercase hover:bg-gray-800 transition-colors shadow-lg tracking-widest"
+                       onClick={handleDownloadFicha}
+                     >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        <span>Descargar Ficha Texto</span>
+                     </a>
+                </div>
+            </div>
         </div>
       )}
 
@@ -214,80 +266,26 @@ Generado automáticamente por Creata App
             <p className="text-sm text-gray-500 font-bold uppercase tracking-[0.25em] pt-2">
                 {fabric.supplier}
             </p>
-            {/* NEW: CUSTOM CATALOG NAME BELOW SUPPLIER */}
             <p className="text-xs text-gray-400 font-medium uppercase tracking-widest pt-1">
                 {fabric.customCatalog ? fabric.customCatalog : (fabric.category === 'wood' ? 'Colección Maderas' : 'Colección Textil')}
             </p>
         </div>
 
-        {/* Collapsible Technical Specs */}
+        {/* Trigger for Specs Modal */}
         <div className="w-full max-w-3xl mb-16">
-            {!showSpecs ? (
-                <button 
-                    onClick={() => setShowSpecs(true)}
-                    className="group flex items-center justify-center mx-auto space-x-2 text-sm font-medium text-gray-500 hover:text-black transition-colors px-6 py-3 rounded-full border border-gray-300 hover:border-black hover:bg-white"
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                    <span>Ficha técnica</span>
-                </button>
-            ) : (
-                <div className="bg-white rounded-3xl p-8 shadow-xl border border-gray-100 animate-fade-in text-left relative mt-4">
-                    <button 
-                        onClick={() => setShowSpecs(false)}
-                        className="absolute top-6 right-6 text-gray-300 hover:text-black"
-                    >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                    
-                    <div className="pr-8">
-                        {/* If Specs Image exists, show it */}
-                        {fabric.specsImage ? (
-                             <div className="mb-8 rounded-lg overflow-hidden border border-gray-100">
-                                 <img src={fabric.specsImage} alt="Ficha Técnica" className="w-full h-auto object-contain" />
-                             </div>
-                        ) : (
-                            <>
-                                <h3 className="font-serif text-3xl font-bold mb-4 text-slate-900">Resumen Técnico</h3>
-                                <p className="text-lg font-sans text-gray-600 leading-relaxed mb-8">{fabric.technicalSummary || "Información técnica no disponible."}</p>
-                                
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-8 border-t border-gray-100 pt-8">
-                                    <div>
-                                        <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Composición</span>
-                                        <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.composition || "N/A"}</span>
-                                    </div>
-                                    <div>
-                                        <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Durabilidad</span>
-                                        <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.martindale || "N/A"}</span>
-                                    </div>
-                                    <div>
-                                        <span className="block text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Peso</span>
-                                        <span className="text-xl text-slate-900 font-medium font-serif">{fabric.specs.weight || "N/A"}</span>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-
-                        <div className="mt-8 flex justify-end">
-                             <a 
-                               href={fabric.pdfUrl || "#"} 
-                               download={`${fabric.name}-ficha-tecnica.pdf`} // Default filename for real URL
-                               className="flex items-center space-x-2 bg-black text-white px-8 py-3 rounded-full text-sm font-bold uppercase hover:bg-gray-800 transition-colors shadow-lg"
-                               onClick={handleDownloadFicha}
-                             >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                <span>Descargar Ficha Texto</span>
-                             </a>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <button 
+                onClick={() => setShowSpecs(true)}
+                className="group flex items-center justify-center mx-auto space-x-2 text-sm font-medium text-gray-500 hover:text-black transition-colors px-6 py-3 rounded-full border border-gray-300 hover:border-black hover:bg-white"
+            >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                <span>Ficha técnica</span>
+            </button>
         </div>
 
         {/* 2. Muestrario Interactivo (Circular Grid) */}
         <div className="w-full">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-[0.25em] mb-16">Variantes de Color</h3>
             
-            {/* CHANGED TO FLEXBOX FOR PERFECT CENTERING */}
             <div className="flex flex-wrap justify-center gap-20 gap-y-32">
               {sortedColors.map((color, idx) => {
                 const colorImg = fabric.colorImages?.[color] || fabric.mainImage;
@@ -306,14 +304,12 @@ Generado automáticamente por Creata App
                        
                        {/* HOVER OVERLAY WITH LUPA + ICON (Small White) */}
                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
-                          {/* Search Plus Icon */}
                           <svg className="w-6 h-6 text-white drop-shadow-md transform scale-75 group-hover:scale-100 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
                           </svg>
                        </div>
                     </div>
                     
-                    {/* UPDATED: Reduced top margin, only color name */}
                     <p className="mt-3 text-lg font-bold text-slate-900 uppercase tracking-widest text-center group-hover:text-black transition-colors">
                       {color}
                     </p>
@@ -322,7 +318,6 @@ Generado automáticamente por Creata App
               })}
             </div>
             
-            {/* If empty grid */}
             {sortedColors.length === 0 && (
                 <p className="text-base text-gray-400 italic py-10">No hay variantes cargadas.</p>
             )}
