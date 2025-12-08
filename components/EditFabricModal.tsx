@@ -22,8 +22,23 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
   const [editingColorIndex, setEditingColorIndex] = useState<number | null>(null);
   const [processingImageId, setProcessingImageId] = useState<string | null>(null);
 
+  // Helper for Sentence Casing
+  const toSentenceCase = (str: string) => {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  };
+
   const handleChange = (field: keyof Fabric, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    let finalValue = value;
+    
+    // Apply Casing Rules
+    if (field === 'name') {
+        finalValue = toSentenceCase(value);
+    } else if (field === 'supplier' || field === 'customCatalog') {
+        finalValue = value.toUpperCase();
+    }
+
+    setFormData(prev => ({ ...prev, [field]: finalValue }));
   };
 
   const handleSpecChange = (field: keyof typeof fabric.specs, value: string) => {
@@ -33,7 +48,9 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
     }));
   };
 
-  const handleColorNameChange = (index: number, newName: string) => {
+  const handleColorNameChange = (index: number, newNameRaw: string) => {
+    const newName = toSentenceCase(newNameRaw); // Force sentence case
+    
     const newColors = [...formData.colors];
     const oldName = newColors[index];
     newColors[index] = newName;
@@ -182,7 +199,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                 type="text" 
                 value={formData.name} 
                 onChange={(e) => handleChange('name', e.target.value)}
-                className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-black outline-none font-medium"
+                className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-black outline-none font-medium uppercase placeholder:normal-case"
               />
             </div>
             <div>
@@ -191,7 +208,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                 type="text" 
                 value={formData.supplier} 
                 onChange={(e) => handleChange('supplier', e.target.value)}
-                className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-black outline-none font-medium"
+                className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-black outline-none font-medium uppercase"
               />
             </div>
           </div>
@@ -203,7 +220,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                 value={formData.customCatalog || ''} 
                 onChange={(e) => handleChange('customCatalog', e.target.value)}
                 placeholder="Ej: Colección Verano 2025"
-                className="w-full p-3 bg-white rounded-lg border border-blue-200 focus:ring-1 focus:ring-blue-500 outline-none font-medium text-blue-900"
+                className="w-full p-3 bg-white rounded-lg border border-blue-200 focus:ring-1 focus:ring-blue-500 outline-none font-medium text-blue-900 uppercase"
             />
           </div>
 
@@ -354,7 +371,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                                       type="text" 
                                       value={color} 
                                       onChange={(e) => handleColorNameChange(idx, e.target.value)}
-                                      className="w-full bg-white border border-gray-200 rounded-lg p-3 focus:ring-1 focus:ring-black outline-none text-base font-medium"
+                                      className="w-full bg-white border border-gray-200 rounded-lg p-3 focus:ring-1 focus:ring-black outline-none text-base font-medium uppercase placeholder:normal-case"
                                       placeholder="Ej: Navy Blue"
                                   />
                               </div>

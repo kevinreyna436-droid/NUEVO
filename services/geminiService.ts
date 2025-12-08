@@ -47,9 +47,10 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
        - If you are unsure, check the largest bold text but strip generic words.
        
     2. **SUPPLIER NAME (Nombre del proveedor):**
-       - Look for the legal entity, logo, or footer in the PDF/Image.
-       - If found, output the name.
-       - If strictly NOT found, return "Consultar".
+       - **CRITICAL:** Scan the Header, Footer, and Logos of the document specifically.
+       - Look for company names like "Formatex", "Creata", "Textiles", "Kravet", "Sunbrella", etc.
+       - If you see a logo or small text at the bottom/top saying "Distributed by..." or just a company name, USE IT.
+       - Only return "Consultar" if you are 100% sure there is NO company name mentioned anywhere in the document.
        
     3. **COLOR NAMES (Nombre de color):**
        - Look at the TEXT INSIDE THE IMAGE (OCR).
@@ -80,7 +81,7 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
           type: Type.OBJECT,
           properties: {
             name: { type: Type.STRING, description: "The clean model name only. No supplier." },
-            supplier: { type: Type.STRING, description: "The manufacturer name." },
+            supplier: { type: Type.STRING, description: "The manufacturer name found in headers/footers." },
             technicalSummary: { type: Type.STRING },
             specs: {
               type: Type.OBJECT,

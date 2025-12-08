@@ -260,6 +260,7 @@ Generado automáticamente por Creata App
         {/* 1. Centered Header Info */}
         <div className="mb-6 space-y-2">
             <h2 className="text-gray-400 italic font-serif text-base tracking-wide">CREATA</h2>
+            {/* Visual Uppercase for Name */}
             <h1 className="font-serif text-6xl md:text-8xl font-bold text-slate-900 tracking-tight leading-none uppercase">
                 {fabric.name}
             </h1>
@@ -310,8 +311,9 @@ Generado automáticamente por Creata App
                        </div>
                     </div>
                     
+                    {/* Visual Uppercase for color name */}
                     <p className="mt-3 text-lg font-bold text-slate-900 uppercase tracking-widest text-center group-hover:text-black transition-colors">
-                      {color}
+                      {color.toUpperCase()}
                     </p>
                   </div>
                 );

@@ -31,6 +31,12 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
 
   if (!isOpen) return null;
 
+  // Helper to force Sentence Case (First upper, rest lower)
+  const toSentenceCase = (str: string) => {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  };
+
   const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setFiles(Array.from(e.target.files));
@@ -56,8 +62,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                     const newImages = { ...fabric.colorImages, [colorName]: base64 };
                     fabric.colorImages = newImages;
                 } else if (type === 'add_color') {
-                    const newName = window.prompt("Nombre del nuevo color:", `Color ${(fabric.colors?.length || 0) + 1}`);
-                    if (newName) {
+                    const rawName = window.prompt("Nombre del nuevo color:", `Color ${(fabric.colors?.length || 0) + 1}`);
+                    if (rawName) {
+                        const newName = toSentenceCase(rawName); // Force casing
                         const newColors = [...(fabric.colors || []), newName];
                         const newImages = { ...fabric.colorImages, [newName]: base64 };
                         fabric.colors = newColors;
@@ -119,6 +126,11 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       if (!rawData.name || rawData.name === "Unknown") {
           rawData.name = cleanFabricName(groupName); 
       }
+      
+      // Auto-Format Name to Sentence Case
+      if (rawData.name) {
+          rawData.name = toSentenceCase(rawData.name);
+      }
 
       let dbColors: string[] = [];
       const dbName = Object.keys(MASTER_FABRIC_DB).find(
@@ -127,7 +139,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
 
       if (dbName) {
         dbColors = [...MASTER_FABRIC_DB[dbName]];
-        rawData.name = dbName;
+        rawData.name = dbName; // Use DB casing if available
       }
 
       const colorImages: Record<string, string> = {};
@@ -162,7 +174,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                     }
                     cleanColorName = cleanColorName.replace(/^(fromatex|fotmatex|formatex|creata)[_\-\s]*/i, '');
                     const cleanName = cleanColorName.replace(/[-_]/g, " ").trim();
-                    detectedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+                    detectedName = cleanName;
                 }
             }
 
@@ -172,9 +184,12 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             }
 
             if (detectedName) {
-                if (!colorImages[detectedName]) {
-                    colorImages[detectedName] = base64Img;
-                    detectedColorsList.push(detectedName);
+                // Ensure Sentence Case for colors
+                const formattedColor = toSentenceCase(detectedName);
+
+                if (!colorImages[formattedColor]) {
+                    colorImages[formattedColor] = base64Img;
+                    detectedColorsList.push(formattedColor);
                 }
             }
         } catch (imgError) {
@@ -252,7 +267,18 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
   const updateFabricField = (index: number, field: keyof Fabric, value: any) => {
       setExtractedFabrics(prev => {
           const updated = [...prev];
-          updated[index] = { ...updated[index], [field]: value };
+          let finalValue = value;
+
+          // Apply Casing Rules on Input
+          if (field === 'name') {
+              finalValue = toSentenceCase(value);
+          } else if (field === 'supplier') {
+              finalValue = value.toUpperCase();
+          } else if (field === 'customCatalog') {
+              finalValue = value.toUpperCase();
+          }
+
+          updated[index] = { ...updated[index], [field]: finalValue };
           return updated;
       });
   };
@@ -263,15 +289,15 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
     try {
         const finalFabrics: Fabric[] = extractedFabrics.map(data => ({
             id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-            name: data.name || 'Sin Nombre',
-            supplier: data.supplier || 'Consultar',
+            name: toSentenceCase(data.name || 'Sin Nombre'), // Ensure Sentence Case
+            supplier: (data.supplier || 'Consultar').toUpperCase(), // Ensure Uppercase
             technicalSummary: data.technicalSummary || 'Sin datos técnicos disponibles.',
             specs: data.specs || { composition: 'N/A', martindale: 'N/A', usage: 'N/A' },
-            colors: data.colors || [],
+            colors: data.colors ? data.colors.map(toSentenceCase) : [], // Ensure Colors are Sentence Case
             colorImages: data.colorImages || {},
             mainImage: data.mainImage || '',
             category: selectedCategory,
-            customCatalog: data.customCatalog, 
+            customCatalog: (data.customCatalog || '').toUpperCase(), // Ensure Uppercase
             pdfUrl: data.pdfUrl
         }));
 
@@ -432,7 +458,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                                 type="text" 
                                                 value={f.name} 
                                                 onChange={(e) => updateFabricField(i, 'name', e.target.value)}
-                                                className="w-full p-4 bg-white rounded-xl border border-gray-200 font-serif text-3xl font-bold focus:ring-2 focus:ring-black outline-none shadow-sm"
+                                                className="w-full p-4 bg-white rounded-xl border border-gray-200 font-serif text-3xl font-bold focus:ring-2 focus:ring-black outline-none shadow-sm uppercase placeholder:normal-case"
                                                 placeholder="Nombre del Modelo"
                                             />
                                             <input 
@@ -449,8 +475,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                                 type="text" 
                                                 value={f.customCatalog || ''} 
                                                 onChange={(e) => updateFabricField(i, 'customCatalog', e.target.value)}
-                                                className="text-sm text-blue-800 bg-blue-50/50 px-3 py-2 rounded-lg border border-blue-100 focus:border-blue-400 focus:outline-none w-full md:w-2/3 font-medium"
-                                                placeholder="Catálogo (yo lo escribo)"
+                                                className="text-sm text-blue-800 bg-blue-50/50 px-3 py-2 rounded-lg border border-blue-100 focus:border-blue-400 focus:outline-none w-full md:w-2/3 font-medium uppercase"
+                                                placeholder="CATÁLOGO (YO LO ESCRIBO)"
                                             />
                                         </div>
 
@@ -473,6 +499,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                                         key={idx} 
                                                         onClick={() => triggerUpload(i, 'color', c)}
                                                         className="group relative w-8 h-8 rounded-full bg-gray-200 border-2 border-white shadow-sm overflow-hidden cursor-pointer hover:border-black transition-all" 
+                                                        title={c}
                                                     >
                                                         {f.colorImages && f.colorImages[c] ? (
                                                             <img src={f.colorImages[c]} alt={c} className="w-full h-full object-cover" />
