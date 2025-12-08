@@ -1,3 +1,4 @@
+
 import { Fabric } from './types';
 
 // The Master Database for cross-referencing AI results.
@@ -202,21 +203,5 @@ export const MASTER_FABRIC_DB: Record<string, string[]> = {
   "Zenith": ["Aqua", "Black", "Brick", "Buttercup", "Cobalt", "Cocoa", "Emerald", "Grape", "Marine", "Mineral", "Natural", "Ocean", "Red", "Snow", "Stone", "Toffe", "Tusk", "Zinc", "Coral"]
 };
 
-// INITIAL_FABRICS now generated from Master DB so the app is never empty
-export const INITIAL_FABRICS: Fabric[] = Object.entries(MASTER_FABRIC_DB).map(([name, colors]) => ({
-  id: `static-${name.toLowerCase().replace(/\s+/g, '-')}`,
-  name: name,
-  supplier: 'Creata', 
-  technicalSummary: 'Colección de catálogo general.',
-  specs: {
-    composition: 'Consultar',
-    martindale: 'N/A',
-    usage: 'Tapicería',
-    weight: 'N/A'
-  },
-  colors: colors,
-  colorImages: {},
-  mainImage: '', // Will use fallback
-  category: 'model',
-  customCatalog: 'Colección General'
-}));
+// INITIAL_FABRICS is now empty to ensure a clean slate and "disconnect" from static data.
+export const INITIAL_FABRICS: Fabric[] = [];

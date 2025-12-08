@@ -1,3 +1,4 @@
+
 import * as firebaseApp from "firebase/app";
 import { 
   collection, 
@@ -53,8 +54,8 @@ try {
     localStorage.removeItem("creata_firestore_broken");
 } catch(e) {}
 
-// SESSION-ONLY OFFLINE MODE
-let globalOfflineMode = false;
+// SESSION-ONLY OFFLINE MODE - Defaulting to TRUE to disconnect initially as requested
+let globalOfflineMode = true;
 
 // --- Local Storage Helpers ---
 

@@ -66,13 +66,13 @@ function App() {
 
         setFabrics(uniqueFabrics);
       } else {
-        // FALLBACK: Load static data if DB is empty or connection failed
-        console.log("Loading static catalog data...");
-        setFabrics(INITIAL_FABRICS); 
+        // FALLBACK: Load empty list if DB is empty
+        console.log("Database empty. Starting clean.");
+        setFabrics([]); 
       }
     } catch (e: any) {
-      console.error("Error loading data, falling back to static:", e?.message || "Unknown error");
-      setFabrics(INITIAL_FABRICS);
+      console.error("Error loading data", e?.message || "Unknown error");
+      setFabrics([]);
     } finally {
       setLoading(false);
     }
@@ -440,7 +440,7 @@ function App() {
             ) : filteredItemCount === 0 && activeTab !== 'wood' ? (
                 <div className="text-center py-20 text-gray-300">
                      <p>El catálogo está vacío.</p>
-                     {offlineStatus && <p className="text-xs mt-2 text-red-300">Revisa que la base de datos esté creada en Firebase Console.</p>}
+                     {offlineStatus && <p className="text-xs mt-2 text-red-300">Modo sin conexión o base de datos vacía.</p>}
                      <div className="mt-4">
                         <button 
                            onClick={handleReset}
