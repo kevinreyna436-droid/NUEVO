@@ -30,8 +30,8 @@ const firebaseConfig = {
   projectId: "creata-catalogo",
   storageBucket: "creata-catalogo.firebasestorage.app",
   messagingSenderId: "667237641772",
-  appId: "1:667237641772:web:50a3ce92c5839d49cfab89",
-  measurementId: "G-RH13X81KLF"
+  appId: "1:667237641772:web:4772ca31a28594bccfab89",
+  measurementId: "G-74WPNT7EF6"
 };
 
 // Initialize Firebase
@@ -54,8 +54,8 @@ try {
     localStorage.removeItem("creata_firestore_broken");
 } catch(e) {}
 
-// SESSION-ONLY OFFLINE MODE - Defaulting to TRUE to disconnect initially as requested
-let globalOfflineMode = true;
+// SESSION-ONLY OFFLINE MODE - Defaulting to FALSE to connect to cloud
+let globalOfflineMode = false;
 
 // --- Local Storage Helpers ---
 
