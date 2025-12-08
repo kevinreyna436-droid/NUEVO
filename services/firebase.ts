@@ -234,7 +234,10 @@ const ensureOnline = async () => {
 };
 
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
-  if (globalOfflineMode) return getLocalFabrics();
+  // Always fetch local data first as a base/fallback
+  const localData = getLocalFabrics();
+
+  if (globalOfflineMode) return localData;
 
   try {
     // Increased timeout to 15s for better initial load on slow networks
@@ -245,22 +248,41 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
 
     const snapshot = await Promise.race([serverPromise, timeoutPromise]);
     
-    // Merge cloud data with any purely local backups (optional advanced logic, here we prefer cloud)
-    return snapshot.docs.map(doc => createCleanFabricObject(doc.data()));
+    const cloudFabrics = snapshot.docs.map(doc => createCleanFabricObject(doc.data()));
+
+    // HYBRID MERGE STRATEGY:
+    // We combine Cloud data with Local data. 
+    // If an ID exists in both, Cloud takes precedence (usually more up to date if sync works).
+    // If Cloud fails to save but Local saved, this ensures the item still appears.
+    const fabricMap = new Map<string, Fabric>();
+    
+    // 1. Populate with local first
+    localData.forEach(f => fabricMap.set(f.id, f));
+    
+    // 2. Overwrite/Add with Cloud data
+    cloudFabrics.forEach(f => fabricMap.set(f.id, f));
+
+    return Array.from(fabricMap.values());
 
   } catch (error: any) {
-    console.warn("Firestore connection failed. Switching to Session Offline Mode.", error?.message);
+    console.warn("Firestore connection failed. Returning local data.", error?.message);
     
-    globalOfflineMode = true;
-    try { await disableNetwork(db); } catch(e) {}
+    // Only switch to permanent offline mode if it's a hard network error
+    if (error?.code === 'unavailable' || error?.message === 'TIMEOUT_CONNECT') {
+        globalOfflineMode = true;
+        try { await disableNetwork(db); } catch(e) {}
+    }
     
-    return getLocalFabrics();
+    return localData;
   }
 };
 
 export const saveFabricToFirestore = async (fabric: Fabric) => {
   // Always try to connect before saving to ensure cloud sync
   await ensureOnline();
+
+  // 0. Save locally IMMEDIATELY as a backup before attempting anything complex
+  saveLocalFabric(fabric);
 
   let fabricToSave = { ...fabric };
   
@@ -271,7 +293,7 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
     console.error("Image processing failed, saving with base64/partial data.", error);
   }
 
-  // 2. Save Document
+  // 2. Save Document to Cloud
   try {
     const cleanFabric = createCleanFabricObject(fabricToSave);
     if (!cleanFabric.id) throw new Error("Invalid ID");
@@ -284,12 +306,16 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
     console.log("✅ Saved to cloud successfully");
     
   } catch (error: any) {
-    console.warn("Firestore save failed, saving to LocalStorage.", error);
+    console.warn("Firestore save failed. Data preserved in LocalStorage.", error);
+    // Ensure the version with processed images (if any succeeded) is saved locally
     saveLocalFabric(fabricToSave); 
   }
 };
 
 export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
+  // Backup all locally first
+  fabrics.forEach(f => saveLocalFabric(f));
+
   await ensureOnline();
   
   const BATCH_SIZE = 400;
@@ -311,7 +337,7 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
           console.log(`Saved batch of ${chunk.length} fabrics to cloud.`);
       } catch (e) {
           console.error("Batch save failed", e);
-          chunk.forEach(f => saveLocalFabric(f));
+          // Already saved locally at start of function
       }
   }
 };
@@ -319,10 +345,13 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
 export const deleteFabricFromFirestore = async (fabricId: string) => {
   await ensureOnline();
 
+  // Delete locally first for instant UI feedback
+  deleteLocalFabric(fabricId);
+
   try {
     await deleteDoc(doc(db, COLLECTION_NAME, fabricId));
   } catch (error) {
-    deleteLocalFabric(fabricId);
+    console.warn("Cloud delete failed, but deleted locally.", error);
   }
 };
 

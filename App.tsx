@@ -59,9 +59,11 @@ function App() {
 
         dbData.forEach(fabric => {
             const normalizedName = fabric.name.trim().toLowerCase();
-            if (!seenNames.has(normalizedName)) {
-                seenNames.add(normalizedName);
-                uniqueFabrics.push(fabric);
+            // We use a combination of ID and Name to ensure uniqueness if needed, 
+            // but for display, we generally trust the ID. 
+            // Here we simply display all valid fabrics retrieved.
+            if (fabric.id) {
+               uniqueFabrics.push(fabric);
             }
         });
 
@@ -108,11 +110,13 @@ function App() {
 
   const handleSaveFabric = async (newFabric: Fabric) => {
     try {
+      // Optimistic update: Add immediately to UI
       setFabrics(prev => {
-          const exists = prev.some(f => f.name.toLowerCase() === newFabric.name.toLowerCase());
-          if (exists) return prev;
-          return [newFabric, ...prev];
+          // Remove if ID matches (update case disguised as new), otherwise prepend
+          const filtered = prev.filter(f => f.id !== newFabric.id);
+          return [newFabric, ...filtered];
       });
+      
       await saveFabricToFirestore(newFabric);
       
       // Force navigation back to home/grid after save
@@ -127,8 +131,8 @@ function App() {
   const handleBulkSaveFabrics = async (newFabrics: Fabric[]) => {
     try {
       setFabrics(prev => {
-          const currentNames = new Set(prev.map(f => f.name.toLowerCase()));
-          const uniqueNew = newFabrics.filter(f => !currentNames.has(f.name.toLowerCase()));
+          const currentIds = new Set(prev.map(f => f.id));
+          const uniqueNew = newFabrics.filter(f => !currentIds.has(f.id));
           return [...uniqueNew, ...prev];
       });
       await saveBatchFabricsToFirestore(newFabrics);
@@ -299,8 +303,9 @@ function App() {
     }
 
     if (activeTab === 'model') {
-        items.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
-        return items.map((fabric, idx) => (
+        // Simple sort by name for models
+        const sortedItems = [...items].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+        return sortedItems.map((fabric, idx) => (
             <FabricCard 
                 key={fabric.id} 
                 fabric={fabric}
