@@ -1,3 +1,4 @@
+
 export interface FabricColor {
   name: string;
   hex?: string; // Optional simulated hex
@@ -31,4 +32,4 @@ export interface ChatMessage {
   sources?: { title: string; uri: string }[];
 }
 
-export type AppView = 'grid' | 'detail' | 'upload' | 'generator';
+export type AppView = 'grid' | 'detail' | 'upload' | 'generator' | 'list';

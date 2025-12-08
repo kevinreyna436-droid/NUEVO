@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import FabricCard from './components/FabricCard';
 import FabricDetail from './components/FabricDetail';
@@ -334,7 +335,7 @@ function App() {
         onSuccess={() => setUploadModalOpen(true)} 
       />
 
-      {view === 'grid' && (
+      {(view === 'grid' || view === 'list') && (
         <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative">
             
             <h1 className="font-serif text-6xl md:text-8xl font-bold text-center tracking-tight text-slate-900 leading-none">
@@ -343,28 +344,28 @@ function App() {
             
             <div className="flex space-x-8 md:space-x-12 border-b border-transparent">
                 <button 
-                    onClick={() => { setActiveTab('model'); setFilterMenuOpen(false); }}
+                    onClick={() => { setActiveTab('model'); setFilterMenuOpen(false); setView('grid'); }}
                     className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
-                        activeTab === 'model' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
+                        activeTab === 'model' && view === 'grid' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
                 >
                     Ver modelos
                 </button>
                 <button 
-                    onClick={() => setActiveTab('color')}
+                    onClick={() => { setActiveTab('color'); setView('grid'); }}
                     className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
-                        activeTab === 'color' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
+                        activeTab === 'color' && view === 'grid' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
                 >
                     Ver colores
                 </button>
                 <button 
-                    onClick={() => { setActiveTab('wood'); setFilterMenuOpen(false); }}
+                    onClick={() => { setView('list'); setFilterMenuOpen(false); }}
                     className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
-                        activeTab === 'wood' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
+                        view === 'list' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
                 >
-                    Ver maderas
+                    Historial (Lista)
                 </button>
             </div>
             
@@ -380,7 +381,7 @@ function App() {
                   <svg className="absolute left-4 top-3.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 </div>
 
-                {activeTab === 'color' && (
+                {activeTab === 'color' && view === 'grid' && (
                     <div className="relative">
                         <button 
                             onClick={() => setFilterMenuOpen(!isFilterMenuOpen)}
@@ -463,6 +464,50 @@ function App() {
                 </div>
             )}
           </div>
+        )}
+
+        {view === 'list' && (
+             <div className="container mx-auto px-4 md:px-10 pb-20">
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-50 border-b border-gray-100">
+                            <tr>
+                                <th className="p-4 pl-8 text-xs font-bold uppercase text-gray-400 tracking-wider w-1/4">Modelo</th>
+                                <th className="p-4 text-xs font-bold uppercase text-gray-400 tracking-wider w-1/4">Proveedor</th>
+                                <th className="p-4 text-xs font-bold uppercase text-gray-400 tracking-wider w-1/4">Colección</th>
+                                <th className="p-4 text-xs font-bold uppercase text-gray-400 tracking-wider text-right pr-8">Colores</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                             {getFilteredItems().sort((a,b) => a.name.localeCompare(b.name)).map((f) => (
+                                 <tr 
+                                    key={f.id} 
+                                    className="hover:bg-gray-50 transition-colors cursor-pointer group"
+                                    onClick={() => { setSelectedFabricId(f.id); setView('detail'); }}
+                                >
+                                     <td className="p-4 pl-8">
+                                         <span className="font-serif font-bold text-slate-800 text-lg group-hover:text-black">{f.name}</span>
+                                     </td>
+                                     <td className="p-4">
+                                         <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">{f.supplier}</span>
+                                     </td>
+                                     <td className="p-4">
+                                         <span className="text-xs font-bold px-2 py-1 rounded bg-gray-100 text-gray-500 uppercase">{f.category === 'wood' ? 'Maderas' : f.customCatalog || 'Textil'}</span>
+                                     </td>
+                                     <td className="p-4 pr-8 text-right">
+                                         <span className="text-sm font-bold text-black">{f.colors?.length || 0}</span>
+                                     </td>
+                                 </tr>
+                             ))}
+                             {getFilteredItems().length === 0 && (
+                                 <tr>
+                                     <td colSpan={4} className="p-8 text-center text-gray-400 italic">No hay resultados en el historial.</td>
+                                 </tr>
+                             )}
+                        </tbody>
+                    </table>
+                </div>
+             </div>
         )}
 
         {view === 'detail' && selectedFabricId && (
