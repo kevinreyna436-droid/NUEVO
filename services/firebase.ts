@@ -49,12 +49,12 @@ const storage = getStorage(app);
 const COLLECTION_NAME = "fabrics";
 const LOCAL_STORAGE_KEY = "creata_fabrics_offline_backup";
 
-// CLEANUP: Force remove any legacy blocking flags from previous versions to ensure fresh connection attempt
+// CLEANUP: Force remove any legacy blocking flags
 try {
     localStorage.removeItem("creata_firestore_broken");
 } catch(e) {}
 
-// SESSION-ONLY OFFLINE MODE - Defaulting to FALSE to connect to cloud
+// SESSION-ONLY OFFLINE MODE
 let globalOfflineMode = false;
 
 // --- Local Storage Helpers ---
@@ -118,6 +118,7 @@ const dataURItoBlob = (dataURI: string): Blob => {
 };
 
 const uploadImageToStorage = async (base64String: string, path: string): Promise<string> => {
+    // If we are strictly offline, skip upload
     if (globalOfflineMode) return base64String;
 
     try {
@@ -132,13 +133,13 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
         const downloadURL = await getDownloadURL(storageRef);
         return downloadURL;
     } catch (error) {
+        console.warn("Image upload failed:", error);
+        // Fallback: Return original base64 so at least it saves locally/temporarily
         return base64String;
     }
 };
 
 const processFabricImagesForStorage = async (fabric: Fabric): Promise<Fabric> => {
-    if (globalOfflineMode) return fabric;
-
     const updatedFabric = { ...fabric };
     const timestamp = Date.now();
 
@@ -167,8 +168,7 @@ const processFabricImagesForStorage = async (fabric: Fabric): Promise<Fabric> =>
             updatedFabric.colorImages = newColorImages;
         }
     } catch (e) {
-        console.warn("Image upload failed, falling back to local images");
-        return fabric;
+        console.warn("Image processing encountered issues", e);
     }
 
     return updatedFabric;
@@ -218,31 +218,40 @@ const createCleanFabricObject = (source: any): Fabric => {
   };
 };
 
-// --- Exported Operations with Fallback ---
+// --- Exported Operations ---
+
+// Attempt to re-enable network if we were offline
+const ensureOnline = async () => {
+    if (globalOfflineMode) {
+        try {
+            await enableNetwork(db);
+            globalOfflineMode = false;
+            console.log("Attempting to go online for save operation...");
+        } catch (e) {
+            console.warn("Could not enable network:", e);
+        }
+    }
+};
 
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
-  // If we already failed in this session, don't try again until reload
-  if (globalOfflineMode) {
-      return getLocalFabrics();
-  }
+  if (globalOfflineMode) return getLocalFabrics();
 
   try {
-    // Attempt connection with a longer timeout (12s) to ensure cold starts work
+    // Increased timeout to 15s for better initial load on slow networks
     const serverPromise = getDocs(collection(db, COLLECTION_NAME));
     const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT_CONNECT')), 12000)
+        setTimeout(() => reject(new Error('TIMEOUT_CONNECT')), 15000)
     );
 
     const snapshot = await Promise.race([serverPromise, timeoutPromise]);
+    
+    // Merge cloud data with any purely local backups (optional advanced logic, here we prefer cloud)
     return snapshot.docs.map(doc => createCleanFabricObject(doc.data()));
 
   } catch (error: any) {
     console.warn("Firestore connection failed. Switching to Session Offline Mode.", error?.message);
     
-    // Switch to offline mode ONLY for this session
     globalOfflineMode = true;
-    
-    // We disable the network to stop the SDK from spamming console errors for THIS session only
     try { await disableNetwork(db); } catch(e) {}
     
     return getLocalFabrics();
@@ -250,42 +259,39 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
 };
 
 export const saveFabricToFirestore = async (fabric: Fabric) => {
+  // Always try to connect before saving to ensure cloud sync
+  await ensureOnline();
+
   let fabricToSave = { ...fabric };
   
-  if (globalOfflineMode) {
-      saveLocalFabric(fabricToSave);
-      return;
-  }
-
+  // 1. Process Images (Upload to Storage)
   try {
     fabricToSave = await processFabricImagesForStorage(fabric);
   } catch (error) {
-    // Keep base64 if storage fails
+    console.error("Image processing failed, saving with base64/partial data.", error);
   }
 
+  // 2. Save Document
   try {
     const cleanFabric = createCleanFabricObject(fabricToSave);
     if (!cleanFabric.id) throw new Error("Invalid ID");
     
     const savePromise = setDoc(doc(db, COLLECTION_NAME, cleanFabric.id), cleanFabric, { merge: true });
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_SAVE')), 5000));
+    // Increased timeout for save operations
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_SAVE')), 15000));
     
     await Promise.race([savePromise, timeoutPromise]);
+    console.log("✅ Saved to cloud successfully");
     
   } catch (error: any) {
-    console.warn("Firestore save failed, saving to LocalStorage.");
+    console.warn("Firestore save failed, saving to LocalStorage.", error);
     saveLocalFabric(fabricToSave); 
   }
 };
 
 export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
-  if (globalOfflineMode) {
-      fabrics.forEach(f => saveLocalFabric(f));
-      return;
-  }
+  await ensureOnline();
   
-  // Use WriteBatch for speed and efficiency
-  // Firestore limit is 500 ops per batch
   const BATCH_SIZE = 400;
   const chunks = [];
   
@@ -296,28 +302,22 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
   for (const chunk of chunks) {
       const batch = writeBatch(db);
       for (const fabric of chunk) {
-           // We do minimal image processing for batch initial uploads to avoid timeouts
-           // Assumes these are static text records or already processed
            const cleanFabric = createCleanFabricObject(fabric);
            const ref = doc(db, COLLECTION_NAME, cleanFabric.id);
            batch.set(ref, cleanFabric, { merge: true });
       }
       try {
           await batch.commit();
-          console.log(`Saved batch of ${chunk.length} fabrics.`);
+          console.log(`Saved batch of ${chunk.length} fabrics to cloud.`);
       } catch (e) {
           console.error("Batch save failed", e);
-          // Fallback to local
           chunk.forEach(f => saveLocalFabric(f));
       }
   }
 };
 
 export const deleteFabricFromFirestore = async (fabricId: string) => {
-  if (globalOfflineMode) {
-      deleteLocalFabric(fabricId);
-      return;
-  }
+  await ensureOnline();
 
   try {
     await deleteDoc(doc(db, COLLECTION_NAME, fabricId));
@@ -328,12 +328,7 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
 
 export const clearFirestoreCollection = async () => {
   localStorage.removeItem(LOCAL_STORAGE_KEY);
-  
-  // If manual clear, try to re-enable network in case they want to retry
-  if (globalOfflineMode) {
-      globalOfflineMode = false;
-      try { await enableNetwork(db); } catch(e) {}
-  }
+  await ensureOnline();
 
   try {
     const snap = await getDocs(collection(db, COLLECTION_NAME));

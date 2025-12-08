@@ -49,7 +49,8 @@ function App() {
       const dbData = await getFabricsFromFirestore();
       
       // Update offline status after fetch attempt
-      setOfflineStatus(isOfflineMode());
+      const isOffline = isOfflineMode();
+      setOfflineStatus(isOffline);
 
       if (dbData && dbData.length > 0) {
         // DEDUPLICATION LOGIC:
@@ -113,6 +114,11 @@ function App() {
           return [newFabric, ...prev];
       });
       await saveFabricToFirestore(newFabric);
+      
+      // Force navigation back to home/grid after save
+      setView('grid');
+      setSelectedFabricId(null);
+      
     } catch (e: any) {
       console.error("Error saving fabric:", e?.message || "Unknown error");
     }
@@ -126,6 +132,11 @@ function App() {
           return [...uniqueNew, ...prev];
       });
       await saveBatchFabricsToFirestore(newFabrics);
+
+      // Force navigation back to home/grid after bulk save
+      setView('grid');
+      setSelectedFabricId(null);
+
     } catch (e: any) {
       console.error("Error bulk saving:", e?.message || "Unknown error");
     }
