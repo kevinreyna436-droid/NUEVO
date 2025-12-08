@@ -227,9 +227,9 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
           <div>
              <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Resumen Técnico (Texto)</label>
              <textarea 
-               value={formData.technicalSummary}
+               value={formData.technicalSummary || ''}
                onChange={(e) => handleChange('technicalSummary', e.target.value)}
-               className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-black outline-none h-24 resize-none"
+               className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-black outline-none h-32"
              />
           </div>
 
