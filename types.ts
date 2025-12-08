@@ -32,4 +32,4 @@ export interface ChatMessage {
   sources?: { title: string; uri: string }[];
 }
 
-export type AppView = 'grid' | 'detail' | 'upload' | 'generator' | 'list';
+export type AppView = 'grid' | 'detail' | 'upload' | 'generator';

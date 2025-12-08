@@ -66,6 +66,25 @@ const ChatBot: React.FC = () => {
     }
   };
 
+  const handleDownloadHistory = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const historyText = messages.map(m => {
+        const time = new Date(parseInt(m.id)).toLocaleString();
+        const role = m.role === 'user' ? 'Tú' : 'Experto Creata';
+        return `[${time}] ${role}: ${m.text}`;
+    }).join('\n\n');
+
+    const blob = new Blob([historyText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `historial-chat-creata-${new Date().toISOString().slice(0,10)}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       {/* Toggle Button */}
@@ -88,13 +107,22 @@ const ChatBot: React.FC = () => {
               <h3 className="font-serif text-lg">Asistente Creata</h3>
               <p className="text-xs text-gray-300">Powered by Gemini</p>
             </div>
-            <button 
-              onClick={handleClearHistory}
-              className="text-gray-400 hover:text-white p-1"
-              title="Borrar Historial"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-            </button>
+            <div className="flex items-center space-x-1">
+                <button 
+                  onClick={handleDownloadHistory}
+                  className="text-gray-400 hover:text-white p-1 hover:bg-white/10 rounded-full transition-colors"
+                  title="Descargar conversación"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                </button>
+                <button 
+                  onClick={handleClearHistory}
+                  className="text-gray-400 hover:text-white p-1 hover:bg-white/10 rounded-full transition-colors"
+                  title="Borrar Historial"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                </button>
+            </div>
           </div>
           
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
