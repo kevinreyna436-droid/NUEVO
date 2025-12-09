@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Fabric } from '../types';
 import EditFabricModal from './EditFabricModal';
@@ -22,6 +23,12 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
   
   // Check if supplier matches Formatex rules
   const isFormatex = isFormatexSupplier(fabric.supplier);
+
+  // Helper for Sentence Casing (First upper, rest lower)
+  const toSentenceCase = (str: string) => {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  };
 
   // Keydown listener for arrow keys in lightbox
   useEffect(() => {
@@ -79,7 +86,7 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
       const content = `
 CREATA COLLECTION - FICHA TÉCNICA
 ---------------------------------
-Modelo: ${fabric.name}
+Modelo: ${toSentenceCase(fabric.name)}
 Proveedor: ${fabric.supplier}
 Catálogo: ${fabric.customCatalog || (fabric.category === 'wood' ? 'Colección Maderas' : 'Colección Textil')}
 
@@ -92,7 +99,7 @@ ESPECIFICACIONES
 - Peso: ${fabric.specs.weight || 'N/A'}
 
 VARIANTES DE COLOR
-${sortedColors.join(', ')}
+${sortedColors.map(c => toSentenceCase(c)).join(', ')}
 ${skuSection}
 ---------------------------------
 Generado automáticamente por Creata App
@@ -260,9 +267,9 @@ Generado automáticamente por Creata App
         {/* 1. Centered Header Info */}
         <div className="mb-6 space-y-2">
             <h2 className="text-gray-400 italic font-serif text-base tracking-wide">CREATA</h2>
-            {/* Visual Uppercase for Name */}
-            <h1 className="font-serif text-6xl md:text-8xl font-bold text-slate-900 tracking-tight leading-none uppercase">
-                {fabric.name}
+            {/* Visual Sentence Case for Name */}
+            <h1 className="font-serif text-6xl md:text-8xl font-bold text-slate-900 tracking-tight leading-none">
+                {toSentenceCase(fabric.name)}
             </h1>
             <p className="text-sm text-gray-500 font-bold uppercase tracking-[0.25em] pt-2">
                 {fabric.supplier}
@@ -311,9 +318,9 @@ Generado automáticamente por Creata App
                        </div>
                     </div>
                     
-                    {/* Visual Uppercase for color name */}
-                    <p className="mt-3 text-lg font-bold text-slate-900 uppercase tracking-widest text-center group-hover:text-black transition-colors">
-                      {color.toUpperCase()}
+                    {/* Visual Sentence Case for color name forced here */}
+                    <p className="mt-3 text-lg font-bold text-slate-900 tracking-widest text-center group-hover:text-black transition-colors">
+                      {toSentenceCase(color)}
                     </p>
                   </div>
                 );

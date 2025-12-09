@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { extractFabricData, extractColorFromSwatch } from '../services/geminiService';
 import { MASTER_FABRIC_DB } from '../constants';
@@ -27,6 +28,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
   } | null>(null);
 
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const mobileInputRef = useRef<HTMLInputElement>(null);
   const singleImageInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -41,6 +43,20 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
     if (e.target.files && e.target.files.length > 0) {
       setFiles(Array.from(e.target.files));
     }
+  };
+
+  const handleMobileFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+        const newFiles: File[] = Array.from(e.target.files);
+        // Append unique files to allow massive batching from different folders
+        setFiles((prev: File[]) => {
+            const existingKeys = new Set(prev.map((f) => f.name + '-' + f.size));
+            const uniqueNew = newFiles.filter((f) => !existingKeys.has(f.name + '-' + f.size));
+            return [...prev, ...uniqueNew];
+        });
+    }
+    // Reset input to allow selecting same files again if needed
+    if (mobileInputRef.current) mobileInputRef.current.value = '';
   };
   
   const handleSingleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,6 +146,13 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
       // Auto-Format Name to Sentence Case
       if (rawData.name) {
           rawData.name = toSentenceCase(rawData.name);
+      }
+      
+      // Auto-Format Supplier to Uppercase immediately
+      if (rawData.supplier) {
+          rawData.supplier = rawData.supplier.toUpperCase();
+      } else {
+          rawData.supplier = "CONSULTAR";
       }
 
       let dbColors: string[] = [];
@@ -231,11 +254,17 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
 
     try {
       const groups: Record<string, File[]> = {};
+      
       files.forEach(f => {
-          const parts = f.webkitRelativePath.split('/');
+          // Check if it's a folder upload (PC) or flat file upload (Mobile)
+          const relativePath = f.webkitRelativePath || "";
+          const parts = relativePath.split('/');
+          
           let key = 'root';
-          if (parts.length > 2) key = parts[1];
-          else if (parts.length === 2) key = 'root';
+          if (parts.length > 2) key = parts[1]; // Subfolder
+          else if (parts.length === 2) key = 'root'; // Root of folder
+          // If parts length is 0 or 1 (flat file), it stays 'root'
+          
           if (!groups[key]) groups[key] = [];
           groups[key].push(f);
       });
@@ -247,8 +276,17 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
           const key = groupKeys[i];
           const groupFiles = groups[key];
           if (!groupFiles.some(f => f.type.startsWith('image/') || f.type === 'application/pdf')) continue;
-          setCurrentProgress(`Analizando ${key !== 'root' ? key : 'archivos base'} (${i + 1}/${groupKeys.length})...`);
-          const fabricData = await analyzeFileGroup(groupFiles, key === 'root' ? (groupFiles[0].webkitRelativePath.split('/')[0] || 'Unknown') : key);
+          
+          setCurrentProgress(`Analizando ${key !== 'root' ? key : 'archivos'} (${i + 1}/${groupKeys.length})...`);
+          
+          // Determine group name. If we are in 'root', try to get folder name from first file, or default to 'Nueva Tela'
+          let derivedGroupName = key;
+          if (key === 'root') {
+              const firstPath = groupFiles[0].webkitRelativePath || "";
+              derivedGroupName = firstPath.split('/')[0] || 'Nueva Tela';
+          }
+
+          const fabricData = await analyzeFileGroup(groupFiles, derivedGroupName);
           results.push(fabricData);
       }
       setExtractedFabrics(results);
@@ -269,12 +307,10 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
           const updated = [...prev];
           let finalValue = value;
 
-          // Apply Casing Rules on Input
+          // Apply Strict Casing Rules on Input during Review
           if (field === 'name') {
               finalValue = toSentenceCase(value);
-          } else if (field === 'supplier') {
-              finalValue = value.toUpperCase();
-          } else if (field === 'customCatalog') {
+          } else if (field === 'supplier' || field === 'customCatalog') {
               finalValue = value.toUpperCase();
           }
 
@@ -316,7 +352,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
 
     } catch (error: any) {
         console.error("Save error:", error?.message || "Unknown error");
-        alert("Ocurrió un error al guardar."); // Removed "en la nube" to reflect local only possibility
+        alert("Ocurrió un error al guardar.");
     } finally {
         setIsSaving(false);
     }
@@ -339,7 +375,6 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         <h2 className="font-serif text-3xl mb-2 text-primary text-center flex-shrink-0">
             {step === 'review' ? 'Revisar antes de Guardar' : 'Subir Archivos'}
         </h2>
-        {/* Category selector removed as requested */}
 
         {isSaving ? (
              <div className="flex flex-col items-center justify-center flex-1 h-64 space-y-6 text-center">
@@ -353,32 +388,76 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             <>
                 {step === 'upload' && (
                   <div className="space-y-6 flex-1 overflow-y-auto pt-6">
-                    <div 
-                        onClick={() => folderInputRef.current?.click()}
-                        className="border-2 border-dashed border-gray-300 rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors h-64 text-center"
-                    >
-                        {files.length > 0 ? (
-                            <>
-                                <svg className="w-12 h-12 text-green-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                <p className="font-bold text-lg">{files.length} archivos seleccionados</p>
-                            </>
-                        ) : (
-                            <>
-                                <svg className="w-12 h-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
-                                <span className="font-medium text-lg text-gray-600">Seleccionar Carpeta Maestra</span>
-                                <p className="text-xs text-gray-400 mt-2">Sube una carpeta con subcarpetas de telas</p>
-                            </>
-                        )}
-                        {/* @ts-ignore */}
-                        <input ref={folderInputRef} type="file" webkitdirectory="" directory="" multiple className="hidden" onChange={handleFolderChange} />
-                    </div>
+                    {files.length > 0 ? (
+                        /* STATE: FILES SELECTED */
+                         <div className="bg-green-50 border border-green-100 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-4">
+                             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-2">
+                                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                             </div>
+                             <div>
+                                 <h3 className="font-bold text-xl text-green-900">{files.length} archivos listos</h3>
+                                 <p className="text-sm text-green-700 mt-1">Puedes agregar más archivos si lo deseas.</p>
+                             </div>
+                             
+                             <div className="flex gap-3 w-full max-w-sm mt-2">
+                                <button 
+                                    onClick={() => setFiles([])}
+                                    className="flex-1 py-3 px-4 bg-white border border-red-200 text-red-500 rounded-xl text-sm font-bold hover:bg-red-50 transition-colors uppercase"
+                                >
+                                    Borrar Todo
+                                </button>
+                                <button 
+                                    onClick={() => mobileInputRef.current?.click()}
+                                    className="flex-1 py-3 px-4 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors uppercase flex items-center justify-center gap-2"
+                                >
+                                    <span>+ Agregar Más</span>
+                                </button>
+                             </div>
+                         </div>
+                    ) : (
+                        /* STATE: NO FILES */
+                        <div className="flex flex-col gap-4">
+                            {/* PC UPLOAD OPTION */}
+                            <div 
+                                onClick={() => folderInputRef.current?.click()}
+                                className="border-2 border-dashed border-gray-300 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors h-40 text-center group"
+                            >
+                                <svg className="w-10 h-10 text-gray-400 mb-2 group-hover:text-black transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                                <span className="font-medium text-lg text-gray-700">Subir Carpeta (PC)</span>
+                                <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">
+                                  Ideal para catálogos organizados
+                                </p>
+                                {/* @ts-ignore */}
+                                <input ref={folderInputRef} type="file" webkitdirectory="" directory="" multiple className="hidden" onChange={handleFolderChange} />
+                            </div>
+
+                            {/* MOBILE UPLOAD OPTION */}
+                            <div className="flex items-center justify-center w-full">
+                                <span className="text-xs text-gray-300 font-bold uppercase mx-2">O bien</span>
+                            </div>
+
+                            <button 
+                                onClick={() => mobileInputRef.current?.click()}
+                                className="w-full border-2 border-blue-500/20 bg-blue-50/50 text-blue-700 py-6 rounded-xl font-bold hover:bg-blue-100 transition-all flex flex-col items-center justify-center gap-1"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                    <span className="text-lg">Seleccionar Archivos (Celular)</span>
+                                </div>
+                                <p className="text-[10px] uppercase tracking-wider opacity-70">
+                                    Fotos • Galería • Drive • Masivo
+                                </p>
+                            </button>
+                             <input ref={mobileInputRef} type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={handleMobileFilesChange} />
+                        </div>
+                    )}
 
                     <button 
                       onClick={processFiles}
                       disabled={files.length === 0}
-                      className="w-full bg-primary text-white py-4 rounded-xl font-bold tracking-wide hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-all uppercase"
+                      className="w-full bg-primary text-white py-4 rounded-xl font-bold tracking-wide hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-all uppercase mt-4 shadow-lg"
                     >
-                      Analizar Información
+                      {files.length > 0 ? `Analizar ${files.length} Archivos` : 'Analizar Información'}
                     </button>
                     
                     {onReset && (
@@ -394,6 +473,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                   </div>
                 )}
 
+                {/* Processing Step */}
                 {step === 'processing' && (
                   <div className="flex flex-col items-center justify-center h-64 space-y-6 text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
@@ -404,6 +484,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                   </div>
                 )}
 
+                {/* Review Step */}
                 {step === 'review' && (
                   <div className="flex flex-col h-full overflow-hidden">
                      <div className="flex-1 overflow-y-auto pr-2 space-y-4">
@@ -436,13 +517,15 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
 
                                     <div className="flex-1 flex flex-col space-y-3">
                                         <div className="flex flex-col gap-2">
+                                            {/* NAME INPUT: Uppercase Visual, Sentence Case Value */}
                                             <input 
                                                 type="text" 
                                                 value={f.name} 
                                                 onChange={(e) => updateFabricField(i, 'name', e.target.value)}
-                                                className="w-full p-4 bg-white rounded-xl border border-gray-200 font-serif text-3xl font-bold focus:ring-2 focus:ring-black outline-none shadow-sm uppercase placeholder:normal-case"
+                                                className="w-full p-4 bg-white rounded-xl border border-gray-200 font-serif text-3xl font-bold focus:ring-2 focus:ring-black outline-none shadow-sm placeholder:normal-case"
                                                 placeholder="Nombre del Modelo"
                                             />
+                                            {/* SUPPLIER INPUT: Uppercase Forced */}
                                             <input 
                                                 type="text" 
                                                 value={f.supplier} 
@@ -452,6 +535,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                             />
                                         </div>
                                         
+                                        {/* CATALOG INPUT: Uppercase Forced */}
                                         <div className="flex items-center">
                                             <input 
                                                 type="text" 

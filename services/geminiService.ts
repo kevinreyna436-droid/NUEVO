@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 
 // Ensure API Key is present
@@ -47,10 +48,12 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
        - If you are unsure, check the largest bold text but strip generic words.
        
     2. **SUPPLIER NAME (Nombre del proveedor):**
-       - **CRITICAL:** Scan the Header, Footer, and Logos of the document specifically.
-       - Look for company names like "Formatex", "Creata", "Textiles", "Kravet", "Sunbrella", etc.
-       - If you see a logo or small text at the bottom/top saying "Distributed by..." or just a company name, USE IT.
-       - Only return "Consultar" if you are 100% sure there is NO company name mentioned anywhere in the document.
+       - **CRITICAL:** Scan the entire document thoroughly. Look at the HEADER, FOOTER, and especially small LEGAL TEXT at the bottom.
+       - Look for keywords like "Distributed by", "Textiles", "Colección", "Marca".
+       - Look for company names like "FORMATEX", "CREATA", "TEXTILES", "KRAVET", "SUNBRELLA", "WARWICK", "JAMES DUNLOP", "FIBREGUARD".
+       - If you see a website like "www.formatex.com", extract "FORMATEX".
+       - If you see a logo with text, extract that text.
+       - Only return "Consultar" if you are 100% sure there is NO company name mentioned anywhere.
        
     3. **COLOR NAMES (Nombre de color):**
        - Look at the TEXT INSIDE THE IMAGE (OCR).
@@ -81,7 +84,7 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
           type: Type.OBJECT,
           properties: {
             name: { type: Type.STRING, description: "The clean model name only. No supplier." },
-            supplier: { type: Type.STRING, description: "The manufacturer name found in headers/footers." },
+            supplier: { type: Type.STRING, description: "The manufacturer name found in headers/footers/logos." },
             technicalSummary: { type: Type.STRING },
             specs: {
               type: Type.OBJECT,

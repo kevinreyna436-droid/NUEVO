@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Fabric } from '../types';
 
@@ -18,6 +19,12 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
 
   // Safe access to colors
   const colorList = fabric.colors || [];
+
+  // Helper helper to force Sentence Case (First upper, rest lower) purely for display
+  const toSentenceCase = (str: string) => {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  };
 
   return (
     <div 
@@ -63,32 +70,33 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
           {mode === 'model' ? (
             /* VISTA MODELOS */
             <>
-              {/* Main Title */}
-              <h3 className="font-serif text-lg md:text-xl font-medium text-slate-800 leading-tight mb-1 group-hover:text-black transition-colors px-1 line-clamp-1">
-                {fabric.name}
+              {/* Main Title - Sentence Case, No Uppercase Class */}
+              <h3 className="font-serif text-lg md:text-xl font-medium text-slate-800 leading-tight mb-1 group-hover:text-black transition-colors px-1 line-clamp-1 tracking-tight">
+                {toSentenceCase(fabric.name)}
               </h3>
-              {/* Subtitle */}
+              {/* Subtitle - Supplier Stays Uppercase */}
               <p className="text-[10px] md:text-xs font-semibold text-gray-400 uppercase tracking-widest leading-none">
                 {fabric.supplier}
               </p>
               
               {/* Colors List (Footer info) */}
-              <p className="text-[9px] text-gray-300 font-normal uppercase leading-snug px-1 tracking-wide line-clamp-1 mt-2">
-                {colorList.join(', ')}
+              <p className="text-[9px] text-gray-300 font-normal leading-snug px-1 tracking-wide line-clamp-1 mt-2">
+                {colorList.map(c => toSentenceCase(c)).join(', ')}
               </p>
             </>
           ) : (
             /* VISTA COLORES */
             <>
-              {/* Main Title - EXACTLY SAME CLASS AS MODEL */}
+              {/* Main Title - Color Name in Sentence Case */}
               <h3 className="font-serif text-lg md:text-xl font-medium text-slate-800 leading-tight mb-1 group-hover:text-black transition-colors px-1 line-clamp-2 break-words">
-                {specificColorName}
+                {toSentenceCase(specificColorName || '')}
               </h3>
               
-              {/* Subtitle - EXACTLY SAME CLASS AS MODEL */}
-              <p className="text-[10px] md:text-xs font-semibold text-gray-400 uppercase tracking-widest leading-none">
-                {fabric.name}
+              {/* Subtitle - Model Name in Sentence Case */}
+              <p className="text-[10px] md:text-xs font-semibold text-gray-400 tracking-widest leading-none">
+                {toSentenceCase(fabric.name)}
               </p>
+              {/* Supplier Stays Uppercase */}
                <p className="text-[9px] text-gray-300 font-semibold uppercase tracking-widest leading-none mt-1">
                 {fabric.supplier}
               </p>

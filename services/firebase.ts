@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import * as firebaseApp from "firebase/app";
 import { 
   collection, 
   getDocs, 
@@ -35,7 +35,8 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Use namespace import to avoid 'no exported member' errors in some environments
+const app = firebaseApp.initializeApp(firebaseConfig);
 
 // Initialize Firestore
 const db = initializeFirestore(app, {

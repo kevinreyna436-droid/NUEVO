@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Fabric } from '../types';
 import { compressImage } from '../utils/imageCompression';
@@ -22,9 +23,10 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
   const [editingColorIndex, setEditingColorIndex] = useState<number | null>(null);
   const [processingImageId, setProcessingImageId] = useState<string | null>(null);
 
-  // Helper for Sentence Casing
+  // Helper for Sentence Casing (First upper, rest lower)
   const toSentenceCase = (str: string) => {
     if (!str) return '';
+    // Handle edge case of single word or multiple
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
   };
 
@@ -33,8 +35,10 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
     
     // Apply Casing Rules
     if (field === 'name') {
+        // Name: Sentence Case internally
         finalValue = toSentenceCase(value);
     } else if (field === 'supplier' || field === 'customCatalog') {
+        // Supplier & Catalog: ALWAYS Uppercase
         finalValue = value.toUpperCase();
     }
 
@@ -49,7 +53,8 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
   };
 
   const handleColorNameChange = (index: number, newNameRaw: string) => {
-    const newName = toSentenceCase(newNameRaw); // Force sentence case
+    // Colors: Sentence Case internally
+    const newName = toSentenceCase(newNameRaw); 
     
     const newColors = [...formData.colors];
     const oldName = newColors[index];
@@ -75,7 +80,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
   const handleAddColor = () => {
     setFormData(prev => ({
         ...prev,
-        colors: [...prev.colors, "Nuevo Color"]
+        colors: [...prev.colors, "Nuevo color"]
     }));
   };
 
@@ -199,7 +204,8 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                 type="text" 
                 value={formData.name} 
                 onChange={(e) => handleChange('name', e.target.value)}
-                className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-black outline-none font-medium uppercase placeholder:normal-case"
+                className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-black outline-none font-medium placeholder:normal-case"
+                placeholder="Nombre del Modelo"
               />
             </div>
             <div>
@@ -209,6 +215,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                 value={formData.supplier} 
                 onChange={(e) => handleChange('supplier', e.target.value)}
                 className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-black outline-none font-medium uppercase"
+                placeholder="PROVEEDOR"
               />
             </div>
           </div>
@@ -219,7 +226,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                 type="text" 
                 value={formData.customCatalog || ''} 
                 onChange={(e) => handleChange('customCatalog', e.target.value)}
-                placeholder="Ej: Colección Verano 2025"
+                placeholder="EJ: COLECCIÓN VERANO 2025"
                 className="w-full p-3 bg-white rounded-lg border border-blue-200 focus:ring-1 focus:ring-blue-500 outline-none font-medium text-blue-900 uppercase"
             />
           </div>
@@ -371,8 +378,8 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                                       type="text" 
                                       value={color} 
                                       onChange={(e) => handleColorNameChange(idx, e.target.value)}
-                                      className="w-full bg-white border border-gray-200 rounded-lg p-3 focus:ring-1 focus:ring-black outline-none text-base font-medium uppercase placeholder:normal-case"
-                                      placeholder="Ej: Navy Blue"
+                                      className="w-full bg-white border border-gray-200 rounded-lg p-3 focus:ring-1 focus:ring-black outline-none text-base font-medium placeholder:normal-case"
+                                      placeholder="Ej: Navy blue"
                                   />
                               </div>
 
