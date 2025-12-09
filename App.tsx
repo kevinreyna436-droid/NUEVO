@@ -360,9 +360,14 @@ function App() {
       {view === 'grid' && (
         <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative">
             
-            <h1 className="font-serif text-6xl md:text-8xl font-bold text-center tracking-tight text-slate-900 leading-none">
-                Catálogo de telas
-            </h1>
+            <div className="text-center">
+                <h1 className="font-serif text-6xl md:text-8xl font-bold tracking-tight text-slate-900 leading-none">
+                    Catálogo de Telas
+                </h1>
+                <p className="mt-2 text-lg md:text-xl font-serif text-gray-400 italic tracking-wide">
+                    Creata Collection
+                </p>
+            </div>
             
             <div className="flex space-x-8 md:space-x-12 border-b border-transparent">
                 <button 
