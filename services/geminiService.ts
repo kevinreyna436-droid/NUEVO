@@ -217,11 +217,20 @@ export const editFabricImage = async (base64Image: string, prompt: string) => {
 };
 
 /**
- * Chatbot with Grounding.
+ * Chatbot with Grounding and Catalog Context.
  * Uses gemini-3-pro-preview + googleSearch.
  */
-export const chatWithExpert = async (message: string, history: any[]) => {
+export const chatWithExpert = async (message: string, history: any[], catalogContext?: string) => {
   try {
+    const systemInstruction = `
+    You are a helpful expert assistant for 'Creata Collection', a premium fabric catalog. 
+    You help designers find trends, technical info, and fabric care advice. Respond in Spanish.
+    
+    ${catalogContext ? `Here is the specific data of the fabrics currently in the catalog. Use this to answer availability questions:\n${catalogContext}` : ''}
+    
+    If the user asks about a fabric not in the list, offer to search online for trends or general information.
+    `;
+
     const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: [
@@ -230,7 +239,7 @@ export const chatWithExpert = async (message: string, history: any[]) => {
       ],
       config: {
         tools: [{ googleSearch: {} }],
-        systemInstruction: "You are a helpful expert assistant for 'Creata Collection', a premium fabric catalog. You help designers find trends, technical info, and fabric care advice. Respond in Spanish."
+        systemInstruction: systemInstruction
       }
     }));
 

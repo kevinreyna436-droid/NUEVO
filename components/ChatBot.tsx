@@ -1,9 +1,12 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { chatWithExpert } from '../services/geminiService';
-import { ChatMessage } from '../types';
+import { ChatMessage, Fabric } from '../types';
 
-const ChatBot: React.FC = () => {
+interface ChatBotProps {
+  fabrics: Fabric[];
+}
+
+const ChatBot: React.FC<ChatBotProps> = ({ fabrics = [] }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     { id: '1', role: 'model', text: 'Hola! Soy tu experto textil. Pregúntame sobre tendencias, códigos de limpieza o proveedores.' }
@@ -44,7 +47,15 @@ const ChatBot: React.FC = () => {
     setLoading(true);
 
     const history = messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
-    const result = await chatWithExpert(userMsg.text, history);
+    
+    // Prepare catalog context (simplified to save tokens but provide info)
+    const context = fabrics.length > 0 
+      ? "CATALOG CONTEXT (Available Fabrics):\n" + fabrics.map(f => 
+          `- Model: ${f.name} (Supplier: ${f.supplier}). Category: ${f.category}. Colors: ${f.colors?.join(', ')}. Tech: ${f.technicalSummary?.substring(0, 100)}...`
+        ).join('\n')
+      : "The catalog is currently empty.";
+
+    const result = await chatWithExpert(userMsg.text, history, context);
 
     const modelMsg: ChatMessage = { 
       id: (Date.now() + 1).toString(), 

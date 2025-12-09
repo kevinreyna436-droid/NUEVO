@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import FabricCard from './components/FabricCard';
 import FabricDetail from './components/FabricDetail';
@@ -58,10 +57,7 @@ function App() {
         const seenNames = new Set<string>();
 
         dbData.forEach(fabric => {
-            const normalizedName = fabric.name.trim().toLowerCase();
-            // We use a combination of ID and Name to ensure uniqueness if needed, 
-            // but for display, we generally trust the ID. 
-            // Here we simply display all valid fabrics retrieved.
+            // We simply display all valid fabrics retrieved.
             if (fabric.id) {
                uniqueFabrics.push(fabric);
             }
@@ -91,7 +87,7 @@ function App() {
   };
 
   const handleFabricClick = (fabric: Fabric, specificColor?: string) => {
-    if (activeTab === 'model') {
+    if (activeTab === 'model' || activeTab === 'wood') {
         setSelectedFabricId(fabric.id);
         setView('detail');
     } else {
@@ -225,7 +221,9 @@ function App() {
   };
 
   const getSortedColorCards = () => {
-      const items = getFilteredItems();
+      // Only show colors for Models/Fabrics, exclude Woods from "Ver Colores"
+      const items = getFilteredItems().filter(f => f.category !== 'wood');
+      
       const allColorCards = items.flatMap((fabric) => 
           (fabric.colors || []).map((colorName) => ({
               fabric,
@@ -292,19 +290,45 @@ function App() {
   }, [colorLightbox]);
 
   const renderGridContent = () => {
-    const items = getFilteredItems();
+    const allItems = getFilteredItems();
 
     if (activeTab === 'wood') {
-        return (
-            <div className="text-center py-20 text-gray-400">
-                <h3 className="font-serif text-xl italic">Colección de maderas próximamente</h3>
-            </div>
-        );
+        const woodItems = allItems.filter(f => f.category === 'wood');
+        const sortedItems = [...woodItems].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+        
+        if (sortedItems.length === 0) {
+            return (
+                <div className="col-span-full text-center py-20 text-gray-400">
+                    <h3 className="font-serif text-xl italic">No hay maderas registradas</h3>
+                    <p className="text-xs mt-2">Usa el botón superior para subir archivos a la colección de maderas.</p>
+                </div>
+            );
+        }
+
+        return sortedItems.map((fabric, idx) => (
+            <FabricCard 
+                key={fabric.id} 
+                fabric={fabric}
+                mode="model"
+                onClick={() => handleFabricClick(fabric)}
+                index={idx}
+            />
+        ));
     }
 
     if (activeTab === 'model') {
-        // Simple sort by name for models
-        const sortedItems = [...items].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+        // Filter out Woods from Model view
+        const modelItems = allItems.filter(f => f.category !== 'wood');
+        const sortedItems = [...modelItems].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+        
+        if (sortedItems.length === 0) {
+             return (
+                <div className="col-span-full text-center py-20 text-gray-400">
+                    <h3 className="font-serif text-xl italic">No se encontraron modelos</h3>
+                </div>
+            );
+        }
+
         return sortedItems.map((fabric, idx) => (
             <FabricCard 
                 key={fabric.id} 
@@ -365,7 +389,15 @@ function App() {
                         activeTab === 'model' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
                 >
-                    Ver modelos
+                    Colección Textil
+                </button>
+                <button 
+                    onClick={() => { setActiveTab('wood'); setFilterMenuOpen(false); }}
+                    className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
+                        activeTab === 'wood' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                >
+                    Colección Maderas
                 </button>
                 <button 
                     onClick={() => { setActiveTab('color'); }}
@@ -373,7 +405,7 @@ function App() {
                         activeTab === 'color' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
                 >
-                    Ver colores
+                    Ver por colores
                 </button>
             </div>
             
@@ -453,7 +485,7 @@ function App() {
                 <div className="flex justify-center items-center py-20">
                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
                 </div>
-            ) : filteredItemCount === 0 && activeTab !== 'wood' ? (
+            ) : filteredItemCount === 0 && !searchQuery ? (
                 <div className="text-center py-20 text-gray-300">
                      <p>El catálogo está vacío.</p>
                      {offlineStatus && <p className="text-xs mt-2 text-red-300">Modo sin conexión o base de datos vacía.</p>}
@@ -554,7 +586,7 @@ function App() {
         onReset={handleReset}
       />
 
-      <ChatBot />
+      <ChatBot fabrics={fabrics} />
 
     </div>
   );
