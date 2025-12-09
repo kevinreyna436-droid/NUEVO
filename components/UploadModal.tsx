@@ -316,7 +316,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
 
     } catch (error: any) {
         console.error("Save error:", error?.message || "Unknown error");
-        alert("Ocurrió un error al guardar en la nube.");
+        alert("Ocurrió un error al guardar."); // Removed "en la nube" to reflect local only possibility
     } finally {
         setIsSaving(false);
     }
@@ -339,38 +339,20 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
         <h2 className="font-serif text-3xl mb-2 text-primary text-center flex-shrink-0">
             {step === 'review' ? 'Revisar antes de Guardar' : 'Subir Archivos'}
         </h2>
-        {step === 'upload' && !isSaving && (
-            <div className="flex justify-center mb-6">
-                <div className="flex bg-gray-100 p-1 rounded-full">
-                    <button 
-                        onClick={() => setSelectedCategory('model')}
-                        className={`px-6 py-2 rounded-full text-sm font-bold uppercase transition-all ${selectedCategory === 'model' ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:text-gray-800'}`}
-                    >
-                        Colección Textil
-                    </button>
-                    <button 
-                         onClick={() => setSelectedCategory('wood')}
-                        className={`px-6 py-2 rounded-full text-sm font-bold uppercase transition-all ${selectedCategory === 'wood' ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:text-gray-800'}`}
-                    >
-                        Colección Maderas
-                    </button>
-                </div>
-            </div>
-        )}
+        {/* Category selector removed as requested */}
 
         {isSaving ? (
              <div className="flex flex-col items-center justify-center flex-1 h-64 space-y-6 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
                 <div>
-                    <p className="font-serif text-lg font-bold">Guardando en la Nube...</p>
-                    <p className="text-xs text-gray-400 mt-2">Subiendo imágenes de ALTA CALIDAD a Firebase Storage.</p>
-                    <p className="text-xs text-gray-300 mt-1">Esto puede tardar unos segundos dependiendo de tu conexión.</p>
+                    <p className="font-serif text-lg font-bold">Guardando...</p>
+                    <p className="text-xs text-gray-400 mt-2">Procesando imágenes de ALTA CALIDAD.</p>
                 </div>
              </div>
         ) : (
             <>
                 {step === 'upload' && (
-                  <div className="space-y-6 flex-1 overflow-y-auto">
+                  <div className="space-y-6 flex-1 overflow-y-auto pt-6">
                     <div 
                         onClick={() => folderInputRef.current?.click()}
                         className="border-2 border-dashed border-gray-300 rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors h-64 text-center"

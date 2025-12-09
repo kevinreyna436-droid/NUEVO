@@ -292,32 +292,14 @@ function App() {
   const renderGridContent = () => {
     const allItems = getFilteredItems();
 
+    // Removed Wood View - Fallback to avoid errors if state lingers
     if (activeTab === 'wood') {
-        const woodItems = allItems.filter(f => f.category === 'wood');
-        const sortedItems = [...woodItems].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
-        
-        if (sortedItems.length === 0) {
-            return (
-                <div className="col-span-full text-center py-20 text-gray-400">
-                    <h3 className="font-serif text-xl italic">No hay maderas registradas</h3>
-                    <p className="text-xs mt-2">Usa el botón superior para subir archivos a la colección de maderas.</p>
-                </div>
-            );
-        }
-
-        return sortedItems.map((fabric, idx) => (
-            <FabricCard 
-                key={fabric.id} 
-                fabric={fabric}
-                mode="model"
-                onClick={() => handleFabricClick(fabric)}
-                index={idx}
-            />
-        ));
+        setActiveTab('model'); // Redirect
+        return null;
     }
 
     if (activeTab === 'model') {
-        // Filter out Woods from Model view
+        // Filter out Woods from Model view (if any exist in DB)
         const modelItems = allItems.filter(f => f.category !== 'wood');
         const sortedItems = [...modelItems].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
         
@@ -389,15 +371,7 @@ function App() {
                         activeTab === 'model' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
                 >
-                    Colección Textil
-                </button>
-                <button 
-                    onClick={() => { setActiveTab('wood'); setFilterMenuOpen(false); }}
-                    className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
-                        activeTab === 'wood' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                >
-                    Colección Maderas
+                    Ver modelos
                 </button>
                 <button 
                     onClick={() => { setActiveTab('color'); }}
@@ -405,7 +379,7 @@ function App() {
                         activeTab === 'color' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
                     }`}
                 >
-                    Ver por colores
+                    Ver colores
                 </button>
             </div>
             

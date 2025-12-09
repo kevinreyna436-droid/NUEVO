@@ -1,5 +1,4 @@
-
-import * as firebaseApp from "firebase/app";
+import { initializeApp } from "firebase/app";
 import { 
   collection, 
   getDocs, 
@@ -24,6 +23,7 @@ import { Fabric } from "../types";
 // Suppress unnecessary connection warnings from Firebase SDK
 setLogLevel('silent');
 
+// LIVE CONFIG - Connected to creata-catalogo
 const firebaseConfig = {
   apiKey: "AIzaSyAudyiExH_syO9MdtSzn4cDxrK0p1zjnac",
   authDomain: "creata-catalogo.firebaseapp.com",
@@ -35,7 +35,7 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = firebaseApp.initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore
 const db = initializeFirestore(app, {
@@ -55,6 +55,7 @@ try {
 } catch(e) {}
 
 // SESSION-ONLY OFFLINE MODE
+// Default to FALSE (Online) to attempt connection to your cloud
 let globalOfflineMode = false;
 
 // --- Local Storage Helpers ---
@@ -141,6 +142,9 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
 
 const processFabricImagesForStorage = async (fabric: Fabric): Promise<Fabric> => {
     const updatedFabric = { ...fabric };
+    // Skip image processing in offline mode (saves as base64 locally)
+    if (globalOfflineMode) return updatedFabric;
+
     const timestamp = Date.now();
 
     try {
@@ -222,14 +226,14 @@ const createCleanFabricObject = (source: any): Fabric => {
 
 // Attempt to re-enable network if we were offline
 const ensureOnline = async () => {
-    if (globalOfflineMode) {
-        try {
-            await enableNetwork(db);
-            globalOfflineMode = false;
-            console.log("Attempting to go online for save operation...");
-        } catch (e) {
-            console.warn("Could not enable network:", e);
-        }
+    // If we are forced offline by config, do not attempt to connect
+    if (globalOfflineMode) return;
+
+    try {
+        await enableNetwork(db);
+        console.log("Network enabled.");
+    } catch (e) {
+        // console.warn("Could not enable network:", e);
     }
 };
 
@@ -237,6 +241,7 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   // Always fetch local data first as a base/fallback
   const localData = getLocalFabrics();
 
+  // Return local only if we are in disconnected mode
   if (globalOfflineMode) return localData;
 
   try {
@@ -286,11 +291,17 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
 
   let fabricToSave = { ...fabric };
   
-  // 1. Process Images (Upload to Storage)
+  // 1. Process Images (Upload to Storage) - skipped in offline mode
   try {
     fabricToSave = await processFabricImagesForStorage(fabric);
   } catch (error) {
     console.error("Image processing failed, saving with base64/partial data.", error);
+  }
+
+  // If offline, stop here (we already saved locally)
+  if (globalOfflineMode) {
+      console.log("✅ Saved to local storage (Offline Mode)");
+      return;
   }
 
   // 2. Save Document to Cloud
@@ -318,6 +329,11 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
 
   await ensureOnline();
   
+  if (globalOfflineMode) {
+      console.log("✅ Batch saved to local storage (Offline Mode)");
+      return;
+  }
+
   const BATCH_SIZE = 400;
   const chunks = [];
   
@@ -348,6 +364,8 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
   // Delete locally first for instant UI feedback
   deleteLocalFabric(fabricId);
 
+  if (globalOfflineMode) return;
+
   try {
     await deleteDoc(doc(db, COLLECTION_NAME, fabricId));
   } catch (error) {
@@ -358,6 +376,8 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
 export const clearFirestoreCollection = async () => {
   localStorage.removeItem(LOCAL_STORAGE_KEY);
   await ensureOnline();
+
+  if (globalOfflineMode) return;
 
   try {
     const snap = await getDocs(collection(db, COLLECTION_NAME));
