@@ -203,5 +203,27 @@ export const MASTER_FABRIC_DB: Record<string, string[]> = {
   "Zenith": ["Aqua", "Black", "Brick", "Buttercup", "Cobalt", "Cocoa", "Emerald", "Grape", "Marine", "Mineral", "Natural", "Ocean", "Red", "Snow", "Stone", "Toffe", "Tusk", "Zinc", "Coral"]
 };
 
+// Data of validated stock provided by the user
+export const IN_STOCK_DB: Record<string, string[]> = {
+  "Alanis": ["Ash", "Beige", "Ivory", "Steel"],
+  "Aberdin": ["Gris", "Lino", "Natural", "Oxford"],
+  "Belucci": ["Black", "Brick", "Ecru", "Fog", "Fossil", "Grey", "Metal", "Navy", "Ocean", "Olive", "Rose", "Serenity", "Steel"],
+  "Blend": ["Black", "Cobalt", "Flax", "Mineral", "Natural", "Teal"],
+  "Drill": ["Beige", "Charcoal", "Coffee", "Darkgrey", "Granite", "Latte", "Natural", "Pearl", "Platinum", "Slate"],
+  "Elite": ["Darkgrey", "Flax", "Grey", "Pewter", "Royal", "Silver", "Spa", "Stone"],
+  "Enigma": ["Acero", "Aqua", "Beige", "Café", "Cereza", "Fossil", "Grey", "Iron", "Lavanda", "Marfil", "Marino", "Mink", "Mustard", "Natural", "Navy", "Oro", "Piedra", "Rey", "Rojo", "Topo", "Uva", "Verde", "Zinc"],
+  "Fashion": ["Beige", "Black", "Bone", "Capuchino", "Grey", "Platinum"],
+  "Fiora": ["Ash", "Choco", "Coral", "Ecru", "Grey", "Linen", "Pearl", "Soldier", "Spa", "Turquoise"],
+  "Freedom": ["Granite", "Gravel", "Linen", "Sky", "Stone", "Turquesa"],
+  "Gellar": ["Jute", "Linen", "Marble"],
+  "Lullaby": ["Bark", "Black", "Cream", "Fossil", "Ivory", "Mustard", "Olive", "Oyster", "Silver"],
+  "Maq Artell": ["Akron Beige", "Albany Azul", "Camel Aqua", "Camel Avena", "Camel Azafran", "Doby Fresa", "Doby Indigo", "Draco Cemento", "Draco Ceniza", "Silex Arena", "Silex Gris", "Silex Humo"],
+  "Presto": ["Charcoal", "Flax", "Stone"],
+  "Reflect": ["Charcoal", "Dove", "Fossil", "Nature"],
+  "Tessa": ["Dove", "Ebony", "Ivory", "Khaki", "Midnight", "Oyster", "Shadow", "Vanilla"],
+  "Victory": ["Beige", "Capuchino", "Flint", "Grey", "Ivory", "Orion Blue", "Sky", "Straw", "Teal", "Thunder"],
+  "Zenith": ["Aqua", "Black", "Brick", "Buttercup", "Cobalt", "Cocoa", "Coral", "Emerald", "Grape", "Marine", "Mineral", "Natural", "Ocean", "Red", "Snow", "Stone", "Toffe", "Tusk", "Zinc"]
+};
+
 // INITIAL_FABRICS is now empty to ensure a clean slate and "disconnect" from static data.
 export const INITIAL_FABRICS: Fabric[] = [];

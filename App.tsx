@@ -5,7 +5,7 @@ import UploadModal from './components/UploadModal';
 import ChatBot from './components/ChatBot';
 import PinModal from './components/PinModal';
 import ImageGenModal from './components/ImageGenModal';
-import { INITIAL_FABRICS } from './constants';
+import { INITIAL_FABRICS, IN_STOCK_DB } from './constants';
 import { Fabric, AppView } from './types';
 import { 
   getFabricsFromFirestore, 
@@ -36,6 +36,11 @@ function App() {
   // Sorting State - Default "color"
   const [sortBy, setSortBy] = useState<SortOption>('color');
   const [isFilterMenuOpen, setFilterMenuOpen] = useState(false);
+
+  // Supplier Filter State
+  // 'CREATA_STOCK' is a special value to filter only items in IN_STOCK_DB
+  const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
+  const [isSupplierMenuOpen, setSupplierMenuOpen] = useState(false);
 
   // State for Color View Lightbox (Global Grid)
   const [colorLightbox, setColorLightbox] = useState<{
@@ -235,6 +240,15 @@ function App() {
 
   const getFilteredItems = () => {
     let items = [...fabrics];
+    
+    // Filter by Supplier or Special "CREATA_STOCK" Logic
+    if (selectedSupplier === 'CREATA_STOCK') {
+        // Only show items whose name exists in the IN_STOCK_DB (Green Dot Logic)
+        items = items.filter(f => Object.keys(IN_STOCK_DB).some(k => k.toLowerCase() === f.name.toLowerCase()));
+    } else if (selectedSupplier) {
+        items = items.filter(f => f.supplier === selectedSupplier);
+    }
+
     if (searchQuery) {
         items = items.filter(f => 
             f.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -248,12 +262,26 @@ function App() {
       // Only show colors for Models/Fabrics, exclude Woods from "Ver Colores"
       const items = getFilteredItems().filter(f => f.category !== 'wood');
       
-      const allColorCards = items.flatMap((fabric) => 
+      let allColorCards = items.flatMap((fabric) => 
           (fabric.colors || []).map((colorName) => ({
               fabric,
               colorName
           }))
       );
+
+      // SPECIAL LOGIC FOR CREATA_STOCK in COLOR VIEW
+      // If filtering by Stock, we must filter out specific colors that are not in the DB,
+      // even if the Model is in the DB.
+      if (selectedSupplier === 'CREATA_STOCK') {
+          allColorCards = allColorCards.filter(card => {
+             const modelKey = Object.keys(IN_STOCK_DB).find(k => k.toLowerCase() === card.fabric.name.toLowerCase());
+             if (!modelKey) return false;
+             
+             const stockColors = IN_STOCK_DB[modelKey];
+             // Check if this specific color exists in the allowed list
+             return stockColors.some(c => c.toLowerCase() === card.colorName.toLowerCase());
+          });
+      }
 
       allColorCards.sort((a, b) => {
           if (sortBy === 'color') {
@@ -361,7 +389,10 @@ function App() {
     }
   };
 
-  const filteredItemCount = getFilteredItems().length;
+  const filteredItemCount = activeTab === 'color' ? getSortedColorCards().length : getFilteredItems().length;
+  
+  // Calculate unique suppliers for the filter
+  const uniqueSuppliers = Array.from(new Set(fabrics.map(f => f.supplier).filter(Boolean))).sort();
 
   return (
     <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans selection:bg-black selection:text-white relative">
@@ -412,9 +443,7 @@ function App() {
                 <h1 className="font-serif text-6xl md:text-8xl font-bold tracking-tight text-slate-900 leading-none">
                     Catálogo de Telas
                 </h1>
-                <p className="mt-2 text-lg md:text-xl font-serif text-gray-400 italic tracking-wide">
-                    Creata Collection
-                </p>
+                {/* Removed 'Creata Collection' subtitle as requested */}
             </div>
             
             <div className="flex space-x-8 md:space-x-12 border-b border-transparent">
@@ -437,6 +466,7 @@ function App() {
             </div>
             
             <div className="flex flex-row items-center gap-3 w-full max-w-2xl relative">
+                
                 <div className="relative flex-grow">
                   <input 
                     type="text" 
@@ -448,12 +478,66 @@ function App() {
                   <svg className="absolute left-4 top-3.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 </div>
 
+                {/* Supplier Filter Button (Right of Search) */}
+                <div className="relative">
+                    <button 
+                        onClick={() => setSupplierMenuOpen(!isSupplierMenuOpen)}
+                        className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${isSupplierMenuOpen || selectedSupplier ? 'bg-black text-white border-black' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                        title="Filtrar por Proveedor"
+                    >
+                        {/* Filter Funnel Icon */}
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                    </button>
+                    
+                    {isSupplierMenuOpen && (
+                        <div className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden animate-fade-in max-h-80 overflow-y-auto hide-scrollbar">
+                            <div className="px-4 py-2 text-[10px] uppercase font-bold text-gray-400 tracking-wider">Filtrar Proveedor</div>
+                            <button 
+                                onClick={() => { setSelectedSupplier(null); setSupplierMenuOpen(false); }}
+                                className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${!selectedSupplier ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
+                            >
+                                <span>Ver Todos</span>
+                                {!selectedSupplier && <span className="text-black">•</span>}
+                            </button>
+
+                            {/* SPECIAL CREATA STOCK OPTION */}
+                            <button 
+                                onClick={() => { setSelectedSupplier('CREATA_STOCK'); setSupplierMenuOpen(false); }}
+                                className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${selectedSupplier === 'CREATA_STOCK' ? 'text-green-600 font-bold bg-green-50' : 'text-green-600 font-medium'}`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <span>Creata (Stock)</span>
+                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                </div>
+                                {selectedSupplier === 'CREATA_STOCK' && <span className="text-green-600">•</span>}
+                            </button>
+
+                            <div className="border-t border-gray-100 my-1"></div>
+
+                            {uniqueSuppliers.map(supplier => (
+                                <button 
+                                    key={supplier}
+                                    onClick={() => { setSelectedSupplier(supplier); setSupplierMenuOpen(false); }}
+                                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${selectedSupplier === supplier ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
+                                >
+                                    <span>{supplier}</span>
+                                    {selectedSupplier === supplier && <span className="text-black">•</span>}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    
+                    {isSupplierMenuOpen && (
+                        <div className="fixed inset-0 z-40" onClick={() => setSupplierMenuOpen(false)}></div>
+                    )}
+                </div>
+
                 {activeTab === 'color' && (
                     <div className="relative">
                         <button 
                             onClick={() => setFilterMenuOpen(!isFilterMenuOpen)}
                             className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${isFilterMenuOpen ? 'bg-black text-white border-black' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                            title="Filtrar colores"
+                            title="Ordenar resultados"
                         >
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <line x1="4" y1="6" x2="20" y2="6"></line>

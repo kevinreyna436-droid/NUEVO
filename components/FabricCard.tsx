@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Fabric } from '../types';
+import { IN_STOCK_DB } from '../constants';
 
 interface FabricCardProps {
   fabric: Fabric;
@@ -25,6 +26,26 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
   };
+
+  // --- LOGIC FOR STOCK INDICATOR (GREEN DOT) ---
+  const isVerifiedStock = (): boolean => {
+      // Find matching key in DB (case-insensitive)
+      const modelKey = Object.keys(IN_STOCK_DB).find(k => k.toLowerCase() === fabric.name.toLowerCase());
+      
+      if (!modelKey) return false;
+
+      if (mode === 'model') {
+          // If in Model View, just checking if the Model exists in the Stock DB is enough (requested behavior)
+          return true;
+      } else if (mode === 'color' && specificColorName) {
+          // If in Color View, check if the specific color exists in that model's list
+          const stockColors = IN_STOCK_DB[modelKey];
+          return stockColors.some(c => c.toLowerCase() === specificColorName.toLowerCase());
+      }
+      return false;
+  };
+
+  const showGreenDot = isVerifiedStock();
 
   return (
     <div 
@@ -52,6 +73,14 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
           </div>
         )}
         
+        {/* STOCK INDICATOR - GREEN DOT */}
+        {showGreenDot && (
+            <div 
+                className="absolute bottom-3 right-3 z-30 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm" 
+                title={mode === 'model' ? "Modelo en Stock" : "Color en Stock"}
+            ></div>
+        )}
+
         {/* Curved Wave Separator (SVG) */}
         <div className="absolute bottom-[-1px] left-0 w-full text-white pointer-events-none z-10">
              <svg 

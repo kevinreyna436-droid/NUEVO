@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { Fabric } from '../types';
 import EditFabricModal from './EditFabricModal';
 import PinModal from './PinModal';
 import { generateFormatexSKU, isFormatexSupplier } from '../utils/skuUtils';
+import { IN_STOCK_DB } from '../constants';
 
 interface FabricDetailProps {
   fabric: Fabric;
@@ -27,6 +29,14 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
   const toSentenceCase = (str: string) => {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  };
+
+  // Helper to check stock
+  const isColorInStock = (colorName: string): boolean => {
+      const modelKey = Object.keys(IN_STOCK_DB).find(k => k.toLowerCase() === fabric.name.toLowerCase());
+      if (!modelKey) return false;
+      const stockColors = IN_STOCK_DB[modelKey];
+      return stockColors.some(c => c.toLowerCase() === colorName.toLowerCase());
   };
 
   // Keydown listener for arrow keys in lightbox
@@ -306,6 +316,7 @@ Generado automáticamente por Creata App
             <div className="flex flex-wrap justify-center gap-20 gap-y-32">
               {sortedColors.map((color, idx) => {
                 const colorImg = fabric.colorImages?.[color] || fabric.mainImage;
+                const showStockDot = isColorInStock(color);
                 
                 return (
                   <div key={idx} className="flex flex-col items-center group w-64">
@@ -327,10 +338,15 @@ Generado automáticamente por Creata App
                        </div>
                     </div>
                     
-                    {/* Visual Sentence Case for color name forced here */}
-                    <p className="mt-3 text-lg font-bold text-slate-900 tracking-widest text-center group-hover:text-black transition-colors">
-                      {toSentenceCase(color)}
-                    </p>
+                    {/* Visual Sentence Case for color name forced here + Stock Dot */}
+                    <div className="flex items-center gap-2 mt-3">
+                        <p className="text-lg font-bold text-slate-900 tracking-widest text-center group-hover:text-black transition-colors">
+                            {toSentenceCase(color)}
+                        </p>
+                        {showStockDot && (
+                            <div className="w-2.5 h-2.5 bg-green-500 rounded-full border border-white shadow-sm" title="En Stock"></div>
+                        )}
+                    </div>
                   </div>
                 );
               })}
