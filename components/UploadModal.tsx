@@ -44,7 +44,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
   // FURNITURE STATE
   const [newFurnitureName, setNewFurnitureName] = useState('');
-  const [newFurnitureCategory, setNewFurnitureCategory] = useState<'sofa' | 'chair' | 'armchair'>('sofa');
+  const [newFurnitureCategory, setNewFurnitureCategory] = useState('');
+  const [newFurnitureSupplier, setNewFurnitureSupplier] = useState('');
   const [newFurnitureImage, setNewFurnitureImage] = useState<string | null>(null);
   const furnitureInputRef = useRef<HTMLInputElement>(null);
 
@@ -355,11 +356,14 @@ const UploadModal: React.FC<UploadModalProps> = ({
           const newTemplate: FurnitureTemplate = {
               id: Date.now().toString(),
               name: newFurnitureName,
-              category: newFurnitureCategory,
+              category: newFurnitureCategory || 'General',
+              supplier: newFurnitureSupplier || '',
               imageUrl: newFurnitureImage
           };
           await onSaveFurniture(newTemplate);
           setNewFurnitureName('');
+          setNewFurnitureCategory('');
+          setNewFurnitureSupplier('');
           setNewFurnitureImage(null);
       } catch(e) {
           alert("Error guardando mueble.");
@@ -641,7 +645,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                             </div>
 
                             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
+                                <div className="md:col-span-2">
                                     <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Nombre del Mueble</label>
                                     <input 
                                         type="text" 
@@ -653,21 +657,29 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Categoría</label>
-                                    <select 
+                                    <input 
+                                        type="text"
                                         className="w-full p-3 border border-gray-200 rounded-lg"
+                                        placeholder="Ej: Silla"
                                         value={newFurnitureCategory}
-                                        onChange={(e) => setNewFurnitureCategory(e.target.value as any)}
-                                    >
-                                        <option value="sofa">Sofá</option>
-                                        <option value="chair">Silla</option>
-                                        <option value="armchair">Butaca</option>
-                                    </select>
+                                        onChange={(e) => setNewFurnitureCategory(e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Proveedor</label>
+                                    <input 
+                                        type="text"
+                                        className="w-full p-3 border border-gray-200 rounded-lg"
+                                        placeholder="Ej: Formatex"
+                                        value={newFurnitureSupplier}
+                                        onChange={(e) => setNewFurnitureSupplier(e.target.value)}
+                                    />
                                 </div>
                                 <div className="md:col-span-2 pt-2">
                                     <button 
                                         onClick={handleAddFurniture}
                                         disabled={!newFurnitureName || !newFurnitureImage || isSaving}
-                                        className="bg-black text-white px-6 py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:opacity-80 disabled:opacity-50"
+                                        className="bg-black text-white px-6 py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:opacity-80 disabled:opacity-50 w-full md:w-auto"
                                     >
                                         {isSaving ? 'Guardando...' : 'Guardar Mueble'}
                                     </button>
@@ -687,7 +699,10 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                     </div>
                                     <div className="p-3 bg-white">
                                         <p className="font-bold text-sm truncate">{item.name}</p>
-                                        <p className="text-[10px] text-gray-500 uppercase">{item.category}</p>
+                                        <div className="flex justify-between items-center mt-1">
+                                            <p className="text-[10px] text-gray-500 uppercase">{item.category}</p>
+                                            {item.supplier && <p className="text-[9px] text-gray-400 uppercase tracking-tight">{item.supplier}</p>}
+                                        </div>
                                     </div>
                                     <button 
                                         onClick={() => onDeleteFurniture && onDeleteFurniture(item.id)}

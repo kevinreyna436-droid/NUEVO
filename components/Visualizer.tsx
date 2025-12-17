@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Fabric, FurnitureTemplate } from '../types';
 import { visualizeUpholstery } from '../services/geminiService';
 import { compressImage } from '../utils/imageCompression';
@@ -19,20 +19,77 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [resultImage, setResultImage] = useState<string | null>(null);
+  
+  // Ref for temporary file upload
+  const tempInputRef = useRef<HTMLInputElement>(null);
 
   // Helper to get image base64 from URL (since furniture templates are URLs)
   const getBase64FromUrl = async (url: string): Promise<string> => {
+    // 1. Si ya es base64, devolver limpio
+    if (url.startsWith('data:')) {
+        return url.split(',')[1];
+    }
+
+    // Función interna para intentar cargar imagen
+    const loadImage = async (src: string, useCors: boolean): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            if (useCors) img.crossOrigin = 'Anonymous';
+            img.src = src;
+            
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    try {
+                        ctx.drawImage(img, 0, 0);
+                        const dataURL = canvas.toDataURL('image/jpeg', 0.9);
+                        resolve(dataURL.split(',')[1]);
+                    } catch (err) {
+                        reject(new Error("Bloqueo de seguridad (CORS) al procesar la imagen."));
+                    }
+                } else {
+                    reject(new Error("Error interno de gráficos (Canvas)."));
+                }
+            };
+            img.onerror = () => reject(new Error("No se pudo cargar la imagen original."));
+        });
+    };
+
     try {
-        const response = await fetch(url, { mode: 'cors' });
-        if (!response.ok) throw new Error(`Failed to load image: ${url}`);
-        const blob = await response.blob();
-        const file = new File([blob], "temp.jpg", { type: "image/jpeg" });
-        const base64 = await compressImage(file, 1024, 0.9); // Moderate quality for input
-        return base64.split(',')[1];
-    } catch (e) {
-        console.error("Error processing image URL:", e);
-        // Fallback or re-throw
-        throw new Error("No se pudo descargar la imagen del mueble. Verifica que sea una URL válida y pública.");
+        // METHODO 1: Fetch Directo (Lo más limpio si el servidor lo permite)
+        try {
+            const response = await fetch(url, { mode: 'cors' });
+            if (response.ok) {
+                const blob = await response.blob();
+                const file = new File([blob], "temp.jpg", { type: "image/jpeg" });
+                const base64 = await compressImage(file, 1500, 0.9);
+                return base64.split(',')[1];
+            }
+        } catch (e) {
+            console.warn("Fetch directo falló, intentando método Canvas...", e);
+        }
+
+        // METODO 2: Canvas Directo con CORS
+        try {
+            return await loadImage(url, true);
+        } catch (e) {
+            console.warn("Canvas directo falló, intentando con Proxy...", e);
+        }
+
+        // METODO 3: Proxy Fallback (Para imágenes de Unsplash/Web bloqueadas)
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+        try {
+            return await loadImage(proxyUrl, true);
+        } catch (e) {
+            console.error("Fallo final con proxy", e);
+            throw new Error("No se pudo descargar la imagen. Por favor, usa la opción 'Subir Foto Temporal' con una imagen de tu dispositivo.");
+        }
+
+    } catch (finalError: any) {
+        throw finalError;
     }
   };
 
@@ -76,7 +133,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
           const fabricBase64 = await getFabricBase64();
 
           if (!furnitureBase64 || !fabricBase64) {
-              alert("Error cargando imágenes base. Asegúrate de que las imágenes sean accesibles.");
+              alert("Error cargando imágenes base. Intenta subir tus propias fotos en lugar de usar las predeterminadas.");
               setIsGenerating(false);
               setStep(2);
               return;
@@ -86,7 +143,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
           if (result) {
               setResultImage(result);
           } else {
-              alert("No se pudo generar la imagen. Intenta de nuevo.");
+              alert("La IA no pudo generar la imagen. Intenta con otra combinación.");
               setStep(2);
           }
       } catch (error: any) {
@@ -98,6 +155,32 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
       }
   };
 
+  const handleTempFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          try {
+              const file = e.target.files[0];
+              // Compress locally
+              const base64 = await compressImage(file, 2000, 0.9);
+              
+              // Create a temporary template object that only exists in memory
+              const tempTemplate: FurnitureTemplate = {
+                  id: `temp-${Date.now()}`,
+                  name: 'Mueble Temporal',
+                  category: 'Personal',
+                  supplier: 'Mi Dispositivo',
+                  imageUrl: base64 // This is a data URI, not a cloud URL
+              };
+              
+              setSelectedFurniture(tempTemplate);
+              setStep(2);
+          } catch (err) {
+              alert("Error al cargar la imagen local.");
+          }
+          // Reset input
+          if (tempInputRef.current) tempInputRef.current.value = '';
+      }
+  };
+
   // Get available colors for selected model
   const activeFabric = fabrics.find(f => f.name === selectedModelName);
   const availableColors = activeFabric?.colors || [];
@@ -106,7 +189,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
     <div className="container mx-auto px-6 pb-20 max-w-5xl animate-fade-in-up">
       <div className="text-center mb-10">
         <h2 className="font-serif text-4xl font-bold text-slate-900">Probador Virtual</h2>
-        <p className="text-sm text-gray-500 uppercase tracking-widest mt-2">Visualiza tus telas en muebles reales</p>
+        <p className="text-sm text-gray-500 uppercase tracking-widest mt-2">
+            Visualiza telas sin guardar datos en la nube
+        </p>
       </div>
 
       {/* STEP INDICATORS */}
@@ -135,13 +220,20 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
               <div className="p-8 md:p-12 flex-1">
                   <h3 className="font-serif text-2xl mb-8 text-center">Selecciona un modelo base</h3>
                   
-                  {templates.length === 0 ? (
-                      <div className="text-center py-10 text-gray-400">
-                          <p>No hay muebles cargados.</p>
-                          <p className="text-xs">Usa el botón "." arriba a la derecha para gestionar muebles.</p>
-                      </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {/* TEMPORARY UPLOAD CARD */}
+                        <div 
+                            onClick={() => tempInputRef.current?.click()}
+                            className="group cursor-pointer rounded-2xl border-2 border-dashed border-gray-300 hover:border-black hover:bg-gray-50 transition-all flex flex-col items-center justify-center min-h-[200px]"
+                        >
+                            <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3 group-hover:bg-white group-hover:shadow-md transition-all">
+                                <svg className="w-6 h-6 text-gray-500 group-hover:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4 4m0 0L8 8m4-4v12" /></svg>
+                            </div>
+                            <span className="font-bold text-sm text-gray-600 group-hover:text-black uppercase tracking-wide">Subir Foto Temporal</span>
+                            <span className="text-[10px] text-gray-400 mt-1">No se guarda en la nube</span>
+                            <input ref={tempInputRef} type="file" accept="image/*" className="hidden" onChange={handleTempFileUpload} />
+                        </div>
+
                         {templates.map((item) => (
                             <div 
                                 key={item.id}
@@ -153,12 +245,14 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
                                 </div>
                                 <div className="p-4 text-center">
                                     <h4 className="font-serif font-bold text-lg">{item.name}</h4>
-                                    <p className="text-[10px] text-gray-400 uppercase tracking-widest">{item.category}</p>
+                                    <div className="flex justify-center gap-2 text-[10px] text-gray-400 uppercase tracking-widest mt-1">
+                                        <span>{item.category}</span>
+                                        {item.supplier && <span>• {item.supplier}</span>}
+                                    </div>
                                 </div>
                             </div>
                         ))}
-                    </div>
-                  )}
+                  </div>
               </div>
           )}
 
@@ -167,8 +261,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
               <div className="p-8 md:p-12 flex-1 flex flex-col md:flex-row gap-8">
                   {/* Left: Selected Furniture Preview */}
                   <div className="w-full md:w-1/3 flex flex-col items-center">
-                      <div className="w-full aspect-square bg-gray-50 rounded-2xl overflow-hidden border border-gray-200 mb-4 p-4">
+                      <div className="w-full aspect-square bg-gray-50 rounded-2xl overflow-hidden border border-gray-200 mb-4 p-4 relative">
                           {selectedFurniture && <img src={selectedFurniture.imageUrl} className="w-full h-full object-contain mix-blend-multiply" alt="Base" />}
+                          {selectedFurniture?.id.startsWith('temp') && (
+                              <div className="absolute top-2 right-2 bg-yellow-100 text-yellow-800 text-[9px] font-bold px-2 py-1 rounded uppercase">Temporal</div>
+                          )}
                       </div>
                       <button onClick={() => setStep(1)} className="text-xs text-gray-400 underline hover:text-black">Cambiar Mueble</button>
                   </div>
@@ -249,16 +346,25 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
                       </div>
                   ) : (
                       <div className="flex-1 bg-white flex flex-col md:flex-row h-full">
-                          <div className="flex-1 bg-[#ffffff] flex items-center justify-center p-8 border-r border-gray-100">
+                          <div className="flex-1 bg-[#ffffff] flex items-center justify-center p-8 border-r border-gray-100 relative">
                                {resultImage && (
-                                   <img src={resultImage} alt="Resultado" className="max-w-full max-h-[60vh] object-contain shadow-2xl rounded-lg" />
+                                   <>
+                                       <img src={resultImage} alt="Resultado" className="max-w-full max-h-[60vh] object-contain shadow-2xl rounded-lg" />
+                                       <div className="absolute top-4 left-4 bg-green-100 text-green-800 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider border border-green-200 shadow-sm flex items-center gap-1">
+                                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                            Imagen Local (No guardada en Nube)
+                                       </div>
+                                   </>
                                )}
                           </div>
                           <div className="w-full md:w-80 bg-gray-50 p-8 flex flex-col justify-center space-y-6">
                               <div>
                                   <h4 className="font-serif text-xl font-bold">Resumen</h4>
                                   <p className="text-sm text-gray-500 mt-1">{selectedFurniture?.name}</p>
-                                  <p className="text-sm text-gray-500">{selectedModelName} - {selectedColorName}</p>
+                                  <div className="flex flex-col gap-1 mt-1">
+                                    <span className="text-xs text-gray-400 uppercase tracking-wider">{selectedFurniture?.supplier}</span>
+                                    <span className="text-sm text-gray-500 font-bold">{selectedModelName} - {selectedColorName}</span>
+                                  </div>
                               </div>
                               
                               <button 

@@ -29,7 +29,8 @@ export interface FurnitureTemplate {
   id: string;
   name: string;
   imageUrl: string; // URL of the "white" furniture
-  category: 'sofa' | 'chair' | 'armchair';
+  category: string;
+  supplier?: string;
 }
 
 export interface ChatMessage {
