@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { extractFabricData, extractColorFromSwatch } from '../services/geminiService';
 import { MASTER_FABRIC_DB } from '../constants';
@@ -372,279 +373,281 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-4xl rounded-3xl p-8 shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh]">
-        {!isSaving && (
-            <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-black">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-        )}
+      <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden relative flex flex-col h-auto min-h-[600px] max-h-[90vh]">
+        
+        {/* Header Section */}
+        <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100 bg-gray-50/50">
+            <div>
+                <h2 className="font-serif text-2xl font-bold text-slate-900 leading-tight">
+                    {step === 'review' ? 'Revisar Información' : 'Subir Archivos'}
+                </h2>
+                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mt-1">
+                    {step === 'review' ? 'Confirma los datos extraídos antes de guardar' : 'Agrega imágenes o carpetas al catálogo'}
+                </p>
+            </div>
+            {!isSaving && (
+                <button onClick={onClose} className="text-gray-400 hover:text-black hover:bg-gray-100 rounded-full p-2 transition-colors">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            )}
+        </div>
 
-        <h2 className="font-serif text-3xl mb-2 text-primary text-center flex-shrink-0">
-            {step === 'review' ? 'Revisar antes de Guardar' : 'Subir Archivos'}
-        </h2>
-
-        {isSaving ? (
-             <div className="flex flex-col items-center justify-center flex-1 h-64 space-y-6 text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
-                <div>
-                    <p className="font-serif text-lg font-bold">Guardando...</p>
-                    <p className="text-xs text-gray-400 mt-2">Procesando imágenes de ALTA CALIDAD.</p>
-                </div>
-             </div>
-        ) : (
-            <>
-                {step === 'upload' && (
-                  <div className="space-y-6 flex-1 overflow-y-auto pt-6">
-                    {files.length > 0 ? (
-                        /* STATE: FILES SELECTED */
-                         <div className="bg-green-50 border border-green-100 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-4">
-                             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-2">
-                                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                             </div>
-                             <div>
-                                 <h3 className="font-bold text-xl text-green-900">{files.length} archivos listos</h3>
-                                 <p className="text-sm text-green-700 mt-1">Puedes agregar más archivos si lo deseas.</p>
-                             </div>
-                             
-                             <div className="flex gap-3 w-full max-w-sm mt-2">
-                                <button 
-                                    onClick={() => setFiles([])}
-                                    className="flex-1 py-3 px-4 bg-white border border-red-200 text-red-500 rounded-xl text-sm font-bold hover:bg-red-50 transition-colors uppercase"
-                                >
-                                    Borrar Todo
-                                </button>
-                                <button 
-                                    onClick={() => mobileInputRef.current?.click()}
-                                    className="flex-1 py-3 px-4 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors uppercase flex items-center justify-center gap-2"
-                                >
-                                    <span>+ Agregar Más</span>
-                                </button>
-                             </div>
-                         </div>
-                    ) : (
-                        /* STATE: NO FILES */
-                        <div className="flex flex-col gap-4">
-                            {/* PC UPLOAD OPTION */}
-                            <div 
-                                onClick={() => folderInputRef.current?.click()}
-                                className="border-2 border-dashed border-gray-300 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors h-40 text-center group"
-                            >
-                                <svg className="w-10 h-10 text-gray-400 mb-2 group-hover:text-black transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
-                                <span className="font-medium text-lg text-gray-700">Subir Carpeta (PC)</span>
-                                <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">
-                                  Ideal para catálogos organizados
-                                </p>
-                                {/* @ts-ignore */}
-                                <input ref={folderInputRef} type="file" webkitdirectory="" directory="" multiple className="hidden" onChange={handleFolderChange} />
-                            </div>
-
-                            {/* MOBILE UPLOAD OPTION */}
-                            <div className="flex items-center justify-center w-full">
-                                <span className="text-xs text-gray-300 font-bold uppercase mx-2">O bien</span>
-                            </div>
-
-                            <button 
-                                onClick={() => mobileInputRef.current?.click()}
-                                className="w-full border-2 border-blue-500/20 bg-blue-50/50 text-blue-700 py-6 rounded-xl font-bold hover:bg-blue-100 transition-all flex flex-col items-center justify-center gap-1"
-                            >
-                                <div className="flex items-center gap-2">
-                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                    <span className="text-lg">Seleccionar Archivos (Celular)</span>
-                                </div>
-                                <p className="text-[10px] uppercase tracking-wider opacity-70">
-                                    Fotos • Galería • Drive • Masivo
-                                </p>
-                            </button>
-                             <input ref={mobileInputRef} type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={handleMobileFilesChange} />
+        {/* Main Content Area */}
+        <div className="flex-1 overflow-y-auto p-8 bg-white relative">
+            {isSaving ? (
+                 <div className="flex flex-col items-center justify-center h-full space-y-6 text-center animate-fade-in">
+                    <div className="relative">
+                        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-black"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                             <div className="w-8 h-8 bg-gray-100 rounded-full"></div>
                         </div>
-                    )}
-
-                    <button 
-                      onClick={processFiles}
-                      disabled={files.length === 0}
-                      className="w-full bg-primary text-white py-4 rounded-xl font-bold tracking-wide hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-all uppercase mt-4 shadow-lg"
-                    >
-                      {files.length > 0 ? `Analizar ${files.length} Archivos` : 'Analizar Información'}
-                    </button>
-                    
-                    {onReset && (
-                        <div className="pt-4 border-t border-gray-100 mt-4 text-center">
-                            <button 
-                                onClick={onReset}
-                                className="text-red-400 text-xs font-bold uppercase tracking-widest hover:text-red-600 hover:underline"
-                            >
-                                Resetear Catálogo (Borrar Todo)
-                            </button>
-                        </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Review Step */}
-                {step === 'review' && (
-                  <div className="flex flex-col h-full overflow-hidden">
-                     <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-                         <div className="bg-green-50 p-4 rounded-xl mb-4 flex items-center justify-between">
-                            <div>
-                                <h3 className="text-lg font-serif text-green-800">¡Análisis Completo!</h3>
-                                <p className="text-xs text-green-600">Se han detectado {extractedFabrics.length} modelos. Revisa y selecciona qué subir.</p>
-                            </div>
-                         </div>
-                         
-                         {extractedFabrics.map((f, i) => {
-                             const duplicateWarning = isDuplicate(f.name || '');
-                             
-                             return (
-                             <div key={i} className="flex flex-col gap-4 p-6 bg-gray-50 rounded-3xl border border-gray-100 transition-all hover:shadow-lg hover:bg-white relative">
-                                 {/* Duplicate Warning Dot */}
-                                 {duplicateWarning && (
-                                    <div className="absolute top-4 right-4 z-20 w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-md flex items-center justify-center animate-pulse" title="¡Atención! Este nombre ya existe en el catálogo">
-                                        <span className="sr-only">Duplicado</span>
-                                    </div>
-                                 )}
-
-                                 <div className="flex flex-col md:flex-row gap-6">
-                                    <div className="relative group">
-                                        <div className="w-24 h-24 md:w-32 md:h-32 flex-shrink-0 bg-gray-200 rounded-2xl overflow-hidden shadow-sm">
-                                            {f.mainImage ? (
-                                                <img src={f.mainImage} alt="Main" className="w-full h-full object-cover" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No Img</div>
-                                            )}
-                                        </div>
-                                        <button 
-                                            onClick={() => triggerUpload(i, 'main')}
-                                            className="absolute -top-3 -left-3 w-8 h-8 bg-white text-blue-600 rounded-full flex items-center justify-center shadow-md border border-gray-100 hover:scale-110 transition-transform z-10"
-                                            title="Cambiar imagen principal"
-                                        >
-                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                                        </button>
-                                    </div>
-
-                                    <div className="flex-1 flex flex-col space-y-3">
-                                        <div className="flex flex-col gap-2">
-                                            {/* NAME INPUT: Uppercase Visual, Sentence Case Value */}
-                                            <div className="relative">
-                                                <input 
-                                                    type="text" 
-                                                    value={f.name} 
-                                                    onChange={(e) => updateFabricField(i, 'name', e.target.value)}
-                                                    className={`w-full p-4 bg-white rounded-xl border font-serif text-3xl font-bold focus:ring-2 focus:ring-black outline-none shadow-sm placeholder:normal-case ${duplicateWarning ? 'border-red-300 text-red-900' : 'border-gray-200'}`}
-                                                    placeholder="Nombre del Modelo"
-                                                />
-                                                {duplicateWarning && (
-                                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-red-500 font-bold bg-white px-2">YA EXISTE</span>
-                                                )}
-                                            </div>
-
-                                            {/* SUPPLIER INPUT: Uppercase Forced */}
-                                            <input 
-                                                type="text" 
-                                                value={f.supplier} 
-                                                onChange={(e) => updateFabricField(i, 'supplier', e.target.value)}
-                                                className="w-full md:w-2/3 p-3 bg-white rounded-lg border border-gray-200 text-sm font-bold uppercase tracking-widest text-gray-500 focus:ring-1 focus:ring-black outline-none"
-                                                placeholder="PROVEEDOR"
-                                            />
-                                        </div>
-                                        
-                                        {/* CATALOG INPUT: Uppercase Forced */}
-                                        <div className="flex items-center">
-                                            <input 
-                                                type="text" 
-                                                value={f.customCatalog || ''} 
-                                                onChange={(e) => updateFabricField(i, 'customCatalog', e.target.value)}
-                                                className="text-sm text-blue-800 bg-blue-50/50 px-3 py-2 rounded-lg border border-blue-100 focus:border-blue-400 focus:outline-none w-full md:w-2/3 font-medium uppercase"
-                                                placeholder="CATÁLOGO (YO LO ESCRIBO)"
-                                            />
-                                        </div>
-
-                                        <div className="mt-2">
-                                            <div className="flex items-center space-x-2 mb-2">
-                                                <p className="text-[10px] text-gray-400 uppercase font-bold">
-                                                    {f.colors?.length || 0} Colores Detectados
-                                                </p>
-                                                <button 
-                                                    onClick={() => triggerUpload(i, 'add_color')}
-                                                    className="w-5 h-5 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center border border-blue-100 hover:bg-blue-100 transition-colors shadow-sm"
-                                                >
-                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                                                </button>
-                                            </div>
-
-                                            <div className="flex flex-wrap gap-2">
-                                                {f.colors?.map((c, idx) => (
-                                                    <div 
-                                                        key={idx} 
-                                                        onClick={() => triggerUpload(i, 'color', c)}
-                                                        className="group relative w-8 h-8 rounded-full bg-gray-200 border-2 border-white shadow-sm overflow-hidden cursor-pointer hover:border-black transition-all" 
-                                                        title={c}
-                                                    >
-                                                        {f.colorImages && f.colorImages[c] ? (
-                                                            <img src={f.colorImages[c]} alt={c} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <div className="w-full h-full bg-gray-300"></div>
-                                                        )}
-                                                        <div className="absolute inset-0 bg-black/30 hidden group-hover:flex items-center justify-center">
-                                                             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        
-                                        {expandedSpecsIndex === i && (
-                                            <div className="mt-2 animate-fade-in">
-                                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Resumen Técnico (Edición Rápida)</label>
-                                                <textarea 
-                                                    value={f.technicalSummary} 
-                                                    onChange={(e) => updateFabricField(i, 'technicalSummary', e.target.value)}
-                                                    className="w-full p-3 rounded-xl border border-gray-200 text-sm focus:ring-1 focus:ring-black outline-none bg-white min-h-[80px]"
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="flex flex-row md:flex-col items-start justify-start gap-2 pt-2">
-                                         <button 
-                                            onClick={() => removeFabricFromReview(i)}
-                                            className="text-red-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors w-10 h-10 flex items-center justify-center"
-                                         >
-                                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                         </button>
-                                         <button 
-                                            onClick={() => setExpandedSpecsIndex(expandedSpecsIndex === i ? null : i)}
-                                            className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${expandedSpecsIndex === i ? 'bg-black text-white' : 'text-gray-400 hover:text-black hover:bg-gray-100'}`}
-                                        >
-                                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                         </button>
-                                    </div>
+                    </div>
+                    <div>
+                        <p className="font-serif text-2xl font-bold text-slate-800">Guardando...</p>
+                        <p className="text-sm text-gray-400 mt-2 font-medium tracking-wide">Procesando imágenes de ALTA RESOLUCIÓN.</p>
+                    </div>
+                 </div>
+            ) : (
+                <>
+                    {step === 'upload' && (
+                      <div className="flex flex-col h-full">
+                        {files.length > 0 ? (
+                            /* STATE: FILES SELECTED */
+                             <div className="flex-1 flex flex-col items-center justify-center space-y-8 animate-fade-in-up">
+                                 <div className="w-24 h-24 bg-green-50 rounded-full flex items-center justify-center border border-green-100 shadow-sm">
+                                    <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                 </div>
+                                 <div className="text-center">
+                                     <h3 className="font-serif text-3xl font-bold text-slate-800">{files.length} archivos listos</h3>
+                                     <p className="text-sm text-gray-500 mt-2">¿Deseas agregar más o comenzar el análisis?</p>
+                                 </div>
+                                 
+                                 <div className="flex flex-col w-full max-w-md gap-3">
+                                    <button 
+                                        onClick={() => mobileInputRef.current?.click()}
+                                        className="w-full py-4 px-6 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors uppercase tracking-widest flex items-center justify-center gap-2 shadow-sm"
+                                    >
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                        Agregar Más
+                                    </button>
+                                    <button 
+                                        onClick={() => setFiles([])}
+                                        className="w-full py-4 px-6 bg-white border border-red-100 text-red-400 rounded-xl text-xs font-bold hover:bg-red-50 hover:text-red-600 transition-colors uppercase tracking-widest"
+                                    >
+                                        Cancelar Selección
+                                    </button>
                                  </div>
                              </div>
-                             );
-                         })}
-                     </div>
+                        ) : (
+                            /* STATE: NO FILES */
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full items-center">
+                                {/* PC UPLOAD OPTION */}
+                                <div 
+                                    onClick={() => folderInputRef.current?.click()}
+                                    className="h-64 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-black hover:bg-gray-50 transition-all group text-center"
+                                >
+                                    <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-white group-hover:shadow-md transition-all">
+                                        <svg className="w-8 h-8 text-gray-400 group-hover:text-black transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                                    </div>
+                                    <span className="font-serif text-xl font-bold text-slate-800">Carpeta Completa</span>
+                                    <p className="text-xs text-gray-400 mt-2 font-medium uppercase tracking-wide">
+                                      Ideal para PC (Estructura de Carpetas)
+                                    </p>
+                                    {/* @ts-ignore */}
+                                    <input ref={folderInputRef} type="file" webkitdirectory="" directory="" multiple className="hidden" onChange={handleFolderChange} />
+                                </div>
 
-                     <div className="pt-4 border-t border-gray-100 mt-2 flex gap-4">
+                                {/* MOBILE UPLOAD OPTION */}
+                                <div 
+                                    onClick={() => mobileInputRef.current?.click()}
+                                    className="h-64 border-2 border-dashed border-blue-200 bg-blue-50/30 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all group text-center"
+                                >
+                                    <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-white group-hover:shadow-md transition-all">
+                                        <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                    </div>
+                                    <span className="font-serif text-xl font-bold text-blue-900">Archivos Sueltos</span>
+                                    <p className="text-xs text-blue-400 mt-2 font-medium uppercase tracking-wide">
+                                      Ideal para Móvil / Fotos / Drive
+                                    </p>
+                                    <input ref={mobileInputRef} type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={handleMobileFilesChange} />
+                                </div>
+                            </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {step === 'processing' && (
+                        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in">
+                            <div className="relative w-24 h-24">
+                                <svg className="animate-spin w-full h-full text-gray-200" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <div className="absolute inset-0 flex items-center justify-center font-bold text-xs">AI</div>
+                            </div>
+                            <div className="text-center max-w-sm mx-auto">
+                                <h3 className="font-serif text-2xl font-bold text-slate-800 mb-2">Analizando Información...</h3>
+                                <p className="text-sm text-gray-500">{currentProgress || "Extrayendo datos y colores..."}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {step === 'review' && (
+                         <div className="space-y-6 pb-24">
+                             <div className="bg-green-50 border border-green-100 p-4 rounded-xl flex items-center gap-3">
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <p className="text-sm text-green-800 font-medium">Se detectaron <strong>{extractedFabrics.length}</strong> modelos nuevos.</p>
+                             </div>
+                             
+                             {extractedFabrics.map((f, i) => {
+                                 const duplicateWarning = isDuplicate(f.name || '');
+                                 return (
+                                 <div key={i} className="flex flex-col gap-6 p-6 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white hover:shadow-xl transition-all relative group">
+                                     {duplicateWarning && (
+                                        <div className="absolute top-4 right-4 z-20 bg-red-100 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border border-red-200 flex items-center gap-1">
+                                            <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
+                                            Duplicado
+                                        </div>
+                                     )}
+
+                                     <div className="flex flex-col md:flex-row gap-6">
+                                        <div className="relative group/img w-32 h-32 flex-shrink-0 mx-auto md:mx-0">
+                                            <div className="w-full h-full bg-gray-200 rounded-2xl overflow-hidden shadow-sm border border-gray-200">
+                                                {f.mainImage ? (
+                                                    <img src={f.mainImage} alt="Main" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs font-bold uppercase">Sin Foto</div>
+                                                )}
+                                            </div>
+                                            <button 
+                                                onClick={() => triggerUpload(i, 'main')}
+                                                className="absolute bottom-2 right-2 w-8 h-8 bg-white text-black rounded-full flex items-center justify-center shadow-md hover:scale-110 transition-transform opacity-0 group-hover/img:opacity-100"
+                                                title="Cambiar imagen"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                            </button>
+                                        </div>
+
+                                        <div className="flex-1 space-y-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Nombre Modelo</label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={f.name} 
+                                                        onChange={(e) => updateFabricField(i, 'name', e.target.value)}
+                                                        className={`w-full p-3 bg-white rounded-xl border font-serif text-lg font-bold focus:ring-1 focus:ring-black outline-none ${duplicateWarning ? 'border-red-300 text-red-900' : 'border-gray-200 text-slate-900'}`}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Proveedor</label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={f.supplier} 
+                                                        onChange={(e) => updateFabricField(i, 'supplier', e.target.value)}
+                                                        className="w-full p-3 bg-white rounded-xl border border-gray-200 text-sm font-bold uppercase tracking-widest text-gray-600 focus:ring-1 focus:ring-black outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Catálogo</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={f.customCatalog || ''} 
+                                                    onChange={(e) => updateFabricField(i, 'customCatalog', e.target.value)}
+                                                    className="w-full p-3 bg-white rounded-xl border border-gray-200 text-sm font-medium uppercase text-blue-600 focus:ring-1 focus:ring-blue-500 outline-none placeholder:text-gray-300"
+                                                    placeholder="OPCIONAL (EJ: VERANO 2024)"
+                                                />
+                                            </div>
+
+                                            <div className="bg-white p-4 rounded-xl border border-gray-100">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-[10px] uppercase font-bold text-gray-400">{f.colors?.length || 0} Colores Detectados</span>
+                                                    <button 
+                                                        onClick={() => triggerUpload(i, 'add_color')}
+                                                        className="text-[10px] bg-black text-white px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+                                                    >
+                                                        + Agregar
+                                                    </button>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {f.colors?.map((c, idx) => (
+                                                        <div 
+                                                            key={idx} 
+                                                            onClick={() => triggerUpload(i, 'color', c)}
+                                                            className="w-8 h-8 rounded-full border border-gray-200 cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-black relative group/col overflow-hidden"
+                                                            title={c}
+                                                        >
+                                                            {f.colorImages && f.colorImages[c] ? (
+                                                                <img src={f.colorImages[c]} alt={c} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-full h-full bg-gray-100"></div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => removeFabricFromReview(i)}
+                                                    className="text-[10px] text-red-400 hover:text-red-600 font-bold uppercase tracking-wider hover:underline"
+                                                >
+                                                    Eliminar Ficha
+                                                </button>
+                                            </div>
+                                        </div>
+                                     </div>
+                                 </div>
+                                 );
+                             })}
+                         </div>
+                    )}
+                </>
+            )}
+        </div>
+
+        {/* Footer Actions */}
+        {!isSaving && step !== 'processing' && (
+            <div className="p-6 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-4">
+                {step === 'upload' ? (
+                    <>
+                        <button 
+                             onClick={onReset}
+                             className="text-gray-400 hover:text-red-500 text-xs font-bold uppercase tracking-widest transition-colors"
+                        >
+                            Resetear DB
+                        </button>
+                        <button 
+                            onClick={processFiles}
+                            disabled={files.length === 0}
+                            className="bg-black text-white px-8 py-4 rounded-xl font-bold uppercase tracking-wide text-sm hover:scale-105 transition-transform shadow-lg disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
+                        >
+                            Comenzar Análisis
+                        </button>
+                    </>
+                ) : step === 'review' ? (
+                    <>
                         <button 
                             onClick={() => { setStep('upload'); setFiles([]); }}
-                            className="flex-1 bg-gray-100 text-gray-500 py-4 rounded-xl font-bold tracking-wide hover:bg-gray-200 transition-all uppercase text-sm"
+                            className="text-gray-500 hover:text-black font-bold uppercase text-xs tracking-widest px-4"
                         >
                             Cancelar
                         </button>
                         <button 
                             onClick={handleFinalSave}
                             disabled={extractedFabrics.length === 0}
-                            className="flex-[2] bg-black text-white py-4 rounded-xl font-bold tracking-wide hover:opacity-80 transition-all uppercase text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="bg-black text-white px-8 py-4 rounded-xl font-bold uppercase tracking-wide text-sm hover:scale-105 transition-transform shadow-lg disabled:opacity-50 disabled:scale-100"
                         >
-                            Confirmar y Guardar ({extractedFabrics.length})
+                            Guardar {extractedFabrics.length} Fichas
                         </button>
-                     </div>
-                     
-                     <input ref={singleImageInputRef} type="file" accept="image/*" className="hidden" onChange={handleSingleImageChange} />
-                  </div>
-                )}
-            </>
+                    </>
+                ) : null}
+            </div>
         )}
+
+        <input ref={singleImageInputRef} type="file" accept="image/*" className="hidden" onChange={handleSingleImageChange} />
       </div>
     </div>
   );
