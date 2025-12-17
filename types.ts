@@ -25,6 +25,13 @@ export interface Fabric {
   customCatalog?: string; // New: Manual catalog name
 }
 
+export interface FurnitureTemplate {
+  id: string;
+  name: string;
+  imageUrl: string; // URL of the "white" furniture
+  category: 'sofa' | 'chair' | 'armchair';
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
@@ -32,4 +39,4 @@ export interface ChatMessage {
   sources?: { title: string; uri: string }[];
 }
 
-export type AppView = 'grid' | 'detail' | 'upload' | 'generator';
+export type AppView = 'grid' | 'detail' | 'upload' | 'generator' | 'visualizer';

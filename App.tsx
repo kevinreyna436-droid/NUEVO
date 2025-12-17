@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import FabricCard from './components/FabricCard';
 import FabricDetail from './components/FabricDetail';
@@ -5,6 +6,7 @@ import UploadModal from './components/UploadModal';
 import ChatBot from './components/ChatBot';
 import PinModal from './components/PinModal';
 import ImageGenModal from './components/ImageGenModal';
+import Visualizer from './components/Visualizer';
 import { INITIAL_FABRICS, IN_STOCK_DB } from './constants';
 import { Fabric, AppView } from './types';
 import { 
@@ -28,7 +30,7 @@ function App() {
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
   const [isPinModalOpen, setPinModalOpen] = useState(false); // PIN Modal State
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'model' | 'color' | 'wood'>('model');
+  const [activeTab, setActiveTab] = useState<'model' | 'color' | 'visualizer'>('model');
   const [loading, setLoading] = useState(true);
   const [offlineStatus, setOfflineStatus] = useState(false);
   const [authMissing, setAuthMissing] = useState(false);
@@ -116,7 +118,7 @@ function App() {
   };
 
   const handleFabricClick = (fabric: Fabric, specificColor?: string) => {
-    if (activeTab === 'model' || activeTab === 'wood') {
+    if (activeTab === 'model') {
         setSelectedFabricId(fabric.id);
         setView('detail');
     } else {
@@ -344,12 +346,6 @@ function App() {
   const renderGridContent = () => {
     const allItems = getFilteredItems();
 
-    // Removed Wood View - Fallback to avoid errors if state lingers
-    if (activeTab === 'wood') {
-        setActiveTab('model'); // Redirect
-        return null;
-    }
-
     if (activeTab === 'model') {
         // Filter out Woods from Model view (if any exist in DB)
         const modelItems = allItems.filter(f => f.category !== 'wood');
@@ -386,6 +382,11 @@ function App() {
                 index={idx}
             />
         ));
+    }
+
+    // New Tab handling
+    if (activeTab === 'visualizer') {
+        return <Visualizer fabrics={fabrics} />;
     }
   };
 
@@ -443,7 +444,6 @@ function App() {
                 <h1 className="font-serif text-6xl md:text-8xl font-bold tracking-tight text-slate-900 leading-none">
                     Catálogo de Telas
                 </h1>
-                {/* Removed 'Creata Collection' subtitle as requested */}
             </div>
             
             <div className="flex space-x-8 md:space-x-12 border-b border-transparent">
@@ -463,8 +463,18 @@ function App() {
                 >
                     Ver colores
                 </button>
+                <button 
+                    onClick={() => { setActiveTab('visualizer'); }}
+                    className={`pb-2 text-sm font-bold tracking-wide uppercase transition-colors flex items-center gap-1 ${
+                        activeTab === 'visualizer' ? 'text-black border-b-2 border-black' : 'text-accent hover:text-yellow-600'
+                    }`}
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                    Probar
+                </button>
             </div>
             
+            {activeTab !== 'visualizer' && (
             <div className="flex flex-row items-center gap-3 w-full max-w-2xl relative">
                 
                 <div className="relative flex-grow">
@@ -586,33 +596,39 @@ function App() {
                     </div>
                 )}
             </div>
+            )}
         </header>
       )}
 
       <main>
         {view === 'grid' && (
           <div className="container mx-auto px-6 pb-20 flex flex-col items-center">
-            {loading ? (
-                <div className="flex justify-center items-center py-20">
-                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
-                </div>
-            ) : filteredItemCount === 0 && !searchQuery ? (
-                <div className="text-center py-20 text-gray-300">
-                     <p>El catálogo está vacío.</p>
-                     {offlineStatus && !authMissing && <p className="text-xs mt-2 text-red-300">Modo sin conexión.</p>}
-                     <div className="mt-4">
-                        <button 
-                           onClick={handleReset}
-                           className="text-xs text-red-300 hover:text-red-500 underline"
-                        >
-                           Resetear App
-                        </button>
-                     </div>
-                </div>
+            {/* Conditional Rendering for Visualizer vs Grid */}
+            {activeTab === 'visualizer' ? (
+                renderGridContent()
             ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-5 gap-6 xl:gap-8 w-full max-w-[1920px] justify-center">
-                    {renderGridContent()}
-                </div>
+                loading ? (
+                    <div className="flex justify-center items-center py-20">
+                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+                    </div>
+                ) : filteredItemCount === 0 && !searchQuery ? (
+                    <div className="text-center py-20 text-gray-300">
+                         <p>El catálogo está vacío.</p>
+                         {offlineStatus && !authMissing && <p className="text-xs mt-2 text-red-300">Modo sin conexión.</p>}
+                         <div className="mt-4">
+                            <button 
+                               onClick={handleReset}
+                               className="text-xs text-red-300 hover:text-red-500 underline"
+                            >
+                               Resetear App
+                            </button>
+                         </div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-5 gap-6 xl:gap-8 w-full max-w-[1920px] justify-center">
+                        {renderGridContent()}
+                    </div>
+                )
             )}
           </div>
         )}

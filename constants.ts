@@ -1,5 +1,5 @@
 
-import { Fabric } from './types';
+import { Fabric, FurnitureTemplate } from './types';
 
 // The Master Database for cross-referencing AI results.
 export const MASTER_FABRIC_DB: Record<string, string[]> = {
@@ -275,3 +275,31 @@ export const IN_STOCK_DB: Record<string, string[]> = {
 
 // INITIAL_FABRICS is now empty to ensure a clean slate and "disconnect" from static data.
 export const INITIAL_FABRICS: Fabric[] = [];
+
+// Templates for the Visualizer
+export const FURNITURE_TEMPLATES: FurnitureTemplate[] = [
+  {
+    id: 'sofa-01',
+    name: 'Sofá Chesterfield',
+    category: 'sofa',
+    imageUrl: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?ixlib=rb-4.0.3&auto=format&fit=crop&w=1770&q=80'
+  },
+  {
+    id: 'chair-01',
+    name: 'Silla Eames',
+    category: 'chair',
+    imageUrl: 'https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'
+  },
+  {
+    id: 'armchair-01',
+    name: 'Butaca Moderna',
+    category: 'armchair',
+    imageUrl: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'
+  },
+   {
+    id: 'sofa-02',
+    name: 'Sofá Minimalista',
+    category: 'sofa',
+    imageUrl: 'https://images.unsplash.com/photo-1550254478-ead40cc54513?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'
+  }
+];

@@ -220,6 +220,64 @@ export const editFabricImage = async (base64Image: string, prompt: string) => {
 };
 
 /**
+ * Simulates upholstery by mapping a macro texture to a full furniture shot.
+ * Uses gemini-2.5-flash-image (Nano Banana).
+ */
+export const visualizeUpholstery = async (furnitureImageBase64: string, fabricSwatchBase64: string) => {
+    try {
+        const prompt = `
+        Task: Perform a professional re-upholstery and background isolation retouch on the provided product.
+
+        INPUTS:
+        1. Furniture Reference (First Image): The object to re-upholster.
+        2. Fabric Swatch Reference (Second Image): The texture to apply.
+
+        CRITICAL SCALE INSTRUCTION (MUST FOLLOW):
+        The 'Fabric Swatch Reference' is a MACRO PHOTOGRAPH taken from very close range (approximately 5 to 10 centimeters wide). It shows microscopic weave detail.
+        The 'Furniture Reference' is a full-shot taken from several meters away (100cm - 200cm wide).
+        
+        ACTION: You must shrink the texture pattern drastically to adapt it to the furniture. 
+        - Do NOT stretch the swatch image. 
+        - TILE and REPEAT the pattern significantly (e.g., repeat the pattern 30x to 50x) to create a fine, realistic grain that matches the scale of the furniture.
+        - If you do not shrink the pattern, it will look like a giant blurry print, which is wrong. It must look like real upholstery fabric viewed from a distance.
+
+        THE ENVIRONMENT (Studio Finish):
+        - Remove the original background completely.
+        - Place the finished piece on a clean, seamless Pure White Background (Hex #FFFFFF).
+        - Generate a realistic, soft contact shadow on the "floor" directly beneath the furniture to ground it.
+
+        PRESERVATION:
+        - Keep the original shape, folds, wrinkles, and perspective of the furniture exactly as they are.
+        - Do not modify legs, frames, or non-fabric parts.
+        `;
+
+        // Note: For Gemini 2.5 Flash Image, we send multiple image parts.
+        // Order matters: Furniture first, then Fabric.
+        const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/jpeg', data: furnitureImageBase64 } },
+                    { inlineData: { mimeType: 'image/jpeg', data: fabricSwatchBase64 } },
+                    { text: prompt }
+                ]
+            }
+        }));
+
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                return `data:image/png;base64,${part.inlineData.data}`;
+            }
+        }
+        return null;
+
+    } catch (error: any) {
+        console.error("Error visualizing upholstery:", error?.message || String(error));
+        throw error;
+    }
+};
+
+/**
  * Chatbot with Grounding and Catalog Context.
  * Uses gemini-3-pro-preview + googleSearch.
  */
