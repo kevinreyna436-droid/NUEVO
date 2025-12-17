@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { extractFabricData, extractColorFromSwatch } from '../services/geminiService';
 import { MASTER_FABRIC_DB } from '../constants';
@@ -21,7 +20,6 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
   const [currentProgress, setCurrentProgress] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<'model' | 'wood'>('model');
-  const [expandedSpecsIndex, setExpandedSpecsIndex] = useState<number | null>(null);
   const [activeUpload, setActiveUpload] = useState<{ 
       fabricIndex: number; 
       type: 'main' | 'color' | 'add_color'; 
@@ -373,6 +371,10 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      {/* 
+         Fixed: Added min-h-[600px] and max-h-[90vh] with flex layout to prevent collapsing.
+         This ensures the modal always looks substantial like the screenshot.
+      */}
       <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden relative flex flex-col h-auto min-h-[600px] max-h-[90vh]">
         
         {/* Header Section */}
@@ -439,7 +441,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                  </div>
                              </div>
                         ) : (
-                            /* STATE: NO FILES */
+                            /* STATE: NO FILES - Showing Large Cards */
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full items-center">
                                 {/* PC UPLOAD OPTION */}
                                 <div 
