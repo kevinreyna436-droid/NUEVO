@@ -13,7 +13,9 @@ import {
   saveBatchFabricsToFirestore, 
   deleteFabricFromFirestore, 
   clearFirestoreCollection,
-  isOfflineMode
+  isOfflineMode,
+  isAuthConfigMissing,
+  retryAuth
 } from './services/firebase';
 
 // Type for Sorting
@@ -29,6 +31,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'wood'>('model');
   const [loading, setLoading] = useState(true);
   const [offlineStatus, setOfflineStatus] = useState(false);
+  const [authMissing, setAuthMissing] = useState(false);
   
   // Sorting State - Default "color"
   const [sortBy, setSortBy] = useState<SortOption>('color');
@@ -47,9 +50,9 @@ function App() {
     try {
       const dbData = await getFabricsFromFirestore();
       
-      // Update offline status after fetch attempt
-      const isOffline = isOfflineMode();
-      setOfflineStatus(isOffline);
+      // Update offline/auth status after fetch attempt
+      setOfflineStatus(isOfflineMode());
+      setAuthMissing(isAuthConfigMissing());
 
       if (dbData && dbData.length > 0) {
         // DEDUPLICATION LOGIC:
@@ -77,10 +80,31 @@ function App() {
     }
   };
 
+  // Check auth status periodically in case the user enables it while app is open
+  useEffect(() => {
+    const interval = setInterval(() => {
+        if (isAuthConfigMissing()) setAuthMissing(true);
+        else if (authMissing) setAuthMissing(false); // Auto clear if fixed
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [authMissing]);
+
   // Load initial data from Firestore
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleRetryConnection = async () => {
+      setLoading(true);
+      const success = await retryAuth();
+      if (success) {
+          setAuthMissing(false);
+          await loadData();
+      } else {
+          alert("Aún no detectamos la activación. Asegúrate de que esté 'Habilitada' en Firebase Console.");
+      }
+      setLoading(false);
+  };
 
   const handleUploadClick = () => {
       setPinModalOpen(true);
@@ -342,6 +366,30 @@ function App() {
   return (
     <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans selection:bg-black selection:text-white relative">
       
+      {/* AUTH ERROR BANNER */}
+      {authMissing && (
+          <div className="fixed bottom-0 left-0 right-0 bg-red-600 text-white p-6 z-[200] flex flex-col md:flex-row items-center justify-center text-center shadow-[0_-10px_40px_rgba(0,0,0,0.3)] animate-bounce-slow gap-4">
+            <div className="bg-white text-red-600 rounded-full p-2">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            </div>
+            <div>
+                <h3 className="font-bold text-xl uppercase tracking-wider">¡Falta un paso en Firebase!</h3>
+                <p className="text-sm font-medium mt-1">El proyecto existe, pero la seguridad bloquea la conexión.</p>
+                <div className="flex flex-col sm:flex-row gap-2 mt-2 items-center justify-center">
+                    <p className="text-xs bg-red-700/50 py-2 px-3 rounded inline-block">
+                        Ve a: Firebase Console {'>'} Authentication {'>'} Habilita "Anónimo"
+                    </p>
+                    <button 
+                        onClick={handleRetryConnection}
+                        className="bg-white text-red-600 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-gray-100 transition-colors shadow-lg"
+                    >
+                        Ya lo activé, Reintentar
+                    </button>
+                </div>
+            </div>
+          </div>
+      )}
+
       <button 
         onClick={handleUploadClick}
         className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"
@@ -467,7 +515,7 @@ function App() {
             ) : filteredItemCount === 0 && !searchQuery ? (
                 <div className="text-center py-20 text-gray-300">
                      <p>El catálogo está vacío.</p>
-                     {offlineStatus && <p className="text-xs mt-2 text-red-300">Modo sin conexión o base de datos vacía.</p>}
+                     {offlineStatus && !authMissing && <p className="text-xs mt-2 text-red-300">Modo sin conexión.</p>}
                      <div className="mt-4">
                         <button 
                            onClick={handleReset}
@@ -563,6 +611,7 @@ function App() {
         onSave={handleSaveFabric} 
         onBulkSave={handleBulkSaveFabrics}
         onReset={handleReset}
+        existingFabrics={fabrics}
       />
 
       <ChatBot fabrics={fabrics} />

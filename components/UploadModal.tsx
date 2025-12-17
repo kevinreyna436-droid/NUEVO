@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { extractFabricData, extractColorFromSwatch } from '../services/geminiService';
 import { MASTER_FABRIC_DB } from '../constants';
@@ -11,9 +10,10 @@ interface UploadModalProps {
   onSave: (fabric: Fabric) => Promise<void> | void;
   onBulkSave?: (fabrics: Fabric[]) => Promise<void> | void;
   onReset?: () => void;
+  existingFabrics?: Fabric[]; // Add existing fabrics for duplicate checking
 }
 
-const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBulkSave, onReset }) => {
+const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBulkSave, onReset, existingFabrics = [] }) => {
   const [step, setStep] = useState<'upload' | 'processing' | 'review'>('upload');
   const [files, setFiles] = useState<File[]>([]);
   const [extractedFabrics, setExtractedFabrics] = useState<Partial<Fabric>[]>([]);
@@ -37,6 +37,12 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
   const toSentenceCase = (str: string) => {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  };
+
+  // Helper to check for duplicates
+  const isDuplicate = (name: string) => {
+    if (!name || existingFabrics.length === 0) return false;
+    return existingFabrics.some(f => f.name.toLowerCase().trim() === name.toLowerCase().trim());
   };
 
   const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -327,8 +333,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
             id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
             name: toSentenceCase(data.name || 'Sin Nombre'), // Ensure Sentence Case
             supplier: (data.supplier || 'Consultar').toUpperCase(), // Ensure Uppercase
-            technicalSummary: data.technicalSummary || 'Sin datos técnicos disponibles.',
-            specs: data.specs || { composition: 'N/A', martindale: 'N/A', usage: 'N/A' },
+            // CHANGE: Defaults are now empty strings, not placeholder text
+            technicalSummary: data.technicalSummary || '',
+            specs: data.specs || { composition: '', martindale: '', usage: '' },
             colors: data.colors ? data.colors.map(toSentenceCase) : [], // Ensure Colors are Sentence Case
             colorImages: data.colorImages || {},
             mainImage: data.mainImage || '',
@@ -473,17 +480,6 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                   </div>
                 )}
 
-                {/* Processing Step */}
-                {step === 'processing' && (
-                  <div className="flex flex-col items-center justify-center h-64 space-y-6 text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
-                    <div>
-                        <p className="font-serif text-lg animate-pulse">Analizando con Gemini AI...</p>
-                        <p className="text-xs text-gray-400 mt-2">{currentProgress}</p>
-                    </div>
-                  </div>
-                )}
-
                 {/* Review Step */}
                 {step === 'review' && (
                   <div className="flex flex-col h-full overflow-hidden">
@@ -495,8 +491,18 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                             </div>
                          </div>
                          
-                         {extractedFabrics.map((f, i) => (
+                         {extractedFabrics.map((f, i) => {
+                             const duplicateWarning = isDuplicate(f.name || '');
+                             
+                             return (
                              <div key={i} className="flex flex-col gap-4 p-6 bg-gray-50 rounded-3xl border border-gray-100 transition-all hover:shadow-lg hover:bg-white relative">
+                                 {/* Duplicate Warning Dot */}
+                                 {duplicateWarning && (
+                                    <div className="absolute top-4 right-4 z-20 w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-md flex items-center justify-center animate-pulse" title="¡Atención! Este nombre ya existe en el catálogo">
+                                        <span className="sr-only">Duplicado</span>
+                                    </div>
+                                 )}
+
                                  <div className="flex flex-col md:flex-row gap-6">
                                     <div className="relative group">
                                         <div className="w-24 h-24 md:w-32 md:h-32 flex-shrink-0 bg-gray-200 rounded-2xl overflow-hidden shadow-sm">
@@ -518,13 +524,19 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                     <div className="flex-1 flex flex-col space-y-3">
                                         <div className="flex flex-col gap-2">
                                             {/* NAME INPUT: Uppercase Visual, Sentence Case Value */}
-                                            <input 
-                                                type="text" 
-                                                value={f.name} 
-                                                onChange={(e) => updateFabricField(i, 'name', e.target.value)}
-                                                className="w-full p-4 bg-white rounded-xl border border-gray-200 font-serif text-3xl font-bold focus:ring-2 focus:ring-black outline-none shadow-sm placeholder:normal-case"
-                                                placeholder="Nombre del Modelo"
-                                            />
+                                            <div className="relative">
+                                                <input 
+                                                    type="text" 
+                                                    value={f.name} 
+                                                    onChange={(e) => updateFabricField(i, 'name', e.target.value)}
+                                                    className={`w-full p-4 bg-white rounded-xl border font-serif text-3xl font-bold focus:ring-2 focus:ring-black outline-none shadow-sm placeholder:normal-case ${duplicateWarning ? 'border-red-300 text-red-900' : 'border-gray-200'}`}
+                                                    placeholder="Nombre del Modelo"
+                                                />
+                                                {duplicateWarning && (
+                                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-red-500 font-bold bg-white px-2">YA EXISTE</span>
+                                                )}
+                                            </div>
+
                                             {/* SUPPLIER INPUT: Uppercase Forced */}
                                             <input 
                                                 type="text" 
@@ -608,7 +620,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSave, onBu
                                     </div>
                                  </div>
                              </div>
-                         ))}
+                             );
+                         })}
                      </div>
 
                      <div className="pt-4 border-t border-gray-100 mt-2 flex gap-4">

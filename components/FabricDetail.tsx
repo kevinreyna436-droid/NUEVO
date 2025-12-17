@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Fabric } from '../types';
 import EditFabricModal from './EditFabricModal';
@@ -205,23 +204,33 @@ Generado automáticamente por Creata App
                      </div>
                 ) : (
                     <>
-                        <p className="text-gray-600 mb-10 leading-relaxed font-sans text-lg border-b border-gray-100 pb-8">
-                            {fabric.technicalSummary || "Información técnica detallada no disponible para este modelo."}
-                        </p>
+                        {/* Only show technical summary if it exists */}
+                        {fabric.technicalSummary && (
+                            <p className="text-gray-600 mb-10 leading-relaxed font-sans text-lg border-b border-gray-100 pb-8">
+                                {fabric.technicalSummary}
+                            </p>
+                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
-                            <div className="flex flex-col">
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Composición</span>
-                                <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.composition || "N/A"}</span>
-                            </div>
-                            <div className="flex flex-col">
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Durabilidad</span>
-                                <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.martindale || "N/A"}</span>
-                            </div>
-                            <div className="flex flex-col">
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Peso</span>
-                                <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.weight || "N/A"}</span>
-                            </div>
+                            {/* Hide blocks if data is missing */}
+                            {fabric.specs.composition && (
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Composición</span>
+                                    <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.composition}</span>
+                                </div>
+                            )}
+                            {fabric.specs.martindale && (
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Durabilidad</span>
+                                    <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.martindale}</span>
+                                </div>
+                            )}
+                            {fabric.specs.weight && (
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Peso</span>
+                                    <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.weight}</span>
+                                </div>
+                            )}
                         </div>
                     </>
                 )}

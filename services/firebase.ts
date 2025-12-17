@@ -1,5 +1,6 @@
 import * as firebaseApp from "firebase/app";
 import { 
+  getFirestore,
   collection, 
   getDocs, 
   setDoc, 
@@ -7,39 +8,74 @@ import {
   deleteDoc, 
   writeBatch,
   initializeFirestore,
-  disableNetwork,
-  setLogLevel,
-  enableNetwork
+  enableNetwork,
+  disableNetwork
 } from "firebase/firestore";
 import { 
   getStorage, 
   ref, 
   uploadBytes, 
-  getDownloadURL 
+  getDownloadURL,
+  deleteObject 
 } from "firebase/storage";
 import { 
   getAuth, 
-  signInAnonymously 
+  signInAnonymously,
+  onAuthStateChanged
 } from "firebase/auth";
-import type { QuerySnapshot, DocumentData } from "firebase/firestore";
 import { Fabric } from "../types";
 
-// Suppress unnecessary connection warnings from Firebase SDK
-setLogLevel('silent');
+// ==========================================
+// CONFIGURACIÓN DE FIREBASE (NUBE)
+// ==========================================
 
-// LIVE CONFIG - Connected to creata-catalogo
 const firebaseConfig = {
-  apiKey: "AIzaSyAudyiExH_syO9MdtSzn4cDxrK0p1zjnac",
-  authDomain: "creata-catalogo.firebaseapp.com",
-  projectId: "creata-catalogo",
-  storageBucket: "creata-catalogo.firebasestorage.app",
-  messagingSenderId: "667237641772",
-  appId: "1:667237641772:web:4772ca31a28594bccfab89",
-  measurementId: "G-74WPNT7EF6"
+  apiKey: "AIzaSyCzdQwkC--MboeRXeq8DjzyJkIfZoITKro",
+  authDomain: "proyecto-1-23086.firebaseapp.com",
+  projectId: "proyecto-1-23086",
+  storageBucket: "proyecto-1-23086.firebasestorage.app",
+  messagingSenderId: "521750292128",
+  appId: "1:521750292128:web:aeef06815de16e67564bc5",
+  measurementId: "G-QG3JVEL7F5"
 };
+
+// Estado de conexión global
+let globalOfflineMode = false;
+let authConfigMissing = false;
+
+// Promesa para esperar a que la auth termine (éxito o fallo) antes de pedir datos
+let authResolve: (value: void | PromiseLike<void>) => void;
+const authReadyPromise = new Promise<void>((resolve) => {
+    authResolve = resolve;
+});
 
 // Initialize Firebase
 const app = firebaseApp.initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+// Función para iniciar sesión
+const initAuth = async () => {
+    try {
+        await signInAnonymously(auth);
+        console.log("✅ Conexión a Nube (Auth) exitosa.");
+        globalOfflineMode = false;
+        authConfigMissing = false;
+    } catch (error: any) {
+        const errorCode = error.code;
+        console.error("🔥 Error Auth:", errorCode);
+        
+        if (errorCode === 'auth/configuration-not-found' || errorCode === 'auth/operation-not-allowed') {
+             authConfigMissing = true;
+             console.warn("FALTA ACTIVAR AUTHENTICATION EN CONSOLA");
+        }
+        globalOfflineMode = true;
+    } finally {
+        authResolve();
+    }
+};
+
+// Iniciar al cargar
+initAuth();
 
 // Initialize Firestore
 const db = initializeFirestore(app, {
@@ -47,80 +83,10 @@ const db = initializeFirestore(app, {
   experimentalAutoDetectLongPolling: true 
 });
 
-// SESSION-ONLY OFFLINE MODE
-// Default to FALSE (Online) to attempt connection to your cloud
-let globalOfflineMode = false;
-
-// Initialize Auth & Sign In Anonymously
-// This is critical for Storage/Firestore rules that require auth != null
-const auth = getAuth(app);
-signInAnonymously(auth).then(() => {
-    console.log("🔥 Authenticated anonymously for Firebase access");
-}).catch((error) => {
-    // Graceful handling for unconfigured Auth
-    if (error.code === 'auth/configuration-not-found' || error.code === 'auth/operation-not-allowed' || error.code === 'auth/internal-error') {
-        console.warn("⚠️ Firebase Auth not configured. Switching to OFFLINE MODE to prevent errors.");
-        globalOfflineMode = true;
-        // Attempt to disable network to prevent further connection spam
-        disableNetwork(db).catch(() => {});
-    } else {
-        console.error("🔥 Auth failed:", error);
-    }
-});
-
-// Initialize Storage
 const storage = getStorage(app);
-
 const COLLECTION_NAME = "fabrics";
-const LOCAL_STORAGE_KEY = "creata_fabrics_offline_backup";
 
-// CLEANUP: Force remove any legacy blocking flags
-try {
-    localStorage.removeItem("creata_firestore_broken");
-} catch(e) {}
-
-// --- Local Storage Helpers ---
-
-const getLocalFabrics = (): Fabric[] => {
-  try {
-    const data = localStorage.getItem(LOCAL_STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch (e) {
-    console.error("Error reading local storage", e);
-    return [];
-  }
-};
-
-const saveLocalFabric = (fabric: Fabric) => {
-  try {
-    const current = getLocalFabrics();
-    const index = current.findIndex(f => f.id === fabric.id);
-    if (index >= 0) {
-      current[index] = fabric;
-    } else {
-      current.unshift(fabric);
-    }
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(current));
-  } catch (e) {
-    console.warn("Could not save to local storage due to quota limits.");
-  }
-};
-
-const deleteLocalFabric = (id: string) => {
-  try {
-    const current = getLocalFabrics();
-    const filtered = current.filter(f => f.id !== id);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filtered));
-  } catch (e) {
-    console.error("Error deleting from local storage", e);
-  }
-};
-
-const clearLocalFabrics = () => {
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
-};
-
-// --- Utils ---
+// --- Helpers de Imágenes ---
 
 const dataURItoBlob = (dataURI: string): Blob => {
   try {
@@ -140,268 +106,145 @@ const dataURItoBlob = (dataURI: string): Blob => {
 };
 
 const uploadImageToStorage = async (base64String: string, path: string): Promise<string> => {
-    // If we are strictly offline, skip upload
-    if (globalOfflineMode) return base64String;
+    if (!base64String) return '';
+    if (base64String.startsWith('http')) return base64String;
+
+    if (globalOfflineMode) {
+        console.warn("⚠️ Modo Offline: Guardando imagen localmente.");
+        return base64String;
+    }
 
     try {
-        if (!base64String || base64String.startsWith('http')) return base64String;
-
         const storageRef = ref(storage, path);
         const blob = dataURItoBlob(base64String);
-        
         if (blob.size === 0) return base64String;
 
         await uploadBytes(storageRef, blob);
-        const downloadURL = await getDownloadURL(storageRef);
-        return downloadURL;
+        return await getDownloadURL(storageRef);
     } catch (error: any) {
-        // Suppress errors if we are in a known bad state
-        if (!globalOfflineMode) {
-             console.warn(`Image upload failed for ${path}:`, error.code || error.message);
-        }
+        console.warn(`Fallo al subir imagen ${path}:`, error.message);
         return base64String;
     }
 };
 
-const processFabricImagesForStorage = async (fabric: Fabric): Promise<Fabric> => {
+const processFabricImagesForCloud = async (fabric: Fabric): Promise<Fabric> => {
     const updatedFabric = { ...fabric };
-    // Skip image processing in offline mode (saves as base64 locally)
-    if (globalOfflineMode) return updatedFabric;
-
     const timestamp = Date.now();
+    const cleanId = fabric.id.replace(/[^a-zA-Z0-9]/g, '_');
 
-    try {
-        if (updatedFabric.mainImage && updatedFabric.mainImage.startsWith('data:')) {
-            const path = `fabrics/${updatedFabric.id}/main_${timestamp}.jpg`;
-            updatedFabric.mainImage = await uploadImageToStorage(updatedFabric.mainImage, path);
-        }
+    if (updatedFabric.mainImage && updatedFabric.mainImage.startsWith('data:')) {
+        updatedFabric.mainImage = await uploadImageToStorage(updatedFabric.mainImage, `fabrics/${cleanId}/main_${timestamp}.jpg`);
+    }
 
-        if (updatedFabric.specsImage && updatedFabric.specsImage.startsWith('data:')) {
-            const path = `fabrics/${updatedFabric.id}/specs_${timestamp}.jpg`;
-            updatedFabric.specsImage = await uploadImageToStorage(updatedFabric.specsImage, path);
-        }
+    if (updatedFabric.specsImage && updatedFabric.specsImage.startsWith('data:')) {
+        updatedFabric.specsImage = await uploadImageToStorage(updatedFabric.specsImage, `fabrics/${cleanId}/specs_${timestamp}.jpg`);
+    }
 
-        if (updatedFabric.colorImages) {
-            const newColorImages: Record<string, string> = {};
-            for (const [colorName, base64] of Object.entries(updatedFabric.colorImages)) {
-                if (base64 && base64.startsWith('data:')) {
-                    const safeColorName = colorName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-                    const path = `fabrics/${updatedFabric.id}/colors/${safeColorName}_${timestamp}.jpg`;
-                    newColorImages[colorName] = await uploadImageToStorage(base64, path);
-                } else {
-                    newColorImages[colorName] = base64;
-                }
+    if (updatedFabric.colorImages) {
+        const newColorImages: Record<string, string> = {};
+        for (const [colorName, base64] of Object.entries(updatedFabric.colorImages)) {
+            if (base64 && base64.startsWith('data:')) {
+                const safeColorName = colorName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                newColorImages[colorName] = await uploadImageToStorage(base64, `fabrics/${cleanId}/colors/${safeColorName}_${timestamp}.jpg`);
+            } else {
+                newColorImages[colorName] = base64;
             }
-            updatedFabric.colorImages = newColorImages;
         }
-    } catch (e) {
-        console.warn("Image processing encountered issues", e);
+        updatedFabric.colorImages = newColorImages;
     }
 
     return updatedFabric;
 };
 
-const createCleanFabricObject = (source: any): Fabric => {
-  if (!source || typeof source !== 'object') {
-      return {
-          id: 'error-' + Date.now(),
-          name: 'Error',
-          supplier: '',
-          technicalSummary: '',
-          specs: { composition: '', martindale: '', usage: '', weight: '' },
-          colors: [],
-          colorImages: {},
-          mainImage: '',
-          category: 'model'
-      };
-  }
+// --- Funciones Exportadas ---
 
-  const safeString = (val: any): string => {
-      try {
-          if (val === null || val === undefined) return '';
-          if (typeof val === 'string') return val;
-          return String(val);
-      } catch (e) { return ''; }
-  };
-
-  return {
-    id: safeString(source.id),
-    name: safeString(source.name) || 'Sin Nombre',
-    supplier: safeString(source.supplier),
-    technicalSummary: safeString(source.technicalSummary),
-    specs: {
-      composition: safeString(source?.specs?.composition),
-      weight: safeString(source?.specs?.weight),
-      martindale: safeString(source?.specs?.martindale),
-      usage: safeString(source?.specs?.usage),
-    },
-    colors: Array.isArray(source.colors) ? source.colors.map(safeString).filter((s: string) => s) : [],
-    colorImages: source.colorImages || {},
-    pdfUrl: safeString(source.pdfUrl),
-    specsImage: safeString(source.specsImage),
-    customCatalog: safeString(source.customCatalog),
-    category: source.category === 'wood' ? 'wood' as const : 'model' as const,
-    mainImage: safeString(source.mainImage)
-  };
-};
-
-// --- Exported Operations ---
-
-// Attempt to re-enable network if we were offline
-const ensureOnline = async () => {
-    // If we are forced offline by config, do not attempt to connect
-    if (globalOfflineMode) return;
-
-    try {
-        await enableNetwork(db);
-    } catch (e) {
-        // console.warn("Could not enable network:", e);
-    }
+// Permite reintentar la conexión manualmente desde la UI
+export const retryAuth = async () => {
+    console.log("🔄 Reintentando conexión...");
+    await initAuth();
+    return !authConfigMissing;
 };
 
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
-  // Always fetch local data first as a base/fallback
-  const localData = getLocalFabrics();
-
-  // Return local only if we are in disconnected mode
-  if (globalOfflineMode) return localData;
+  // Esperar a que la autenticación termine antes de consultar
+  await authReadyPromise;
 
   try {
-    // Increased timeout to 15s for better initial load on slow networks
-    const serverPromise = getDocs(collection(db, COLLECTION_NAME));
-    const timeoutPromise = new Promise<QuerySnapshot<DocumentData>>((_, reject) => 
-        setTimeout(() => reject(new Error('TIMEOUT_CONNECT')), 15000)
-    );
-
-    const snapshot = await Promise.race([serverPromise, timeoutPromise]);
+    const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
+    const fabrics: Fabric[] = [];
     
-    const cloudFabrics = snapshot.docs.map(doc => createCleanFabricObject(doc.data()));
+    querySnapshot.forEach((doc) => {
+      fabrics.push(doc.data() as Fabric);
+    });
 
-    // HYBRID MERGE STRATEGY:
-    // We combine Cloud data with Local data. 
-    // If an ID exists in both, Cloud takes precedence.
-    const fabricMap = new Map<string, Fabric>();
-    
-    localData.forEach(f => fabricMap.set(f.id, f));
-    cloudFabrics.forEach(f => fabricMap.set(f.id, f));
-
-    return Array.from(fabricMap.values());
-
+    console.log(`☁️ Descargadas ${fabrics.length} telas de la nube.`);
+    globalOfflineMode = false;
+    authConfigMissing = false;
+    return fabrics;
   } catch (error: any) {
-    if (!globalOfflineMode) {
-        console.warn("Firestore connection failed. Returning local data.", error?.message);
-    }
+    console.error("❌ Error conectando a Firestore:", error.message);
     
-    // Only switch to permanent offline mode if it's a hard network error or timeout
-    if (error?.code === 'unavailable' || error?.message === 'TIMEOUT_CONNECT') {
-        globalOfflineMode = true;
-        try { await disableNetwork(db); } catch(e) {}
-    }
-    
-    return localData;
+    globalOfflineMode = true;
+    const localData = localStorage.getItem("creata_fabrics_offline_backup");
+    return localData ? JSON.parse(localData) : [];
   }
 };
 
 export const saveFabricToFirestore = async (fabric: Fabric) => {
-  await ensureOnline();
-
-  // 0. Save locally IMMEDIATELY as a backup
-  saveLocalFabric(fabric);
-
-  let fabricToSave = { ...fabric };
-  
-  // 1. Process Images (Upload to Storage)
   try {
-    fabricToSave = await processFabricImagesForStorage(fabric);
-  } catch (error) {
-    console.error("Image processing failed, attempting to save with base64.", error);
-  }
+    const cloudFabric = await processFabricImagesForCloud(fabric);
+    await setDoc(doc(db, COLLECTION_NAME, cloudFabric.id), cloudFabric, { merge: true });
+    
+    console.log("✅ Tela guardada:", cloudFabric.name);
 
-  if (globalOfflineMode) return;
+    // Backup local
+    try {
+        const currentLocal = localStorage.getItem("creata_fabrics_offline_backup");
+        const parsed = currentLocal ? JSON.parse(currentLocal) : [];
+        const index = parsed.findIndex((f: Fabric) => f.id === cloudFabric.id);
+        if (index >= 0) parsed[index] = cloudFabric;
+        else parsed.unshift(cloudFabric);
+        localStorage.setItem("creata_fabrics_offline_backup", JSON.stringify(parsed));
+    } catch(e) {}
 
-  // 2. Save Document to Cloud
-  try {
-    const cleanFabric = createCleanFabricObject(fabricToSave);
-    if (!cleanFabric.id) throw new Error("Invalid ID");
-    
-    const savePromise = setDoc(doc(db, COLLECTION_NAME, cleanFabric.id), cleanFabric, { merge: true });
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_SAVE')), 15000));
-    
-    await Promise.race([savePromise, timeoutPromise]);
-    console.log("✅ Saved to cloud successfully");
-    
   } catch (error: any) {
-    if (!globalOfflineMode) {
-        console.error("❌ Firestore save failed:", error.code || error.message);
-    }
-    
-    if (error.code === 'resource-exhausted') {
-        alert("Error: La ficha es demasiado grande para guardarse (límite de 1MB).");
-    } else if (error.code === 'permission-denied') {
-        // Often happens if auth failed silently
-        console.warn("Permission denied. Switching to offline mode.");
-        globalOfflineMode = true;
-    }
-    
-    // Ensure the version is saved locally
-    saveLocalFabric(fabricToSave); 
+    console.error("❌ Error guardando:", error);
+    throw error;
   }
 };
 
 export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
-  fabrics.forEach(f => saveLocalFabric(f));
-  await ensureOnline();
-  if (globalOfflineMode) return;
-
-  const BATCH_SIZE = 400;
-  const chunks = [];
-  
-  for (let i = 0; i < fabrics.length; i += BATCH_SIZE) {
-      chunks.push(fabrics.slice(i, i + BATCH_SIZE));
-  }
-
-  for (const chunk of chunks) {
-      const batch = writeBatch(db);
-      for (const fabric of chunk) {
-           const cleanFabric = createCleanFabricObject(fabric);
-           const ref = doc(db, COLLECTION_NAME, cleanFabric.id);
-           batch.set(ref, cleanFabric, { merge: true });
-      }
-      try {
-          await batch.commit();
-      } catch (e) {
-          console.error("Batch save failed", e);
-      }
+  for (const fabric of fabrics) {
+      await saveFabricToFirestore(fabric);
   }
 };
 
 export const deleteFabricFromFirestore = async (fabricId: string) => {
-  await ensureOnline();
-  deleteLocalFabric(fabricId);
-
-  if (globalOfflineMode) return;
-
   try {
     await deleteDoc(doc(db, COLLECTION_NAME, fabricId));
+    
+    const currentLocal = localStorage.getItem("creata_fabrics_offline_backup");
+    if (currentLocal) {
+        const parsed = JSON.parse(currentLocal);
+        const filtered = parsed.filter((f: Fabric) => f.id !== fabricId);
+        localStorage.setItem("creata_fabrics_offline_backup", JSON.stringify(filtered));
+    }
+
   } catch (error) {
-    console.warn("Cloud delete failed, but deleted locally.", error);
+    console.error("Error eliminando doc:", error);
+    throw error;
   }
 };
 
 export const clearFirestoreCollection = async () => {
-  localStorage.removeItem(LOCAL_STORAGE_KEY);
-  await ensureOnline();
-
-  if (globalOfflineMode) return;
-
-  try {
-    const snap = await getDocs(collection(db, COLLECTION_NAME));
+    const snapshot = await getDocs(collection(db, COLLECTION_NAME));
     const batch = writeBatch(db);
-    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    snapshot.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+    });
     await batch.commit();
-  } catch (error) {
-    // Ignore error
-  }
+    localStorage.removeItem("creata_fabrics_offline_backup");
 };
 
 export const isOfflineMode = () => globalOfflineMode;
+export const isAuthConfigMissing = () => authConfigMissing;
