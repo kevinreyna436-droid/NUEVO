@@ -7,14 +7,17 @@ import ChatBot from './components/ChatBot';
 import PinModal from './components/PinModal';
 import ImageGenModal from './components/ImageGenModal';
 import Visualizer from './components/Visualizer';
-import { INITIAL_FABRICS, IN_STOCK_DB } from './constants';
-import { Fabric, AppView } from './types';
+import { IN_STOCK_DB } from './constants';
+import { Fabric, AppView, FurnitureTemplate } from './types';
 import { 
   getFabricsFromFirestore, 
   saveFabricToFirestore, 
   saveBatchFabricsToFirestore, 
   deleteFabricFromFirestore, 
   clearFirestoreCollection,
+  getFurnitureTemplatesFromFirestore,
+  saveFurnitureTemplateToFirestore,
+  deleteFurnitureTemplateFromFirestore,
   isOfflineMode,
   isAuthConfigMissing,
   retryAuth
@@ -26,6 +29,7 @@ type SortOption = 'color' | 'name' | 'model' | 'supplier';
 function App() {
   const [view, setView] = useState<AppView>('grid');
   const [fabrics, setFabrics] = useState<Fabric[]>([]);
+  const [furnitureTemplates, setFurnitureTemplates] = useState<FurnitureTemplate[]>([]);
   const [selectedFabricId, setSelectedFabricId] = useState<string | null>(null);
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
   const [isPinModalOpen, setPinModalOpen] = useState(false); // PIN Modal State
@@ -56,6 +60,9 @@ function App() {
     setLoading(true);
     try {
       const dbData = await getFabricsFromFirestore();
+      const furnitureData = await getFurnitureTemplatesFromFirestore();
+      
+      setFurnitureTemplates(furnitureData);
       
       // Update offline/auth status after fetch attempt
       setOfflineStatus(isOfflineMode());
@@ -137,19 +144,13 @@ function App() {
 
   const handleSaveFabric = async (newFabric: Fabric) => {
     try {
-      // Optimistic update: Add immediately to UI
       setFabrics(prev => {
-          // Remove if ID matches (update case disguised as new), otherwise prepend
           const filtered = prev.filter(f => f.id !== newFabric.id);
           return [newFabric, ...filtered];
       });
-      
       await saveFabricToFirestore(newFabric);
-      
-      // Force navigation back to home/grid after save
       setView('grid');
       setSelectedFabricId(null);
-      
     } catch (e: any) {
       console.error("Error saving fabric:", e?.message || "Unknown error");
     }
@@ -163,14 +164,35 @@ function App() {
           return [...uniqueNew, ...prev];
       });
       await saveBatchFabricsToFirestore(newFabrics);
-
-      // Force navigation back to home/grid after bulk save
       setView('grid');
       setSelectedFabricId(null);
-
     } catch (e: any) {
       console.error("Error bulk saving:", e?.message || "Unknown error");
     }
+  };
+
+  const handleSaveFurniture = async (template: FurnitureTemplate) => {
+      try {
+          // Optimistic update
+          setFurnitureTemplates(prev => {
+              const filtered = prev.filter(t => t.id !== template.id);
+              return [...filtered, template]; // Append to end usually
+          });
+          await saveFurnitureTemplateToFirestore(template);
+      } catch (e) {
+          console.error("Error saving furniture", e);
+      }
+  };
+
+  const handleDeleteFurniture = async (id: string) => {
+      if(window.confirm("¿Eliminar este mueble del probador?")) {
+          try {
+              setFurnitureTemplates(prev => prev.filter(t => t.id !== id));
+              await deleteFurnitureTemplateFromFirestore(id);
+          } catch(e) {
+              console.error("Error deleting furniture", e);
+          }
+      }
   };
 
   const handleUpdateFabric = async (updatedFabric: Fabric) => {
@@ -347,7 +369,6 @@ function App() {
     const allItems = getFilteredItems();
 
     if (activeTab === 'model') {
-        // Filter out Woods from Model view (if any exist in DB)
         const modelItems = allItems.filter(f => f.category !== 'wood');
         const sortedItems = [...modelItems].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
         
@@ -386,13 +407,12 @@ function App() {
 
     // New Tab handling
     if (activeTab === 'visualizer') {
-        return <Visualizer fabrics={fabrics} />;
+        return <Visualizer fabrics={fabrics} templates={furnitureTemplates} />;
     }
   };
 
   const filteredItemCount = activeTab === 'color' ? getSortedColorCards().length : getFilteredItems().length;
   
-  // Calculate unique suppliers for the filter
   const uniqueSuppliers = Array.from(new Set(fabrics.map(f => f.supplier).filter(Boolean))).sort();
 
   return (
@@ -712,6 +732,11 @@ function App() {
         onBulkSave={handleBulkSaveFabrics}
         onReset={handleReset}
         existingFabrics={fabrics}
+        
+        // Pass Furniture Props
+        existingFurniture={furnitureTemplates}
+        onSaveFurniture={handleSaveFurniture}
+        onDeleteFurniture={handleDeleteFurniture}
       />
 
       <ChatBot fabrics={fabrics} />

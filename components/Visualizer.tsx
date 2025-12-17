@@ -1,15 +1,15 @@
 
 import React, { useState } from 'react';
 import { Fabric, FurnitureTemplate } from '../types';
-import { FURNITURE_TEMPLATES } from '../constants';
 import { visualizeUpholstery } from '../services/geminiService';
 import { compressImage } from '../utils/imageCompression';
 
 interface VisualizerProps {
   fabrics: Fabric[];
+  templates: FurnitureTemplate[];
 }
 
-const Visualizer: React.FC<VisualizerProps> = ({ fabrics }) => {
+const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedFurniture, setSelectedFurniture] = useState<FurnitureTemplate | null>(null);
   
@@ -31,7 +31,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics }) => {
         return base64.split(',')[1];
     } catch (e) {
         console.error("Error processing image URL:", e);
-        throw e;
+        // Fallback or re-throw
+        throw new Error("No se pudo descargar la imagen del mueble. Verifica que sea una URL válida y pública.");
     }
   };
 
@@ -51,7 +52,12 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics }) => {
       
       // Check if it's a URL (cloud storage)
       if (imgData.startsWith('http')) {
-          return await getBase64FromUrl(imgData);
+          try {
+             return await getBase64FromUrl(imgData);
+          } catch(e) {
+             console.error("Error getting fabric image", e);
+             return null;
+          }
       }
       
       // If it's base64 data uri
@@ -83,9 +89,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics }) => {
               alert("No se pudo generar la imagen. Intenta de nuevo.");
               setStep(2);
           }
-      } catch (error) {
+      } catch (error: any) {
           console.error(error);
-          alert("Error de conexión con el servicio de IA o error al procesar imágenes.");
+          alert(error.message || "Error de conexión con el servicio de IA.");
           setStep(2);
       } finally {
           setIsGenerating(false);
@@ -128,23 +134,31 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics }) => {
           {step === 1 && (
               <div className="p-8 md:p-12 flex-1">
                   <h3 className="font-serif text-2xl mb-8 text-center">Selecciona un modelo base</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                      {FURNITURE_TEMPLATES.map((item) => (
-                          <div 
-                            key={item.id}
-                            onClick={() => { setSelectedFurniture(item); setStep(2); }}
-                            className="group cursor-pointer rounded-2xl border border-gray-100 hover:border-black transition-all hover:shadow-lg overflow-hidden relative"
-                          >
-                              <div className="aspect-[4/3] bg-gray-50 overflow-hidden">
-                                  <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                              </div>
-                              <div className="p-4 text-center">
-                                  <h4 className="font-serif font-bold text-lg">{item.name}</h4>
-                                  <p className="text-[10px] text-gray-400 uppercase tracking-widest">{item.category}</p>
-                              </div>
-                          </div>
-                      ))}
-                  </div>
+                  
+                  {templates.length === 0 ? (
+                      <div className="text-center py-10 text-gray-400">
+                          <p>No hay muebles cargados.</p>
+                          <p className="text-xs">Usa el botón "." arriba a la derecha para gestionar muebles.</p>
+                      </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {templates.map((item) => (
+                            <div 
+                                key={item.id}
+                                onClick={() => { setSelectedFurniture(item); setStep(2); }}
+                                className="group cursor-pointer rounded-2xl border border-gray-100 hover:border-black transition-all hover:shadow-lg overflow-hidden relative"
+                            >
+                                <div className="aspect-[4/3] bg-gray-50 overflow-hidden">
+                                    <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                </div>
+                                <div className="p-4 text-center">
+                                    <h4 className="font-serif font-bold text-lg">{item.name}</h4>
+                                    <p className="text-[10px] text-gray-400 uppercase tracking-widest">{item.category}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                  )}
               </div>
           )}
 

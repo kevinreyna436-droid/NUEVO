@@ -1,3 +1,4 @@
+
 import * as firebaseApp from "firebase/app";
 import { 
   getFirestore,
@@ -7,23 +8,20 @@ import {
   doc, 
   deleteDoc, 
   writeBatch,
-  initializeFirestore,
-  enableNetwork,
-  disableNetwork
+  initializeFirestore
 } from "firebase/firestore";
 import { 
   getStorage, 
   ref, 
   uploadBytes, 
-  getDownloadURL,
-  deleteObject 
+  getDownloadURL
 } from "firebase/storage";
 import { 
   getAuth, 
-  signInAnonymously,
-  onAuthStateChanged
+  signInAnonymously
 } from "firebase/auth";
-import { Fabric } from "../types";
+import { Fabric, FurnitureTemplate } from "../types";
+import { FURNITURE_TEMPLATES as DEFAULT_FURNITURE } from "../constants";
 
 // ==========================================
 // CONFIGURACIÓN DE FIREBASE (NUBE)
@@ -85,6 +83,7 @@ const db = initializeFirestore(app, {
 
 const storage = getStorage(app);
 const COLLECTION_NAME = "fabrics";
+const FURNITURE_COLLECTION = "furniture";
 
 // --- Helpers de Imágenes ---
 
@@ -236,7 +235,59 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
   }
 };
 
+// --- FURNITURE FUNCTIONS ---
+
+export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTemplate[]> => {
+    await authReadyPromise;
+    try {
+        const querySnapshot = await getDocs(collection(db, FURNITURE_COLLECTION));
+        const furniture: FurnitureTemplate[] = [];
+        querySnapshot.forEach((doc) => {
+            furniture.push(doc.data() as FurnitureTemplate);
+        });
+
+        if (furniture.length === 0) {
+            // If empty, return default templates from constants
+            return DEFAULT_FURNITURE;
+        }
+
+        return furniture;
+    } catch (error) {
+        console.error("Error fetching furniture:", error);
+        return DEFAULT_FURNITURE;
+    }
+};
+
+export const saveFurnitureTemplateToFirestore = async (template: FurnitureTemplate) => {
+    try {
+        let imageUrl = template.imageUrl;
+        // Upload image if base64
+        if (imageUrl.startsWith('data:')) {
+            const timestamp = Date.now();
+            const cleanId = template.id.replace(/[^a-zA-Z0-9]/g, '_');
+            imageUrl = await uploadImageToStorage(imageUrl, `furniture/${cleanId}_${timestamp}.jpg`);
+        }
+        
+        const finalTemplate = { ...template, imageUrl };
+        await setDoc(doc(db, FURNITURE_COLLECTION, finalTemplate.id), finalTemplate, { merge: true });
+        return finalTemplate;
+    } catch (error) {
+        console.error("Error saving furniture:", error);
+        throw error;
+    }
+};
+
+export const deleteFurnitureTemplateFromFirestore = async (id: string) => {
+    try {
+        await deleteDoc(doc(db, FURNITURE_COLLECTION, id));
+    } catch (error) {
+        console.error("Error deleting furniture:", error);
+        throw error;
+    }
+};
+
 export const clearFirestoreCollection = async () => {
+    // Clears FABRICS only based on previous context, but could be extended
     const snapshot = await getDocs(collection(db, COLLECTION_NAME));
     const batch = writeBatch(db);
     snapshot.docs.forEach((doc) => {
