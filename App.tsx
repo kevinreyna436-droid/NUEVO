@@ -42,9 +42,11 @@ function App() {
   // Sorting State - Default "color"
   const [sortBy, setSortBy] = useState<SortOption>('color');
   const [isFilterMenuOpen, setFilterMenuOpen] = useState(false);
+  
+  // New Filter: Recientes
+  const [isRecentOnly, setIsRecentOnly] = useState(false);
 
   // Supplier Filter State
-  // 'CREATA_STOCK' is a special value to filter only items in IN_STOCK_DB
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
   const [isSupplierMenuOpen, setSupplierMenuOpen] = useState(false);
 
@@ -63,27 +65,12 @@ function App() {
       const furnitureData = await getFurnitureTemplatesFromFirestore();
       
       setFurnitureTemplates(furnitureData);
-      
-      // Update offline/auth status after fetch attempt
       setOfflineStatus(isOfflineMode());
       setAuthMissing(isAuthConfigMissing());
 
       if (dbData && dbData.length > 0) {
-        // DEDUPLICATION LOGIC:
-        const uniqueFabrics: Fabric[] = [];
-        const seenNames = new Set<string>();
-
-        dbData.forEach(fabric => {
-            // We simply display all valid fabrics retrieved.
-            if (fabric.id) {
-               uniqueFabrics.push(fabric);
-            }
-        });
-
-        setFabrics(uniqueFabrics);
+        setFabrics(dbData);
       } else {
-        // FALLBACK: Load empty list if DB is empty
-        console.log("Database empty. Starting clean.");
         setFabrics([]); 
       }
     } catch (e: any) {
@@ -94,16 +81,14 @@ function App() {
     }
   };
 
-  // Check auth status periodically in case the user enables it while app is open
   useEffect(() => {
     const interval = setInterval(() => {
         if (isAuthConfigMissing()) setAuthMissing(true);
-        else if (authMissing) setAuthMissing(false); // Auto clear if fixed
+        else if (authMissing) setAuthMissing(false); 
     }, 5000);
     return () => clearInterval(interval);
   }, [authMissing]);
 
-  // Load initial data from Firestore
   useEffect(() => {
     loadData();
   }, []);
@@ -115,7 +100,7 @@ function App() {
           setAuthMissing(false);
           await loadData();
       } else {
-          alert("Aún no detectamos la activación. Asegúrate de que esté 'Habilitada' en Firebase Console.");
+          alert("Aún no detectamos la activación.");
       }
       setLoading(false);
   };
@@ -135,7 +120,7 @@ function App() {
             
         setColorLightbox({
             isOpen: true,
-            image: img || '', // Handle potentially empty image for lightbox
+            image: img || '', 
             fabricId: fabric.id,
             colorName: specificColor || 'Unknown'
         });
@@ -144,40 +129,27 @@ function App() {
 
   const handleSaveFabric = async (newFabric: Fabric) => {
     try {
-      setFabrics(prev => {
-          const filtered = prev.filter(f => f.id !== newFabric.id);
-          return [newFabric, ...filtered];
-      });
+      setFabrics(prev => [newFabric, ...prev.filter(f => f.id !== newFabric.id)]);
       await saveFabricToFirestore(newFabric);
       setView('grid');
-      setSelectedFabricId(null);
-    } catch (e: any) {
-      console.error("Error saving fabric:", e?.message || "Unknown error");
+    } catch (e) {
+      console.error("Error saving fabric:", e);
     }
   };
 
   const handleBulkSaveFabrics = async (newFabrics: Fabric[]) => {
     try {
-      setFabrics(prev => {
-          const currentIds = new Set(prev.map(f => f.id));
-          const uniqueNew = newFabrics.filter(f => !currentIds.has(f.id));
-          return [...uniqueNew, ...prev];
-      });
+      setFabrics(prev => [...newFabrics, ...prev]);
       await saveBatchFabricsToFirestore(newFabrics);
       setView('grid');
-      setSelectedFabricId(null);
-    } catch (e: any) {
-      console.error("Error bulk saving:", e?.message || "Unknown error");
+    } catch (e) {
+      console.error("Error bulk saving:", e);
     }
   };
 
   const handleSaveFurniture = async (template: FurnitureTemplate) => {
       try {
-          // Optimistic update
-          setFurnitureTemplates(prev => {
-              const filtered = prev.filter(t => t.id !== template.id);
-              return [...filtered, template]; // Append to end usually
-          });
+          setFurnitureTemplates(prev => [...prev.filter(t => t.id !== template.id), template]);
           await saveFurnitureTemplateToFirestore(template);
       } catch (e) {
           console.error("Error saving furniture", e);
@@ -185,7 +157,7 @@ function App() {
   };
 
   const handleDeleteFurniture = async (id: string) => {
-      if(window.confirm("¿Eliminar este mueble del probador?")) {
+      if(window.confirm("¿Eliminar mueble?")) {
           try {
               setFurnitureTemplates(prev => prev.filter(t => t.id !== id));
               await deleteFurnitureTemplateFromFirestore(id);
@@ -199,8 +171,8 @@ function App() {
     try {
       setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
       await saveFabricToFirestore(updatedFabric);
-    } catch (e: any) {
-      console.error("Error updating fabric:", e?.message || "Unknown error");
+    } catch (e) {
+      console.error("Error updating fabric:", e);
     }
   };
 
@@ -208,26 +180,20 @@ function App() {
       try {
           setFabrics(prev => prev.filter(f => f.id !== fabricId));
           setView('grid');
-          setSelectedFabricId(null);
           await deleteFabricFromFirestore(fabricId);
-      } catch (e: any) {
-          console.error("Error deleting fabric:", e?.message || "Unknown error");
-          alert("Hubo un error al eliminar la ficha.");
+      } catch (e) {
+          console.error("Error deleting fabric:", e);
       }
   };
 
   const handleReset = async () => {
-      if(window.confirm("¿Estás seguro de que quieres borrar TODA la información? Esto reiniciará la base de datos y permitirá reconectar si la nube estaba caída.")) {
+      if(window.confirm("¿Borrar toda la información?")) {
           try {
             setFabrics([]);
             await clearFirestoreCollection();
-            setUploadModalOpen(false);
-            setOfflineStatus(false); // Optimistically reset status
-            alert("Catálogo reseteado. Recarga la página para verificar conexión.");
             window.location.reload();
-          } catch (e: any) {
-            console.error("Error resetting collection:", e?.message || "Unknown error");
-            alert("Error al resetear la base de datos.");
+          } catch (e) {
+            console.error("Error resetting:", e);
           }
       }
   };
@@ -243,31 +209,28 @@ function App() {
   const getColorWeight = (colorName: string): number => {
       if (!colorName) return 50;
       const name = colorName.toLowerCase();
-      if (name.includes('white') || name.includes('snow') || name.includes('ivory') || name.includes('blanco') || name.includes('nieve')) return 100;
-      if (name.includes('cream') || name.includes('bone') || name.includes('hueso') || name.includes('crema') || name.includes('pearl')) return 95;
-      if (name.includes('natural') || name.includes('linen') || name.includes('lino') || name.includes('ecru') || name.includes('cotton')) return 90;
-      if (name.includes('beige') || name.includes('sand') || name.includes('arena') || name.includes('oyster') || name.includes('flax')) return 85;
-      if (name.includes('champagne') || name.includes('mist') || name.includes('fog')) return 80;
-      if (name.includes('silver') || name.includes('plata') || name.includes('platinum')) return 70;
-      if (name.includes('light grey') || name.includes('pale')) return 65;
-      if (name.includes('grey') || name.includes('gris') || name.includes('stone') || name.includes('piedra') || name.includes('zinc') || name.includes('pewter')) return 50;
-      if (name.includes('gold') || name.includes('yellow') || name.includes('mustard')) return 45;
-      if (name.includes('orange') || name.includes('terra') || name.includes('brick')) return 40;
-      if (name.includes('red') || name.includes('rose') || name.includes('pink') || name.includes('coral')) return 35;
-      if (name.includes('green') || name.includes('olive') || name.includes('moss') || name.includes('emerald')) return 30;
-      if (name.includes('blue') || name.includes('sky') || name.includes('aqua') || name.includes('teal')) return 25;
-      if (name.includes('navy') || name.includes('midnight') || name.includes('indigo') || name.includes('dark')) return 15;
-      if (name.includes('charcoal') || name.includes('anthracite') || name.includes('slate') || name.includes('graphite')) return 10;
-      if (name.includes('black') || name.includes('negro') || name.includes('ebony') || name.includes('onyx') || name.includes('caviar')) return 0;
+      if (name.includes('white') || name.includes('snow') || name.includes('ivory')) return 100;
+      if (name.includes('cream') || name.includes('bone')) return 95;
+      if (name.includes('beige') || name.includes('sand')) return 85;
+      if (name.includes('grey') || name.includes('gris')) return 50;
+      if (name.includes('black') || name.includes('negro')) return 0;
       return 50;
   };
 
   const getFilteredItems = () => {
     let items = [...fabrics];
     
-    // Filter by Supplier or Special "CREATA_STOCK" Logic
+    if (isRecentOnly) {
+        const fifteenDaysInMs = 15 * 24 * 60 * 60 * 1000;
+        items = items.filter(f => {
+            try {
+                const ts = parseInt(f.id.substring(0, 13));
+                return Date.now() - ts < fifteenDaysInMs;
+            } catch(e) { return false; }
+        });
+    }
+
     if (selectedSupplier === 'CREATA_STOCK') {
-        // Only show items whose name exists in the IN_STOCK_DB (Green Dot Logic)
         items = items.filter(f => Object.keys(IN_STOCK_DB).some(k => k.toLowerCase() === f.name.toLowerCase()));
     } else if (selectedSupplier) {
         items = items.filter(f => f.supplier === selectedSupplier);
@@ -283,47 +246,21 @@ function App() {
   };
 
   const getSortedColorCards = () => {
-      // Only show colors for Models/Fabrics, exclude Woods from "Ver Colores"
       const items = getFilteredItems().filter(f => f.category !== 'wood');
-      
-      let allColorCards = items.flatMap((fabric) => 
-          (fabric.colors || []).map((colorName) => ({
-              fabric,
-              colorName
-          }))
-      );
+      let allColorCards = items.flatMap((fabric) => (fabric.colors || []).map((colorName) => ({ fabric, colorName })));
 
-      // SPECIAL LOGIC FOR CREATA_STOCK in COLOR VIEW
-      // If filtering by Stock, we must filter out specific colors that are not in the DB,
-      // even if the Model is in the DB.
       if (selectedSupplier === 'CREATA_STOCK') {
           allColorCards = allColorCards.filter(card => {
              const modelKey = Object.keys(IN_STOCK_DB).find(k => k.toLowerCase() === card.fabric.name.toLowerCase());
              if (!modelKey) return false;
-             
-             const stockColors = IN_STOCK_DB[modelKey];
-             // Check if this specific color exists in the allowed list
-             return stockColors.some(c => c.toLowerCase() === card.colorName.toLowerCase());
+             return IN_STOCK_DB[modelKey].some(c => c.toLowerCase() === card.colorName.toLowerCase());
           });
       }
 
       allColorCards.sort((a, b) => {
-          if (sortBy === 'color') {
-              const weightA = getColorWeight(a.colorName);
-              const weightB = getColorWeight(b.colorName);
-              return weightB - weightA; 
-          }
-          if (sortBy === 'name') return a.colorName.localeCompare(b.colorName, 'es', { sensitivity: 'base' });
-          if (sortBy === 'model') {
-              const modelCompare = a.fabric.name.localeCompare(b.fabric.name, 'es', { sensitivity: 'base' });
-              if (modelCompare !== 0) return modelCompare;
-              return a.colorName.localeCompare(b.colorName, 'es', { sensitivity: 'base' });
-          }
-          if (sortBy === 'supplier') {
-              const suppCompare = a.fabric.supplier.localeCompare(b.fabric.supplier, 'es', { sensitivity: 'base' });
-              if (suppCompare !== 0) return suppCompare;
-               return a.fabric.name.localeCompare(b.fabric.name, 'es', { sensitivity: 'base' });
-          }
+          if (sortBy === 'color') return getColorWeight(b.colorName) - getColorWeight(a.colorName);
+          if (sortBy === 'name') return a.colorName.localeCompare(b.colorName, 'es');
+          if (sortBy === 'model') return a.fabric.name.localeCompare(b.fabric.name, 'es');
           return 0;
       });
       return allColorCards;
@@ -332,22 +269,13 @@ function App() {
   const handleGlobalNav = (direction: number, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (!colorLightbox) return;
-    
     const cards = getSortedColorCards();
     const currentIndex = cards.findIndex(c => c.fabric.id === colorLightbox.fabricId && c.colorName === colorLightbox.colorName);
-    
     if (currentIndex === -1) return;
-
-    const newIndex = (currentIndex + direction + cards.length) % cards.length;
-    const newItem = cards[newIndex];
-    
-    const img = newItem.colorName && newItem.fabric.colorImages?.[newItem.colorName]
-        ? newItem.fabric.colorImages[newItem.colorName]
-        : newItem.fabric.mainImage;
-
+    const newItem = cards[(currentIndex + direction + cards.length) % cards.length];
     setColorLightbox({
         isOpen: true,
-        image: img || '',
+        image: (newItem.colorName && newItem.fabric.colorImages?.[newItem.colorName]) || newItem.fabric.mainImage || '',
         fabricId: newItem.fabric.id,
         colorName: newItem.colorName
     });
@@ -367,128 +295,34 @@ function App() {
 
   const renderGridContent = () => {
     const allItems = getFilteredItems();
-
     if (activeTab === 'model') {
-        const modelItems = allItems.filter(f => f.category !== 'wood');
-        const sortedItems = [...modelItems].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
-        
-        if (sortedItems.length === 0) {
-             return (
-                <div className="col-span-full text-center py-20 text-gray-400">
-                    <h3 className="font-serif text-xl italic">No se encontraron modelos</h3>
-                </div>
-            );
-        }
-
-        return sortedItems.map((fabric, idx) => (
-            <FabricCard 
-                key={fabric.id} 
-                fabric={fabric}
-                mode="model"
-                onClick={() => handleFabricClick(fabric)}
-                index={idx}
-            />
+        return allItems.filter(f => f.category !== 'wood').sort((a, b) => a.name.localeCompare(b.name, 'es')).map((fabric, idx) => (
+            <FabricCard key={fabric.id} fabric={fabric} mode="model" onClick={() => handleFabricClick(fabric)} index={idx} />
         ));
     }
-
     if (activeTab === 'color') {
-        const sortedCards = getSortedColorCards();
-        return sortedCards.map((item, idx) => (
-            <FabricCard
-                key={`${item.fabric.id}-${item.colorName}-${idx}`}
-                fabric={item.fabric}
-                mode="color"
-                specificColorName={item.colorName}
-                onClick={() => handleFabricClick(item.fabric, item.colorName)}
-                index={idx}
-            />
+        return getSortedColorCards().map((item, idx) => (
+            <FabricCard key={`${item.fabric.id}-${item.colorName}-${idx}`} fabric={item.fabric} mode="color" specificColorName={item.colorName} onClick={() => handleFabricClick(item.fabric, item.colorName)} index={idx} />
         ));
     }
-
-    // New Tab handling
-    if (activeTab === 'visualizer') {
-        return <Visualizer fabrics={fabrics} templates={furnitureTemplates} />;
-    }
+    if (activeTab === 'visualizer') return <Visualizer fabrics={fabrics} templates={furnitureTemplates} />;
   };
 
-  const filteredItemCount = activeTab === 'color' ? getSortedColorCards().length : getFilteredItems().length;
-  
   const uniqueSuppliers = Array.from(new Set(fabrics.map(f => f.supplier).filter(Boolean))).sort();
 
   return (
     <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans selection:bg-black selection:text-white relative">
-      
-      {/* AUTH ERROR BANNER */}
-      {authMissing && (
-          <div className="fixed bottom-0 left-0 right-0 bg-red-600 text-white p-6 z-[200] flex flex-col md:flex-row items-center justify-center text-center shadow-[0_-10px_40px_rgba(0,0,0,0.3)] animate-bounce-slow gap-4">
-            <div className="bg-white text-red-600 rounded-full p-2">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-            </div>
-            <div>
-                <h3 className="font-bold text-xl uppercase tracking-wider">¡Falta un paso en Firebase!</h3>
-                <p className="text-sm font-medium mt-1">El proyecto existe, pero la seguridad bloquea la conexión.</p>
-                <div className="flex flex-col sm:flex-row gap-2 mt-2 items-center justify-center">
-                    <p className="text-xs bg-red-700/50 py-2 px-3 rounded inline-block">
-                        Ve a: Firebase Console {'>'} Authentication {'>'} Habilita "Anónimo"
-                    </p>
-                    <button 
-                        onClick={handleRetryConnection}
-                        className="bg-white text-red-600 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-gray-100 transition-colors shadow-lg"
-                    >
-                        Ya lo activé, Reintentar
-                    </button>
-                </div>
-            </div>
-          </div>
-      )}
-
-      <button 
-        onClick={handleUploadClick}
-        className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"
-        title="Subir Archivos / Gestionar"
-      >
-        .
-      </button>
-
-      {/* PIN Modal for Upload */}
-      <PinModal 
-        isOpen={isPinModalOpen} 
-        onClose={() => setPinModalOpen(false)} 
-        onSuccess={() => setUploadModalOpen(true)} 
-      />
+      <button onClick={handleUploadClick} className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors">.</button>
+      <PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} />
 
       {view === 'grid' && (
         <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative">
+            <h1 className="font-serif text-6xl md:text-8xl font-bold tracking-tight text-slate-900 leading-none">Catálogo de Telas</h1>
             
-            <div className="text-center">
-                <h1 className="font-serif text-6xl md:text-8xl font-bold tracking-tight text-slate-900 leading-none">
-                    Catálogo de Telas
-                </h1>
-            </div>
-            
-            <div className="flex space-x-8 md:space-x-12 border-b border-transparent">
-                <button 
-                    onClick={() => { setActiveTab('model'); setFilterMenuOpen(false); }}
-                    className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
-                        activeTab === 'model' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                >
-                    Ver modelos
-                </button>
-                <button 
-                    onClick={() => { setActiveTab('color'); }}
-                    className={`pb-2 text-sm font-medium tracking-wide uppercase transition-colors ${
-                        activeTab === 'color' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                >
-                    Ver colores
-                </button>
-                <button 
-                    onClick={() => { setActiveTab('visualizer'); }}
-                    className={`pb-2 text-sm font-bold tracking-wide uppercase transition-colors flex items-center gap-1 ${
-                        activeTab === 'visualizer' ? 'text-black border-b-2 border-black' : 'text-accent hover:text-yellow-600'
-                    }`}
-                >
+            <div className="flex space-x-8 md:space-x-12">
+                <button onClick={() => { setActiveTab('model'); }} className={`pb-2 text-sm font-medium uppercase tracking-wide transition-colors ${activeTab === 'model' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'}`}>Ver modelos</button>
+                <button onClick={() => { setActiveTab('color'); }} className={`pb-2 text-sm font-medium uppercase tracking-wide transition-colors ${activeTab === 'color' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'}`}>Ver colores</button>
+                <button onClick={() => { setActiveTab('visualizer'); }} className={`pb-2 text-sm font-bold tracking-wide uppercase transition-colors flex items-center gap-1 ${activeTab === 'visualizer' ? 'text-black border-b-2 border-black' : 'text-accent hover:text-yellow-600'}`}>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
                     Probar
                 </button>
@@ -496,125 +330,44 @@ function App() {
             
             {activeTab !== 'visualizer' && (
             <div className="flex flex-row items-center gap-3 w-full max-w-2xl relative">
-                
                 <div className="relative flex-grow">
-                  <input 
-                    type="text" 
-                    placeholder="Buscar..." 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-white border border-gray-200 rounded-full py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-black placeholder-gray-400 transition-shadow hover:shadow-sm shadow-sm"
-                  />
+                  <input type="text" placeholder="Buscar..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-gray-200 rounded-full py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-black placeholder-gray-400 shadow-sm" />
                   <svg className="absolute left-4 top-3.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 </div>
 
-                {/* Supplier Filter Button (Right of Search) */}
                 <div className="relative">
-                    <button 
-                        onClick={() => setSupplierMenuOpen(!isSupplierMenuOpen)}
-                        className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${isSupplierMenuOpen || selectedSupplier ? 'bg-black text-white border-black' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                        title="Filtrar por Proveedor"
-                    >
-                        {/* Filter Funnel Icon */}
+                    <button onClick={() => setSupplierMenuOpen(!isSupplierMenuOpen)} className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${isSupplierMenuOpen || selectedSupplier || isRecentOnly ? 'bg-black text-white border-black' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`} title="Filtrar">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
                     </button>
-                    
                     {isSupplierMenuOpen && (
                         <div className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden animate-fade-in max-h-80 overflow-y-auto hide-scrollbar">
-                            <div className="px-4 py-2 text-[10px] uppercase font-bold text-gray-400 tracking-wider">Filtrar Proveedor</div>
+                            <div className="px-4 py-2 text-[10px] uppercase font-bold text-gray-400 tracking-wider border-b border-gray-50">FILTRAR</div>
+                            
+                            {/* RECIENTES INTEGRADO */}
                             <button 
-                                onClick={() => { setSelectedSupplier(null); setSupplierMenuOpen(false); }}
-                                className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${!selectedSupplier ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
+                                onClick={() => { setIsRecentOnly(!isRecentOnly); setSupplierMenuOpen(false); }}
+                                className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${isRecentOnly ? 'text-blue-600 font-bold bg-blue-50' : 'text-gray-600'}`}
                             >
+                                <span>Recientes</span>
+                                {isRecentOnly && <span className="text-blue-600">•</span>}
+                            </button>
+
+                            <button onClick={() => { setSelectedSupplier(null); setIsRecentOnly(false); setSupplierMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 ${!selectedSupplier && !isRecentOnly ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}>
                                 <span>Ver Todos</span>
-                                {!selectedSupplier && <span className="text-black">•</span>}
                             </button>
-
-                            {/* SPECIAL CREATA STOCK OPTION */}
-                            <button 
-                                onClick={() => { setSelectedSupplier('CREATA_STOCK'); setSupplierMenuOpen(false); }}
-                                className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${selectedSupplier === 'CREATA_STOCK' ? 'text-green-600 font-bold bg-green-50' : 'text-green-600 font-medium'}`}
-                            >
-                                <div className="flex items-center gap-2">
-                                    <span>Creata (Stock)</span>
-                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                </div>
-                                {selectedSupplier === 'CREATA_STOCK' && <span className="text-green-600">•</span>}
+                            <button onClick={() => { setSelectedSupplier('CREATA_STOCK'); setSupplierMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 ${selectedSupplier === 'CREATA_STOCK' ? 'text-green-600 font-bold bg-green-50' : 'text-green-600 font-medium'}`}>
+                                <div className="flex items-center gap-2"><span>Creata (Stock)</span><div className="w-2 h-2 bg-green-500 rounded-full"></div></div>
                             </button>
-
                             <div className="border-t border-gray-100 my-1"></div>
-
                             {uniqueSuppliers.map(supplier => (
-                                <button 
-                                    key={supplier}
-                                    onClick={() => { setSelectedSupplier(supplier); setSupplierMenuOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${selectedSupplier === supplier ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
-                                >
+                                <button key={supplier} onClick={() => { setSelectedSupplier(supplier); setSupplierMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 ${selectedSupplier === supplier ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}>
                                     <span>{supplier}</span>
-                                    {selectedSupplier === supplier && <span className="text-black">•</span>}
                                 </button>
                             ))}
                         </div>
                     )}
-                    
-                    {isSupplierMenuOpen && (
-                        <div className="fixed inset-0 z-40" onClick={() => setSupplierMenuOpen(false)}></div>
-                    )}
+                    {isSupplierMenuOpen && <div className="fixed inset-0 z-40" onClick={() => setSupplierMenuOpen(false)}></div>}
                 </div>
-
-                {activeTab === 'color' && (
-                    <div className="relative">
-                        <button 
-                            onClick={() => setFilterMenuOpen(!isFilterMenuOpen)}
-                            className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${isFilterMenuOpen ? 'bg-black text-white border-black' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                            title="Ordenar resultados"
-                        >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="4" y1="6" x2="20" y2="6"></line>
-                                <line x1="4" y1="12" x2="16" y2="12"></line>
-                                <line x1="4" y1="18" x2="10" y2="18"></line>
-                            </svg>
-                        </button>
-
-                        {isFilterMenuOpen && (
-                            <div className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden animate-fade-in">
-                                <div className="px-4 py-2 text-[10px] uppercase font-bold text-gray-400 tracking-wider">Ordenar Por</div>
-                                <button 
-                                    onClick={() => { setSortBy('color'); setFilterMenuOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${sortBy === 'color' ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
-                                >
-                                    <span>Color (Claro a Fuerte)</span>
-                                    {sortBy === 'color' && <span className="text-black">•</span>}
-                                </button>
-                                <button 
-                                    onClick={() => { setSortBy('name'); setFilterMenuOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${sortBy === 'name' ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
-                                >
-                                    <span>Nombre (A-Z)</span>
-                                    {sortBy === 'name' && <span className="text-black">•</span>}
-                                </button>
-                                <button 
-                                    onClick={() => { setSortBy('model'); setFilterMenuOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${sortBy === 'model' ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
-                                >
-                                    <span>Por Modelo</span>
-                                    {sortBy === 'model' && <span className="text-black">•</span>}
-                                </button>
-                                <button 
-                                    onClick={() => { setSortBy('supplier'); setFilterMenuOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${sortBy === 'supplier' ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}
-                                >
-                                    <span>Por Proveedor</span>
-                                    {sortBy === 'supplier' && <span className="text-black">•</span>}
-                                </button>
-                            </div>
-                        )}
-                        
-                        {isFilterMenuOpen && (
-                            <div className="fixed inset-0 z-40" onClick={() => setFilterMenuOpen(false)}></div>
-                        )}
-                    </div>
-                )}
             </div>
             )}
         </header>
@@ -623,124 +376,41 @@ function App() {
       <main>
         {view === 'grid' && (
           <div className="container mx-auto px-6 pb-20 flex flex-col items-center">
-            {/* Conditional Rendering for Visualizer vs Grid */}
-            {activeTab === 'visualizer' ? (
-                renderGridContent()
-            ) : (
-                loading ? (
-                    <div className="flex justify-center items-center py-20">
-                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
-                    </div>
-                ) : filteredItemCount === 0 && !searchQuery ? (
-                    <div className="text-center py-20 text-gray-300">
-                         <p>El catálogo está vacío.</p>
-                         {offlineStatus && !authMissing && <p className="text-xs mt-2 text-red-300">Modo sin conexión.</p>}
-                         <div className="mt-4">
-                            <button 
-                               onClick={handleReset}
-                               className="text-xs text-red-300 hover:text-red-500 underline"
-                            >
-                               Resetear App
-                            </button>
-                         </div>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-5 gap-6 xl:gap-8 w-full max-w-[1920px] justify-center">
+            {activeTab === 'visualizer' ? renderGridContent() : (
+                loading ? <div className="py-20 animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div> : (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 xl:gap-8 w-full max-w-[1920px]">
                         {renderGridContent()}
                     </div>
                 )
             )}
           </div>
         )}
-
         {view === 'detail' && selectedFabricId && (
-          <FabricDetail 
-            fabric={fabrics.find(f => f.id === selectedFabricId)!} 
-            onBack={() => setView('grid')}
-            onEdit={handleUpdateFabric}
-            onDelete={handleDeleteFabric}
-          />
-        )}
-        
-        {view === 'generator' && (
-            <ImageGenModal onClose={() => setView('grid')} />
+          <FabricDetail fabric={fabrics.find(f => f.id === selectedFabricId)!} onBack={() => setView('grid')} onEdit={handleUpdateFabric} onDelete={handleDeleteFabric} />
         )}
       </main>
 
       {colorLightbox && (
-        <div 
-            className="fixed inset-0 z-[100] flex flex-col items-center justify-center cursor-pointer p-4 md:p-8"
-            onClick={() => setColorLightbox(null)}
-        >
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-all duration-500"></div>
-            
-            <div className="absolute top-10 z-[110] animate-fade-in-down flex gap-2">
-                <button 
-                    onClick={(e) => { e.stopPropagation(); goToDetailFromLightbox(); }}
-                    className="bg-black text-white px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-gray-800 transition-transform hover:scale-105 border border-white/10"
-                >
-                    Ver Detalle de la tela
-                </button>
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-4 md:p-8" onClick={() => setColorLightbox(null)}>
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+            <div className="absolute top-10 z-[110] flex gap-2">
+                <button onClick={(e) => { e.stopPropagation(); goToDetailFromLightbox(); }} className="bg-black text-white px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/10">Ver Detalle de la tela</button>
             </div>
-            
-            <button 
-              onClick={(e) => handleGlobalNav(-1, e)}
-              className="absolute left-2 md:left-8 text-white/80 hover:text-white hover:scale-110 transition-all p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
-            >
-               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            <button onClick={(e) => handleGlobalNav(-1, e)} className="absolute left-2 md:left-8 text-white/80 p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
-
-            <div 
-                className="relative z-[105] bg-white shadow-2xl rounded-sm overflow-hidden flex items-center justify-center border border-white/10 
-                           w-[90vw] h-[90vw] md:w-[80vh] md:h-[80vh]"
-                onClick={(e) => e.stopPropagation()}
-            >
-                 {colorLightbox.image ? (
-                     <img 
-                        src={colorLightbox.image} 
-                        alt={colorLightbox.colorName} 
-                        className="w-full h-full object-contain"
-                     />
-                 ) : (
-                     <div className="flex flex-col items-center justify-center text-gray-300">
-                         <svg className="w-16 h-16 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                         <span className="text-xs uppercase tracking-widest">Sin Imagen</span>
-                     </div>
-                 )}
+            <div className="relative z-[105] bg-white shadow-2xl rounded-sm w-[90vw] h-[90vw] md:w-[80vh] md:h-[80vh]" onClick={(e) => e.stopPropagation()}>
+                 <img src={colorLightbox.image} className="w-full h-full object-contain" />
             </div>
-
-            <button 
-              onClick={(e) => handleGlobalNav(1, e)}
-              className="absolute right-2 md:right-8 text-white/80 hover:text-white hover:scale-110 transition-all p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm border border-white/10"
-            >
-               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            <button onClick={(e) => handleGlobalNav(1, e)} className="absolute right-2 md:right-8 text-white/80 p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
-            
-            <button 
-                onClick={() => setColorLightbox(null)}
-                className="absolute top-8 right-8 z-[110] text-white/70 hover:text-white"
-            >
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
+            <button onClick={() => setColorLightbox(null)} className="absolute top-8 right-8 z-[110] text-white/70"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
         </div>
       )}
 
-      <UploadModal 
-        isOpen={isUploadModalOpen} 
-        onClose={() => setUploadModalOpen(false)} 
-        onSave={handleSaveFabric} 
-        onBulkSave={handleBulkSaveFabrics}
-        onReset={handleReset}
-        existingFabrics={fabrics}
-        
-        // Pass Furniture Props
-        existingFurniture={furnitureTemplates}
-        onSaveFurniture={handleSaveFurniture}
-        onDeleteFurniture={handleDeleteFurniture}
-      />
-
+      <UploadModal isOpen={isUploadModalOpen} onClose={() => setUploadModalOpen(false)} onSave={handleSaveFabric} onBulkSave={handleBulkSaveFabrics} onReset={handleReset} existingFabrics={fabrics} existingFurniture={furnitureTemplates} onSaveFurniture={handleSaveFurniture} onDeleteFurniture={handleDeleteFurniture} />
       <ChatBot fabrics={fabrics} />
-
     </div>
   );
 }

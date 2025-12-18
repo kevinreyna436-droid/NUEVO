@@ -9,6 +9,24 @@ interface VisualizerProps {
   templates: FurnitureTemplate[];
 }
 
+// Mapeo de combinaciones de tela y color exclusivas para SKANOR
+const SKANOR_EXCLUSIVE: Record<string, string[]> = {
+  "Fashion": ["Capuchino", "Capuccino"],
+  "Blend": ["Natural"],
+  "Reflect": ["Dove", "Charcoal"],
+  "Tessa": ["Shadow", "Vainilla", "Vanilla"],
+  "Zenith": ["Brick"],
+  "Presto": ["Flax"],
+  "Lullaby": ["Mustard", "Olive", "Oyster"],
+  "Avalanche": ["Bone"],
+  "Loveme": ["Cotton", "Sand"],
+  "LoveMe": ["Cotton", "Sand"],
+  "Distraction": ["Natural"],
+  "Gellar": ["Marble", "Linen"],
+  "Bright side": ["Chalk"],
+  "BrightSide": ["Chalk"]
+};
+
 const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedFurniture, setSelectedFurniture] = useState<FurnitureTemplate | null>(null);
@@ -25,12 +43,10 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
 
   // Helper to get image base64 from URL (since furniture templates are URLs)
   const getBase64FromUrl = async (url: string): Promise<string> => {
-    // 1. Si ya es base64, devolver limpio
     if (url.startsWith('data:')) {
         return url.split(',')[1];
     }
 
-    // Función interna para intentar cargar imagen
     const loadImage = async (src: string, useCors: boolean): Promise<string> => {
         return new Promise((resolve, reject) => {
             const img = new Image();
@@ -59,7 +75,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
     };
 
     try {
-        // METHODO 1: Fetch Directo (Lo más limpio si el servidor lo permite)
         try {
             const response = await fetch(url, { mode: 'cors' });
             if (response.ok) {
@@ -72,14 +87,12 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
             console.warn("Fetch directo falló, intentando método Canvas...", e);
         }
 
-        // METODO 2: Canvas Directo con CORS
         try {
             return await loadImage(url, true);
         } catch (e) {
             console.warn("Canvas directo falló, intentando con Proxy...", e);
         }
 
-        // METODO 3: Proxy Fallback (Para imágenes de Unsplash/Web bloqueadas)
         const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
         try {
             return await loadImage(proxyUrl, true);
@@ -87,13 +100,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
             console.error("Fallo final con proxy", e);
             throw new Error("No se pudo descargar la imagen. Por favor, usa la opción 'Subir Foto Temporal' con una imagen de tu dispositivo.");
         }
-
     } catch (finalError: any) {
         throw finalError;
     }
   };
 
-  // Helper to get fabric base64
   const getFabricBase64 = async (): Promise<string | null> => {
       const fabric = fabrics.find(f => f.name === selectedModelName);
       if (!fabric) return null;
@@ -107,7 +118,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
 
       if (!imgData) return null;
       
-      // Check if it's a URL (cloud storage)
       if (imgData.startsWith('http')) {
           try {
              return await getBase64FromUrl(imgData);
@@ -117,13 +127,18 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
           }
       }
       
-      // If it's base64 data uri
       return imgData.includes(',') ? imgData.split(',')[1] : imgData;
   };
 
   const handleGenerate = async () => {
       if (!selectedFurniture || !selectedModelName) return;
       
+      // Doble verificación de restricción antes de generar
+      if (isCurrentSelectionRestricted) {
+          alert("Esta combinación es exclusiva para muebles SKANOR.");
+          return;
+      }
+
       setIsGenerating(true);
       setResultImage(null);
       setStep(3);
@@ -159,16 +174,14 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
       if (e.target.files && e.target.files[0]) {
           try {
               const file = e.target.files[0];
-              // Compress locally
               const base64 = await compressImage(file, 2000, 0.9);
               
-              // Create a temporary template object that only exists in memory
               const tempTemplate: FurnitureTemplate = {
                   id: `temp-${Date.now()}`,
                   name: 'Mueble Temporal',
                   category: 'Personal',
                   supplier: 'Mi Dispositivo',
-                  imageUrl: base64 // This is a data URI, not a cloud URL
+                  imageUrl: base64
               };
               
               setSelectedFurniture(tempTemplate);
@@ -176,10 +189,22 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
           } catch (err) {
               alert("Error al cargar la imagen local.");
           }
-          // Reset input
           if (tempInputRef.current) tempInputRef.current.value = '';
       }
   };
+
+  // --- Lógica de Restricción SKANOR ---
+  
+  const isSkanorFurniture = selectedFurniture?.supplier?.toUpperCase() === 'SKANOR';
+
+  const checkColorRestricted = (modelName: string, colorName: string): boolean => {
+      if (isSkanorFurniture) return false; // Si es Skanor, nada está restringido
+      const restrictedColors = SKANOR_EXCLUSIVE[modelName];
+      if (!restrictedColors) return false;
+      return restrictedColors.some(c => c.toLowerCase() === colorName.toLowerCase());
+  };
+
+  const isCurrentSelectionRestricted = selectedModelName && selectedColorName && checkColorRestricted(selectedModelName, selectedColorName);
 
   // Get available colors for selected model
   const activeFabric = fabrics.find(f => f.name === selectedModelName);
@@ -188,9 +213,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
   return (
     <div className="container mx-auto px-6 pb-20 max-w-5xl animate-fade-in-up">
       <div className="text-center mb-10">
-        <h2 className="font-serif text-4xl font-bold text-slate-900">Probador Virtual</h2>
-        <p className="text-sm text-gray-500 uppercase tracking-widest mt-2">
-            Visualiza telas sin guardar datos en la nube
+        <h2 className="font-serif text-5xl font-bold text-slate-900">Probar mueble</h2>
+        <p className="text-xl text-gray-500 mt-3">
+            Es una foto temporal no se guarda en la nube
         </p>
       </div>
 
@@ -221,7 +246,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
                   <h3 className="font-serif text-2xl mb-8 text-center">Selecciona un modelo base</h3>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        {/* TEMPORARY UPLOAD CARD */}
                         <div 
                             onClick={() => tempInputRef.current?.click()}
                             className="group cursor-pointer rounded-2xl border-2 border-dashed border-gray-300 hover:border-black hover:bg-gray-50 transition-all flex flex-col items-center justify-center min-h-[200px]"
@@ -259,18 +283,19 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
           {/* STEP 2: SELECT FABRIC */}
           {step === 2 && (
               <div className="p-8 md:p-12 flex-1 flex flex-col md:flex-row gap-8">
-                  {/* Left: Selected Furniture Preview */}
                   <div className="w-full md:w-1/3 flex flex-col items-center">
                       <div className="w-full aspect-square bg-gray-50 rounded-2xl overflow-hidden border border-gray-200 mb-4 p-4 relative">
                           {selectedFurniture && <img src={selectedFurniture.imageUrl} className="w-full h-full object-contain mix-blend-multiply" alt="Base" />}
                           {selectedFurniture?.id.startsWith('temp') && (
                               <div className="absolute top-2 right-2 bg-yellow-100 text-yellow-800 text-[9px] font-bold px-2 py-1 rounded uppercase">Temporal</div>
                           )}
+                          <div className="absolute bottom-2 left-2 bg-white/80 backdrop-blur px-2 py-1 rounded text-[10px] font-bold uppercase border border-gray-100">
+                             {selectedFurniture?.supplier || 'Proveedor Local'}
+                          </div>
                       </div>
                       <button onClick={() => setStep(1)} className="text-xs text-gray-400 underline hover:text-black">Cambiar Mueble</button>
                   </div>
 
-                  {/* Right: Fabric Selectors */}
                   <div className="flex-1 space-y-8">
                       <div>
                           <label className="block text-xs font-bold uppercase text-gray-400 mb-2">1. Elige el Modelo</label>
@@ -295,35 +320,49 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates }) => {
                               <div className="grid grid-cols-4 sm:grid-cols-6 gap-3 max-h-60 overflow-y-auto p-2">
                                   {availableColors.map((color, idx) => {
                                       const img = activeFabric?.colorImages?.[color] || activeFabric?.mainImage;
+                                      const isRestricted = checkColorRestricted(selectedModelName, color);
+                                      
                                       return (
                                           <div 
                                             key={idx}
                                             onClick={() => setSelectedColorName(color)}
-                                            className={`aspect-square rounded-full cursor-pointer border-2 overflow-hidden transition-all ${selectedColorName === color ? 'border-black scale-110 ring-2 ring-black ring-offset-2' : 'border-gray-200 hover:scale-105'}`}
-                                            title={color}
+                                            className={`aspect-square rounded-full cursor-pointer border-2 overflow-hidden transition-all relative ${selectedColorName === color ? 'border-black scale-110 ring-2 ring-black ring-offset-2' : 'border-gray-200 hover:scale-105'} ${isRestricted ? 'opacity-40 grayscale-[0.5]' : ''}`}
+                                            title={isRestricted ? `${color} (Solo Skanor)` : color}
                                           >
                                               {img ? (
                                                   <img src={img} className="w-full h-full object-cover" alt={color} />
                                               ) : (
                                                   <div className="w-full h-full bg-gray-100 flex items-center justify-center text-[8px]">{color.slice(0,2)}</div>
                                               )}
+                                              {isRestricted && (
+                                                  <div className="absolute inset-0 flex items-center justify-center">
+                                                       <svg className="w-4 h-4 text-gray-700 bg-white/50 rounded-full p-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                                                  </div>
+                                              )}
                                           </div>
                                       )
                                   })}
                               </div>
                               {selectedColorName && (
-                                  <p className="text-center mt-2 font-bold font-serif">{selectedColorName}</p>
+                                  <div className="text-center mt-2 flex flex-col items-center">
+                                      <p className="font-bold font-serif">{selectedColorName}</p>
+                                      {isCurrentSelectionRestricted && (
+                                          <p className="text-[10px] text-amber-600 font-bold uppercase tracking-tight mt-1 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 animate-pulse">
+                                              Combinación exclusiva para mobiliario SKANOR
+                                          </p>
+                                      )}
+                                  </div>
                               )}
                           </div>
                       )}
 
                       <div className="pt-6">
                           <button 
-                            disabled={!selectedModelName || (availableColors.length > 0 && !selectedColorName)}
+                            disabled={!selectedModelName || (availableColors.length > 0 && !selectedColorName) || isCurrentSelectionRestricted}
                             onClick={handleGenerate}
                             className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:scale-100 shadow-xl"
                           >
-                              Tapizar con IA
+                              {isCurrentSelectionRestricted ? 'Combinación Restringida' : 'Tapizar con IA'}
                           </button>
                       </div>
                   </div>
