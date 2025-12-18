@@ -21,7 +21,7 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
   // Safe access to colors
   const colorList = fabric.colors || [];
 
-  // Helper helper to force Sentence Case (First upper, rest lower) purely for display
+  // Helper to force Sentence Case (First upper, rest lower) purely for display
   const toSentenceCase = (str: string) => {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -35,7 +35,7 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
       if (!modelKey) return false;
 
       if (mode === 'model') {
-          // If in Model View, just checking if the Model exists in the Stock DB is enough (requested behavior)
+          // If in Model View, just checking if the Model exists in the Stock DB is enough
           return true;
       } else if (mode === 'color' && specificColorName) {
           // If in Color View, check if the specific color exists in that model's list
@@ -99,16 +99,12 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
           {mode === 'model' ? (
             /* VISTA MODELOS */
             <>
-              {/* Main Title - Sentence Case, No Uppercase Class */}
               <h3 className="font-serif text-lg md:text-xl font-medium text-slate-800 leading-tight mb-1 group-hover:text-black transition-colors px-1 line-clamp-1 tracking-tight">
                 {toSentenceCase(fabric.name)}
               </h3>
-              {/* Subtitle - Supplier Stays Uppercase */}
               <p className="text-[10px] md:text-xs font-semibold text-gray-400 uppercase tracking-widest leading-none">
                 {fabric.supplier}
               </p>
-              
-              {/* Colors List (Footer info) */}
               <p className="text-[9px] text-gray-300 font-normal leading-snug px-1 tracking-wide line-clamp-1 mt-2">
                 {colorList.map(c => toSentenceCase(c)).join(', ')}
               </p>
@@ -116,16 +112,12 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
           ) : (
             /* VISTA COLORES */
             <>
-              {/* Main Title - Color Name in Sentence Case */}
               <h3 className="font-serif text-lg md:text-xl font-medium text-slate-800 leading-tight mb-1 group-hover:text-black transition-colors px-1 line-clamp-2 break-words">
                 {toSentenceCase(specificColorName || '')}
               </h3>
-              
-              {/* Subtitle - Model Name in Sentence Case */}
               <p className="text-[10px] md:text-xs font-semibold text-gray-400 tracking-widest leading-none">
                 {toSentenceCase(fabric.name)}
               </p>
-              {/* Supplier Stays Uppercase */}
                <p className="text-[9px] text-gray-300 font-semibold uppercase tracking-widest leading-none mt-1">
                 {fabric.supplier}
               </p>

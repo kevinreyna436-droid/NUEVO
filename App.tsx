@@ -32,25 +32,20 @@ function App() {
   const [furnitureTemplates, setFurnitureTemplates] = useState<FurnitureTemplate[]>([]);
   const [selectedFabricId, setSelectedFabricId] = useState<string | null>(null);
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
-  const [isPinModalOpen, setPinModalOpen] = useState(false); // PIN Modal State
+  const [isPinModalOpen, setPinModalOpen] = useState(false); 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'visualizer'>('model');
   const [loading, setLoading] = useState(true);
   const [offlineStatus, setOfflineStatus] = useState(false);
   const [authMissing, setAuthMissing] = useState(false);
   
-  // Sorting State - Default "color"
+  // Sorting/Filtering State
   const [sortBy, setSortBy] = useState<SortOption>('color');
-  const [isFilterMenuOpen, setFilterMenuOpen] = useState(false);
-  
-  // New Filter: Recientes
   const [isRecentOnly, setIsRecentOnly] = useState(false);
-
-  // Supplier Filter State
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
   const [isSupplierMenuOpen, setSupplierMenuOpen] = useState(false);
 
-  // State for Color View Lightbox (Global Grid)
+  // State for Color View Lightbox
   const [colorLightbox, setColorLightbox] = useState<{
     isOpen: boolean;
     image: string;
@@ -82,28 +77,8 @@ function App() {
   };
 
   useEffect(() => {
-    const interval = setInterval(() => {
-        if (isAuthConfigMissing()) setAuthMissing(true);
-        else if (authMissing) setAuthMissing(false); 
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [authMissing]);
-
-  useEffect(() => {
     loadData();
   }, []);
-
-  const handleRetryConnection = async () => {
-      setLoading(true);
-      const success = await retryAuth();
-      if (success) {
-          setAuthMissing(false);
-          await loadData();
-      } else {
-          alert("Aún no detectamos la activación.");
-      }
-      setLoading(false);
-  };
 
   const handleUploadClick = () => {
       setPinModalOpen(true);
@@ -147,26 +122,6 @@ function App() {
     }
   };
 
-  const handleSaveFurniture = async (template: FurnitureTemplate) => {
-      try {
-          setFurnitureTemplates(prev => [...prev.filter(t => t.id !== template.id), template]);
-          await saveFurnitureTemplateToFirestore(template);
-      } catch (e) {
-          console.error("Error saving furniture", e);
-      }
-  };
-
-  const handleDeleteFurniture = async (id: string) => {
-      if(window.confirm("¿Eliminar mueble?")) {
-          try {
-              setFurnitureTemplates(prev => prev.filter(t => t.id !== id));
-              await deleteFurnitureTemplateFromFirestore(id);
-          } catch(e) {
-              console.error("Error deleting furniture", e);
-          }
-      }
-  };
-
   const handleUpdateFabric = async (updatedFabric: Fabric) => {
     try {
       setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
@@ -187,34 +142,33 @@ function App() {
   };
 
   const handleReset = async () => {
-      if(window.confirm("¿Borrar toda la información?")) {
-          try {
-            setFabrics([]);
-            await clearFirestoreCollection();
-            window.location.reload();
-          } catch (e) {
-            console.error("Error resetting:", e);
-          }
+    if (window.confirm("¿Estás seguro de que quieres borrar todo el catálogo de la nube?")) {
+      try {
+        await clearFirestoreCollection();
+        setFabrics([]);
+        alert("Catálogo borrado exitosamente.");
+      } catch (e) {
+        console.error("Error clearing catalog:", e);
       }
-  };
-
-  const goToDetailFromLightbox = () => {
-    if (colorLightbox) {
-        setSelectedFabricId(colorLightbox.fabricId);
-        setView('detail');
-        setColorLightbox(null);
     }
   };
 
-  const getColorWeight = (colorName: string): number => {
-      if (!colorName) return 50;
-      const name = colorName.toLowerCase();
-      if (name.includes('white') || name.includes('snow') || name.includes('ivory')) return 100;
-      if (name.includes('cream') || name.includes('bone')) return 95;
-      if (name.includes('beige') || name.includes('sand')) return 85;
-      if (name.includes('grey') || name.includes('gris')) return 50;
-      if (name.includes('black') || name.includes('negro')) return 0;
-      return 50;
+  const handleSaveFurniture = async (template: FurnitureTemplate) => {
+    try {
+      const saved = await saveFurnitureTemplateToFirestore(template);
+      setFurnitureTemplates(prev => [saved, ...prev.filter(t => t.id !== template.id)]);
+    } catch (e) {
+      console.error("Error saving furniture:", e);
+    }
+  };
+
+  const handleDeleteFurniture = async (id: string) => {
+    try {
+      await deleteFurnitureTemplateFromFirestore(id);
+      setFurnitureTemplates(prev => prev.filter(t => t.id !== id));
+    } catch (e) {
+      console.error("Error deleting furniture:", e);
+    }
   };
 
   const getFilteredItems = () => {
@@ -257,41 +211,9 @@ function App() {
           });
       }
 
-      allColorCards.sort((a, b) => {
-          if (sortBy === 'color') return getColorWeight(b.colorName) - getColorWeight(a.colorName);
-          if (sortBy === 'name') return a.colorName.localeCompare(b.colorName, 'es');
-          if (sortBy === 'model') return a.fabric.name.localeCompare(b.fabric.name, 'es');
-          return 0;
-      });
+      allColorCards.sort((a, b) => a.colorName.localeCompare(b.colorName, 'es'));
       return allColorCards;
   };
-
-  const handleGlobalNav = (direction: number, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    if (!colorLightbox) return;
-    const cards = getSortedColorCards();
-    const currentIndex = cards.findIndex(c => c.fabric.id === colorLightbox.fabricId && c.colorName === colorLightbox.colorName);
-    if (currentIndex === -1) return;
-    const newItem = cards[(currentIndex + direction + cards.length) % cards.length];
-    setColorLightbox({
-        isOpen: true,
-        image: (newItem.colorName && newItem.fabric.colorImages?.[newItem.colorName]) || newItem.fabric.mainImage || '',
-        fabricId: newItem.fabric.id,
-        colorName: newItem.colorName
-    });
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-        if (colorLightbox) {
-            if (e.key === 'ArrowRight') handleGlobalNav(1);
-            if (e.key === 'ArrowLeft') handleGlobalNav(-1);
-            if (e.key === 'Escape') setColorLightbox(null);
-        }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [colorLightbox]);
 
   const renderGridContent = () => {
     const allItems = getFilteredItems();
@@ -311,7 +233,7 @@ function App() {
   const uniqueSuppliers = Array.from(new Set(fabrics.map(f => f.supplier).filter(Boolean))).sort();
 
   return (
-    <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans selection:bg-black selection:text-white relative">
+    <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans relative">
       <button onClick={handleUploadClick} className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors">.</button>
       <PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} />
 
@@ -336,14 +258,13 @@ function App() {
                 </div>
 
                 <div className="relative">
-                    <button onClick={() => setSupplierMenuOpen(!isSupplierMenuOpen)} className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${isSupplierMenuOpen || selectedSupplier || isRecentOnly ? 'bg-black text-white border-black' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`} title="Filtrar">
+                    <button onClick={() => setSupplierMenuOpen(!isSupplierMenuOpen)} className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${isSupplierMenuOpen || selectedSupplier || isRecentOnly ? 'bg-black text-white border-black shadow-lg scale-105' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`} title="Filtros">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
                     </button>
                     {isSupplierMenuOpen && (
-                        <div className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden animate-fade-in max-h-80 overflow-y-auto hide-scrollbar">
-                            <div className="px-4 py-2 text-[10px] uppercase font-bold text-gray-400 tracking-wider border-b border-gray-50">FILTRAR</div>
+                        <div className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 overflow-hidden animate-fade-in max-h-80 overflow-y-auto hide-scrollbar">
+                            <div className="px-4 py-2 text-[10px] uppercase font-bold text-gray-400 tracking-wider border-b border-gray-50 mb-1">FILTRAR POR</div>
                             
-                            {/* RECIENTES INTEGRADO */}
                             <button 
                                 onClick={() => { setIsRecentOnly(!isRecentOnly); setSupplierMenuOpen(false); }}
                                 className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${isRecentOnly ? 'text-blue-600 font-bold bg-blue-50' : 'text-gray-600'}`}
@@ -355,10 +276,13 @@ function App() {
                             <button onClick={() => { setSelectedSupplier(null); setIsRecentOnly(false); setSupplierMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 ${!selectedSupplier && !isRecentOnly ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}>
                                 <span>Ver Todos</span>
                             </button>
+
                             <button onClick={() => { setSelectedSupplier('CREATA_STOCK'); setSupplierMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 ${selectedSupplier === 'CREATA_STOCK' ? 'text-green-600 font-bold bg-green-50' : 'text-green-600 font-medium'}`}>
                                 <div className="flex items-center gap-2"><span>Creata (Stock)</span><div className="w-2 h-2 bg-green-500 rounded-full"></div></div>
                             </button>
+
                             <div className="border-t border-gray-100 my-1"></div>
+                            <div className="px-4 py-1 text-[9px] font-bold text-gray-300 uppercase">Proveedores</div>
                             {uniqueSuppliers.map(supplier => (
                                 <button key={supplier} onClick={() => { setSelectedSupplier(supplier); setSupplierMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between hover:bg-gray-50 ${selectedSupplier === supplier ? 'text-black font-bold bg-gray-50' : 'text-gray-600'}`}>
                                     <span>{supplier}</span>
@@ -377,7 +301,7 @@ function App() {
         {view === 'grid' && (
           <div className="container mx-auto px-6 pb-20 flex flex-col items-center">
             {activeTab === 'visualizer' ? renderGridContent() : (
-                loading ? <div className="py-20 animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div> : (
+                loading ? <div className="py-20 flex justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div></div> : (
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 xl:gap-8 w-full max-w-[1920px]">
                         {renderGridContent()}
                     </div>
@@ -389,25 +313,6 @@ function App() {
           <FabricDetail fabric={fabrics.find(f => f.id === selectedFabricId)!} onBack={() => setView('grid')} onEdit={handleUpdateFabric} onDelete={handleDeleteFabric} />
         )}
       </main>
-
-      {colorLightbox && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-4 md:p-8" onClick={() => setColorLightbox(null)}>
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
-            <div className="absolute top-10 z-[110] flex gap-2">
-                <button onClick={(e) => { e.stopPropagation(); goToDetailFromLightbox(); }} className="bg-black text-white px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/10">Ver Detalle de la tela</button>
-            </div>
-            <button onClick={(e) => handleGlobalNav(-1, e)} className="absolute left-2 md:left-8 text-white/80 p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-            </button>
-            <div className="relative z-[105] bg-white shadow-2xl rounded-sm w-[90vw] h-[90vw] md:w-[80vh] md:h-[80vh]" onClick={(e) => e.stopPropagation()}>
-                 <img src={colorLightbox.image} className="w-full h-full object-contain" />
-            </div>
-            <button onClick={(e) => handleGlobalNav(1, e)} className="absolute right-2 md:right-8 text-white/80 p-3 z-[110] bg-black/20 rounded-full backdrop-blur-sm">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-            </button>
-            <button onClick={() => setColorLightbox(null)} className="absolute top-8 right-8 z-[110] text-white/70"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
-        </div>
-      )}
 
       <UploadModal isOpen={isUploadModalOpen} onClose={() => setUploadModalOpen(false)} onSave={handleSaveFabric} onBulkSave={handleBulkSaveFabrics} onReset={handleReset} existingFabrics={fabrics} existingFurniture={furnitureTemplates} onSaveFurniture={handleSaveFurniture} onDeleteFurniture={handleDeleteFurniture} />
       <ChatBot fabrics={fabrics} />

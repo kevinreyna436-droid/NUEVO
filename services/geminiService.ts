@@ -31,7 +31,7 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 3, del
 
 /**
  * Uploads a PDF or Image (base64) to extract Fabric Data.
- * Uses gemini-2.5-flash for efficiency.
+ * Fix: Use gemini-3-flash-preview for efficiency and compliance with Basic Text Tasks.
  */
 export const extractFabricData = async (base64Data: string, mimeType: string) => {
   try {
@@ -71,7 +71,7 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
     `;
 
     const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -109,7 +109,7 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
 
 /**
  * Extracts ONLY the color name from a specific swatch image.
- * Uses OCR capabilities of Gemini to read the text label on the photo.
+ * Fix: Use gemini-3-flash-preview for OCR capabilities.
  */
 export const extractColorFromSwatch = async (base64Data: string): Promise<string | null> => {
     try {
@@ -126,7 +126,7 @@ export const extractColorFromSwatch = async (base64Data: string): Promise<string
         `;
 
         const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
