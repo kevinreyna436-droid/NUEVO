@@ -174,6 +174,7 @@ function App() {
   const getFilteredItems = () => {
     let items = [...fabrics];
     
+    // Filtro de Recientes (Últimos 15 días basado en el ID/Timestamp)
     if (isRecentOnly) {
         const fifteenDaysInMs = 15 * 24 * 60 * 60 * 1000;
         items = items.filter(f => {
@@ -184,6 +185,7 @@ function App() {
         });
     }
 
+    // Filtro por Proveedor o Stock Especial
     if (selectedSupplier === 'CREATA_STOCK') {
         items = items.filter(f => Object.keys(IN_STOCK_DB).some(k => k.toLowerCase() === f.name.toLowerCase()));
     } else if (selectedSupplier) {
@@ -211,14 +213,30 @@ function App() {
           });
       }
 
-      allColorCards.sort((a, b) => a.colorName.localeCompare(b.colorName, 'es'));
+      // Si Recientes está activo, ordenamos por ID de la tela (que es cronológico) descendente
+      if (isRecentOnly) {
+        allColorCards.sort((a, b) => b.fabric.id.localeCompare(a.fabric.id));
+      } else {
+        // Orden alfabético por defecto para colores
+        allColorCards.sort((a, b) => a.colorName.localeCompare(b.colorName, 'es'));
+      }
       return allColorCards;
   };
 
   const renderGridContent = () => {
     const allItems = getFilteredItems();
     if (activeTab === 'model') {
-        return allItems.filter(f => f.category !== 'wood').sort((a, b) => a.name.localeCompare(b.name, 'es')).map((fabric, idx) => (
+        // Si Recientes está activo, el orden es por ID descendente (más nuevo primero)
+        // De lo contrario, orden alfabético por nombre
+        const sortedItems = [...allItems.filter(f => f.category !== 'wood')];
+        
+        if (isRecentOnly) {
+            sortedItems.sort((a, b) => b.id.localeCompare(a.id));
+        } else {
+            sortedItems.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+        }
+
+        return sortedItems.map((fabric, idx) => (
             <FabricCard key={fabric.id} fabric={fabric} mode="model" onClick={() => handleFabricClick(fabric)} index={idx} />
         ));
     }
