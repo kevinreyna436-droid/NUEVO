@@ -1,8 +1,7 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Fabric, FurnitureTemplate } from '../types';
 import { visualizeUpholstery } from '../services/geminiService';
-import { compressImage } from '../utils/imageCompression';
 
 interface VisualizerProps {
   fabrics: Fabric[];
@@ -19,7 +18,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const tempInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     checkApiKey();
@@ -123,20 +121,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       }
   };
 
-  const handleTempFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files?.[0]) {
-          const base64 = await compressImage(e.target.files[0], 2048, 0.9);
-          setSelectedFurniture({
-              id: `temp-${Date.now()}`,
-              name: 'Fotografía Local',
-              category: 'Personal',
-              supplier: 'CLIENTE',
-              imageUrl: base64
-          });
-          setStep(2);
-      }
-  };
-
   const handleDownload = () => {
     if (resultImage) {
         const a = document.createElement('a');
@@ -182,18 +166,19 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                     <>
                         <h3 className="font-serif text-2xl mb-8 text-center text-slate-800">1. Selecciona el mueble a retapizar</h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                            <div onClick={() => tempInputRef.current?.click()} className="cursor-pointer rounded-3xl border-2 border-dashed border-gray-200 hover:border-black hover:bg-gray-50 flex flex-col items-center justify-center min-h-[200px] p-6 text-center group transition-all">
-                                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm mb-4 group-hover:scale-110 transition-transform">
-                                     <svg className="w-6 h-6 text-gray-400 group-hover:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4 4m0 0L8 8m4-4v12" /></svg>
-                                </div>
-                                <span className="text-xs font-bold uppercase tracking-widest text-gray-500 group-hover:text-black">Subir Foto Propia</span>
-                                <input ref={tempInputRef} type="file" accept="image/*" className="hidden" onChange={handleTempFileUpload} />
-                            </div>
+                            
+                            {/* SE HA ELIMINADO EL BOTÓN 'SUBIR FOTO PROPIA' POR SOLICITUD DEL USUARIO */}
+
                             {templates.map((item) => (
-                                <div key={item.id} onClick={() => { setSelectedFurniture(item); setStep(2); }} className="cursor-pointer rounded-3xl border border-gray-100 hover:border-black overflow-hidden group shadow-sm hover:shadow-xl transition-all relative">
-                                    <img src={item.imageUrl} className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-700" />
-                                    <div className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm p-4 text-center border-t border-gray-100">
-                                        <h4 className="font-serif font-bold text-sm text-slate-900">{item.name}</h4>
+                                <div key={item.id} onClick={() => { setSelectedFurniture(item); setStep(2); }} className="cursor-pointer rounded-3xl border border-gray-100 hover:border-black overflow-hidden group shadow-sm hover:shadow-xl transition-all relative bg-white">
+                                    {/* CAMBIO: object-cover a object-contain y añadido padding (p-4) para que se vea TODO el mueble */}
+                                    <img 
+                                      src={item.imageUrl} 
+                                      className="w-full h-48 object-contain p-4 group-hover:scale-105 transition-transform duration-700" 
+                                      alt={item.name}
+                                    />
+                                    <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm p-3 text-center border-t border-gray-50">
+                                        <h4 className="font-serif font-bold text-sm text-slate-900 line-clamp-1">{item.name}</h4>
                                     </div>
                                 </div>
                             ))}
@@ -204,7 +189,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                  {step === 2 && (
                     <div className="flex flex-col md:flex-row gap-12 h-full">
                         <div className="w-full md:w-1/3 flex flex-col items-center">
-                            <div className="aspect-square w-full bg-gray-50 rounded-3xl overflow-hidden border border-gray-100 mb-6 p-6 relative">
+                            <div className="aspect-square w-full bg-white rounded-3xl overflow-hidden border border-gray-100 mb-6 p-6 relative shadow-inner">
                                 <img src={selectedFurniture?.imageUrl} className="w-full h-full object-contain drop-shadow-lg" />
                             </div>
                             <button onClick={() => setStep(1)} className="text-[10px] uppercase font-bold text-gray-400 hover:text-black border-b border-transparent hover:border-black transition-all pb-0.5">

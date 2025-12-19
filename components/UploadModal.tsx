@@ -115,14 +115,50 @@ const UploadModal: React.FC<UploadModalProps> = ({
     onClose();
   };
 
+  // Helper to trigger inputs safely
+  const triggerFolderUpload = () => {
+      if (folderInputRef.current) {
+          folderInputRef.current.value = ''; // Reset to allow re-selecting same folder
+          folderInputRef.current.click();
+      }
+  };
+
+  const triggerMobileUpload = () => {
+      if (mobileInputRef.current) {
+          mobileInputRef.current.value = '';
+          mobileInputRef.current.click();
+      }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="flex flex-col border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center justify-between px-8 py-5">
-                <h2 className="font-serif text-2xl font-bold text-slate-900">Gestión de Catálogo</h2>
-                <button onClick={onClose} className="text-gray-400 p-2"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
-            </div>
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div 
+        className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside content
+      >
+        {/* HEADER REDISEÑADO */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-gray-50/50 sticky top-0 z-10">
+            {/* IZQUIERDA: BOTÓN REGRESAR */}
+            <button 
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+              }}
+              className="flex items-center gap-3 group p-2 -ml-2 rounded-xl hover:bg-white transition-all cursor-pointer relative z-50 select-none"
+              title="Regresar al menú"
+            >
+               <div className="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm group-hover:border-black transition-colors">
+                   <svg className="w-4 h-4 text-gray-500 group-hover:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                   </svg>
+               </div>
+               <span className="text-xs font-bold uppercase tracking-widest text-gray-500 group-hover:text-black">Regresar</span>
+            </button>
+
+            {/* DERECHA: TÍTULO */}
+            <h2 className="font-serif text-xl md:text-2xl font-bold text-slate-900">Gestión de Catálogo</h2>
         </div>
 
         <div className="flex-1 overflow-y-auto p-8">
@@ -135,15 +171,21 @@ const UploadModal: React.FC<UploadModalProps> = ({
                 <>
                     {step === 'upload' && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full items-center">
-                          <div onClick={() => folderInputRef.current?.click()} className="h-64 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-black hover:bg-gray-50 transition-all text-center group">
+                          <div onClick={triggerFolderUpload} className="h-64 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-black hover:bg-gray-50 transition-all text-center group">
                               <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-gray-400 group-hover:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg></div>
                               <span className="font-serif text-xl font-bold">Carga Masiva (PC)</span>
                               <p className="text-[10px] text-gray-400 mt-2 uppercase tracking-widest">Sube carpetas completas</p>
-                              {/* @ts-ignore */}
-                              <input ref={folderInputRef} type="file" webkitdirectory="" directory="" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+                              
+                              <input 
+                                ref={folderInputRef} 
+                                type="file" 
+                                className="hidden" 
+                                onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                                {...({ webkitdirectory: "", directory: "" } as any)}
+                              />
                           </div>
 
-                          <div onClick={() => mobileInputRef.current?.click()} className="h-64 border-2 border-dashed border-blue-200 bg-blue-50/20 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all text-center group">
+                          <div onClick={triggerMobileUpload} className="h-64 border-2 border-dashed border-blue-200 bg-blue-50/20 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all text-center group">
                               <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
                               <span className="font-serif text-xl font-bold">Carga Masiva (Móvil)</span>
                               <p className="text-[10px] text-blue-400 mt-2 uppercase tracking-widest">Selecciona múltiples fotos</p>

@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import emailjs from '@emailjs/browser';
 
 interface PinModalProps {
   isOpen: boolean;
@@ -8,6 +9,12 @@ interface PinModalProps {
   requiredPin?: string;
   isBlocking?: boolean; // If true, hides the close button (for App Lock)
 }
+
+// ⚠️ CONFIGURACIÓN DE CORREO ⚠️
+// Regístrate gratis en https://www.emailjs.com/ para obtener estas credenciales
+const EMAIL_SERVICE_ID = 'YOUR_SERVICE_ID';   // Ej: service_x9d8...
+const EMAIL_TEMPLATE_ID = 'YOUR_TEMPLATE_ID'; // Ej: template_k2j1...
+const EMAIL_PUBLIC_KEY = 'YOUR_PUBLIC_KEY';   // Ej: user_8Ad...
 
 const PinModal: React.FC<PinModalProps> = ({ 
   isOpen, 
@@ -18,34 +25,80 @@ const PinModal: React.FC<PinModalProps> = ({
 }) => {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
+  const [attempts, setAttempts] = useState(0); // Contador de intentos
+  const [isLocked, setIsLocked] = useState(false); // Bloqueo temporal UI
 
   useEffect(() => {
     if (isOpen) {
       setPin('');
       setError(false);
+      // No reseteamos attempts aquí para persistir intentos mientras la app esté abierta
     }
   }, [isOpen]);
+
+  const sendSecurityAlert = async () => {
+      console.warn("🚨 ALERTA DE SEGURIDAD: 4 Intentos Fallidos Detectados.");
+      
+      const emailParams = {
+          message: `Alerta de Seguridad: Se han detectado 4 intentos fallidos de acceso al sistema Creata Collection.`,
+          date: new Date().toLocaleString(),
+          device: navigator.userAgent
+      };
+
+      if (EMAIL_SERVICE_ID === 'YOUR_SERVICE_ID') {
+          console.log("ℹ️ Para recibir el correo real, configura las constantes en PinModal.tsx con tus datos de EmailJS.");
+          alert("⚠️ SISTEMA DE SEGURIDAD: Se ha enviado una notificación al administrador por múltiples intentos fallidos.");
+          return;
+      }
+
+      try {
+          await emailjs.send(EMAIL_SERVICE_ID, EMAIL_TEMPLATE_ID, emailParams, EMAIL_PUBLIC_KEY);
+          console.log("✅ Correo de alerta enviado exitosamente.");
+          alert("⚠️ Se ha notificado al administrador sobre este intento de acceso no autorizado.");
+      } catch (err) {
+          console.error("❌ Error enviando alerta de correo:", err);
+      }
+  };
 
   useEffect(() => {
     if (pin.length === 4) {
       if (pin === requiredPin) {
+        // ÉXITO
         setTimeout(() => {
+            setAttempts(0); // Resetear intentos al acertar
             onSuccess();
             if (!isBlocking) onClose();
         }, 200);
       } else {
+        // ERROR
+        const newAttempts = attempts + 1;
+        setAttempts(newAttempts);
         setError(true);
-        setTimeout(() => {
-            setPin('');
-            setError(false);
-        }, 500);
+        setPin(''); // Limpiar PIN inmediatamente para UX
+
+        // Chequeo de seguridad
+        if (newAttempts >= 4) {
+            setIsLocked(true);
+            sendSecurityAlert();
+            // Desbloquear UI después de 5 segundos para no dejar la app inutilizable eternamente, 
+            // pero ya se envió el correo.
+            setTimeout(() => {
+                setIsLocked(false);
+                setAttempts(0); 
+            }, 5000);
+        } else {
+            setTimeout(() => {
+                setError(false);
+            }, 500);
+        }
       }
     }
-  }, [pin, onSuccess, onClose, requiredPin, isBlocking]);
+  }, [pin, onSuccess, onClose, requiredPin, isBlocking, attempts]);
 
   if (!isOpen) return null;
 
   const handleNumClick = (num: string) => {
+    if (isLocked) return;
     if (pin.length < 4) {
       setPin(prev => prev + num);
       setError(false);
@@ -53,13 +106,14 @@ const PinModal: React.FC<PinModalProps> = ({
   };
 
   const handleBackspace = () => {
+    if (isLocked) return;
     setPin(prev => prev.slice(0, -1));
   };
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
       <div 
-        className="bg-white w-72 rounded-3xl shadow-2xl overflow-hidden flex flex-col p-6 relative"
+        className={`bg-white w-72 rounded-3xl shadow-2xl overflow-hidden flex flex-col p-6 relative transition-transform duration-300 ${error ? 'translate-x-[-5px] border-2 border-red-500' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
         {!isBlocking && (
@@ -72,12 +126,17 @@ const PinModal: React.FC<PinModalProps> = ({
         )}
 
         <div className="text-center mb-6 mt-2">
-            <h3 className="font-serif text-xl font-bold text-slate-900">
-                {isBlocking ? 'Creata Collection' : 'Seguridad'}
+            <h3 className={`font-serif text-xl font-bold ${isLocked ? 'text-red-600 animate-pulse' : 'text-slate-900'}`}>
+                {isLocked ? 'BLOQUEADO' : (isBlocking ? 'Creata Collection' : 'Seguridad')}
             </h3>
             <p className="text-xs text-gray-400 mt-1 uppercase tracking-wider">
-                {isBlocking ? 'Ingrese código de acceso' : 'Ingresa la contraseña'}
+                {isLocked ? 'Notificando al administrador...' : (isBlocking ? 'Ingrese código de acceso' : 'Ingresa la contraseña')}
             </p>
+            {attempts > 0 && !isLocked && (
+                <p className="text-[9px] text-red-400 mt-2 font-bold">
+                    {4 - attempts} intentos restantes
+                </p>
+            )}
         </div>
 
         {/* PIN Display */}
@@ -95,7 +154,7 @@ const PinModal: React.FC<PinModalProps> = ({
         </div>
 
         {/* Keypad */}
-        <div className="grid grid-cols-3 gap-3 justify-items-center">
+        <div className={`grid grid-cols-3 gap-3 justify-items-center ${isLocked ? 'opacity-20 pointer-events-none' : ''}`}>
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
                 <button
                     key={num}
