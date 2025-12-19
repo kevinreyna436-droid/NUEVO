@@ -1,12 +1,9 @@
 
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 
-// Inicializar cliente
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 /**
  * Helper para reintentar operaciones cuando el modelo está sobrecargado (503).
- * Espera exponencialmente: 2s -> 4s -> 8s -> 16s -> 32s
+ * Espera exponencialmente: 2.5s -> 5s -> 10s -> 20s -> 40s
  */
 async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 5, delay = 2500): Promise<T> {
   let lastError: any;
@@ -19,7 +16,6 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 5, del
       const status = error?.status || error?.response?.status;
       const message = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
       
-      // Detectar error 503 o mensajes de sobrecarga
       const isOverloaded = status === 503 || message.includes('503') || message.includes('overloaded') || message.includes('capacity') || message.includes('UNAVAILABLE');
       
       if (isOverloaded && i < retries - 1) {
@@ -28,8 +24,6 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 5, del
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
       }
-      
-      // Si no es un error de sobrecarga o se acabaron los intentos, lanzar error
       throw error;
     }
   }
@@ -41,6 +35,7 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 5, del
  */
 export const extractFabricData = async (base64Data: string, mimeType: string): Promise<any> => {
   return retryWithBackoff(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -80,6 +75,7 @@ export const extractFabricData = async (base64Data: string, mimeType: string): P
  */
 export const extractColorFromSwatch = async (base64Data: string): Promise<string> => {
   return retryWithBackoff(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -102,17 +98,20 @@ export const visualizeUpholstery = async (
     fabricInfo?: any
 ): Promise<string | null> => {
   return retryWithBackoff(async () => {
+    // IMPORTANTE: Crear instancia nueva para captar la API Key del diálogo
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     const promptText = `
-      Act as a professional photo editor. 
-      Image 1 is a piece of furniture.
-      Image 2 is a fabric texture.
-      Task: Retouch Image 1 by replacing the existing upholstery with the fabric texture from Image 2.
+      Act as a professional photo editor for Creata Collection. 
+      Image 1 is a piece of furniture (sofa/chair).
+      Image 2 is a high-quality fabric texture swatch.
+      Task: Photorealistically replace the upholstery of the furniture in Image 1 using the texture from Image 2.
       
       Requirements:
-      - Maintain perfect perspective, folds, shadows, and lighting from the original furniture image.
-      - The fabric pattern scale should be realistic for the furniture size.
-      - If the furniture has legs or wood parts, DO NOT change them. Only change the fabric.
-      - Output a high-quality photorealistic image.
+      - Preserve ALL shadows, lighting, and wrinkles from the original furniture to ensure depth.
+      - The fabric wrap must follow the curves and perspective of the furniture perfectly.
+      - Do not modify legs, wooden frames, or the background.
+      - Output the final edited furniture as an image.
     `;
 
     const response = await ai.models.generateContent({
@@ -126,7 +125,6 @@ export const visualizeUpholstery = async (
       }
     });
 
-    // Buscar la parte de imagen en la respuesta
     for (const candidate of response.candidates || []) {
       for (const part of candidate.content.parts) {
         if (part.inlineData && part.inlineData.data) {
@@ -144,6 +142,7 @@ export const visualizeUpholstery = async (
  */
 export const generateFabricDesign = async (prompt: string, aspectRatio: string = "1:1", size: string = "1K"): Promise<string> => {
   return retryWithBackoff(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-image-preview",
       contents: {
@@ -173,6 +172,7 @@ export const generateFabricDesign = async (prompt: string, aspectRatio: string =
  */
 export const chatWithExpert = async (message: string, history: any[], context: string): Promise<{ text: string, sources?: any[] }> => {
   return retryWithBackoff(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const systemInstruction = `You are an expert textile consultant for 'Creata Collection'. 
     Use the following catalog data to answer questions: 
     ${context}

@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { Fabric, FurnitureTemplate } from '../types';
 import { visualizeUpholstery } from '../services/geminiService';
 
+// Removed conflicting declare global block for aistudio as it is already provided by the environment.
+
 interface VisualizerProps {
   fabrics: Fabric[];
   templates: FurnitureTemplate[];
@@ -18,14 +20,35 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   const [isGenerating, setIsGenerating] = useState(false);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [hasKey, setHasKey] = useState(false);
 
   useEffect(() => {
+    checkApiKey();
     if (initialSelection) {
         setSelectedModelName(initialSelection.model);
         setSelectedColorName(initialSelection.color);
         setStep(1);
     }
   }, [initialSelection]);
+
+  const checkApiKey = async () => {
+    try {
+      // @ts-ignore - Assuming window.aistudio is provided by the environment
+      const selected = await window.aistudio.hasSelectedApiKey();
+      setHasKey(selected);
+    } catch (e) {
+      setHasKey(false);
+    }
+  };
+
+  const handleOpenKeyDialog = async () => {
+    // @ts-ignore - Assuming window.aistudio is provided by the environment
+    await window.aistudio.openSelectKey();
+    setHasKey(true); // Asumimos éxito tras el diálogo para evitar race conditions
+    if (errorMessage && errorMessage.includes("saturado")) {
+        setErrorMessage(null); // Limpiar error tras intentar poner llave
+    }
+  };
 
   const toSentenceCase = (str: string) => {
     if (!str) return '';
@@ -64,7 +87,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         });
     } catch (e: any) {
         console.error("Error en conversion Base64:", e);
-        throw new Error("Error procesando imagen para la IA. Verifica tu conexión.");
+        throw new Error("Error procesando imagen para la IA.");
     }
   };
 
@@ -104,9 +127,10 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           const isOverloaded = errorText.includes('503') || errorText.includes('overloaded') || errorText.includes('capacity') || errorText.includes('UNAVAILABLE');
 
           if (isOverloaded) {
-              setErrorMessage("El motor de IA está saturado por alta demanda. Por favor, intenta de nuevo en unos segundos.");
-          } else if (errorText === "API_KEY_RESET") {
-              setErrorMessage("Error de configuración. Contacte soporte.");
+              setErrorMessage("El motor de IA está saturado por alta demanda. Para evitar esto, puedes activar tu propio motor privado.");
+          } else if (errorText.includes("not found")) {
+              setErrorMessage("Llave de API no válida o expirada. Por favor, selecciona una llave de un proyecto con facturación activa.");
+              setHasKey(false);
           } else {
               setErrorMessage("No se pudo generar la vista previa. Verifica tu conexión e intenta nuevamente.");
           }
@@ -119,7 +143,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
     if (resultImage) {
         const a = document.createElement('a');
         a.href = resultImage;
-        a.download = `Creata_Visualizer_${selectedModelName}_${Date.now()}.png`;
+        a.download = `Creata_Visualizer_${selectedModelName}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -133,9 +157,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       <div className="text-center mb-8">
         <h2 className="font-serif text-4xl md:text-5xl font-bold text-slate-900">Visualizador Pro</h2>
         <div className="flex items-center justify-center gap-2 mt-3">
-            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+            <span className={`w-2 h-2 rounded-full ${hasKey ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
             <p className="text-[10px] uppercase tracking-widest font-bold text-gray-500">
-                Motor Nano Banana Pro Activo
+                {hasKey ? 'Motor Privado Activo' : 'Motor Compartido (Sujeto a saturación)'}
             </p>
         </div>
       </div>
@@ -168,7 +192,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                                 onEditFurniture(item);
                                             }}
                                             className="absolute top-2 right-2 z-10 w-8 h-8 bg-white/90 rounded-full shadow-md flex items-center justify-center text-gray-400 hover:text-black hover:scale-110 transition-all opacity-0 group-hover:opacity-100"
-                                            title="Editar mueble"
                                         >
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                                         </button>
@@ -261,7 +284,28 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                             </div>
                             <h3 className="font-bold text-slate-800 mb-3 text-lg">Hubo un problema</h3>
                             <p className="text-sm text-gray-500 mb-8 leading-relaxed">{errorMessage}</p>
-                            <button onClick={() => setStep(2)} className="text-xs font-bold uppercase tracking-widest border-b-2 border-black pb-1 hover:text-black/70 transition-colors">Intentar de nuevo</button>
+                            
+                            <div className="flex flex-col gap-3">
+                                <button 
+                                    onClick={handleGenerate} 
+                                    className="bg-black text-white px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest hover:scale-105 transition-transform"
+                                >
+                                    Reintentar ahora
+                                </button>
+                                
+                                {!hasKey && (
+                                    <button 
+                                        onClick={handleOpenKeyDialog}
+                                        className="text-blue-600 font-bold text-xs uppercase tracking-widest border border-blue-200 px-6 py-3 rounded-full hover:bg-blue-50 transition-colors"
+                                    >
+                                        Activar Motor Privado (Recomendado)
+                                    </button>
+                                )}
+                                
+                                <button onClick={() => setStep(2)} className="text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-black transition-colors pt-2">Volver a Selección</button>
+                            </div>
+                            
+                            <p className="text-[9px] text-gray-400 mt-10">Nota: El motor Nano Banana Pro puede demorar en horas pico.</p>
                         </div>
                      ) : resultImage ? (
                         <img src={resultImage} alt="Render Final" className="w-full h-full object-contain md:object-cover animate-fade-in" />
@@ -327,6 +371,15 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                         >
                             Volver a Editar
                         </button>
+                        
+                        {!hasKey && (
+                            <button 
+                                onClick={handleOpenKeyDialog}
+                                className="text-[9px] text-blue-500 font-bold uppercase hover:underline pt-2"
+                            >
+                                ¿Demasiado lento? Activa Motor Privado
+                            </button>
+                        )}
                     </div>
                 </div>
             </>
