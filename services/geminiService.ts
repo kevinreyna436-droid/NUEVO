@@ -104,17 +104,20 @@ export const visualizeUpholstery = async (
   return retryWithBackoff(async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
+    // Prompt actualizado con la instrucción de escalado (Código 6)
     const promptText = `
-      Act as a high-end photo retoucher. 
-      Input 1: A piece of furniture.
-      Input 2: A close-up fabric texture.
-      Task: Create a photorealistic visualization by wrapping the fabric from Input 2 onto the furniture in Input 1.
+      Act as a high-end photo retoucher specializing in furniture upholstery. 
+      Input 1: A piece of furniture image.
+      Input 2: A close-up fabric texture swatch.
+      
+      Task: Create a photorealistic visualization by wrapping the fabric from Input 2 onto the upholstery areas of Input 1.
       
       Requirements:
-      - Preserve original shadows, highlights, and micro-folds to maintain realism.
-      - The fabric must follow the furniture's volume and perspective.
-      - Keep legs, frame, and environment untouched.
-      - Final result must look like a professional studio product catalog photo.
+      - TEXTURE SCALE (CRITICAL): Reduce the scale of the fabric pattern by 70%. The figures, grains, or weaves must appear 70% smaller and much more dense than the original swatch to ensure a realistic look on the furniture surface.
+      - LIGHTING & SHADOWS: Preserve all original shadows, folds, highlights, and micro-creases to maintain volume and depth.
+      - PERSPECTIVE: The fabric pattern must flow according to the furniture's geometry and 3D perspective.
+      - MASKING: Keep legs, wooden frames, metal bases, and the surrounding environment completely untouched.
+      - QUALITY: The final output must look like a professional, high-resolution catalog photograph.
     `;
 
     const response = await ai.models.generateContent({

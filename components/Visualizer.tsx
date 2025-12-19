@@ -19,6 +19,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasKey, setHasKey] = useState(false);
+  const [showOriginalTexture, setShowOriginalTexture] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   useEffect(() => {
     checkApiKey();
@@ -137,10 +139,32 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
     }
   };
 
+  const handleViewOriginal = (imgUrl: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setPreviewImage(imgUrl);
+      setShowOriginalTexture(true);
+  };
+
   const activeFabric = fabrics.find(f => f.name === selectedModelName);
+  const selectedSwatchUrl = (selectedColorName && activeFabric?.colorImages?.[selectedColorName]) 
+    ? activeFabric.colorImages[selectedColorName] 
+    : activeFabric?.mainImage;
 
   return (
     <div className="container mx-auto px-4 md:px-6 pb-20 max-w-7xl animate-fade-in-up">
+      {/* Lightbox para textura original */}
+      {showOriginalTexture && (previewImage || selectedSwatchUrl) && (
+        <div 
+          className="fixed inset-0 z-[250] bg-black/90 flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setShowOriginalTexture(false)}
+        >
+          <img src={previewImage || selectedSwatchUrl} className="max-w-full max-h-full rounded-lg shadow-2xl" alt="Textura original" />
+          <button className="absolute top-6 right-6 text-white/70 hover:text-white">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+      )}
+
       <div className="text-center mb-8">
         <h2 className="font-serif text-4xl md:text-5xl font-bold text-slate-900">Visualizador Pro</h2>
         <div className="flex items-center justify-center gap-2 mt-3">
@@ -151,84 +175,124 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         </div>
       </div>
 
-      <div className="flex justify-center items-center mb-10">
-          {[1, 2, 3].map((s) => (
-              <React.Fragment key={s}>
-                  <div className={`flex items-center ${step >= s ? 'text-black' : 'text-gray-300'}`}>
-                      <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center mr-2 transition-all duration-300 ${step >= s ? 'border-black bg-black text-white' : 'border-gray-300'}`}>{s}</div>
-                  </div>
-                  {s < 3 && <div className={`w-12 h-px mx-4 transition-colors duration-300 ${step > s ? 'bg-black' : 'bg-gray-200'}`}></div>}
-              </React.Fragment>
-          ))}
-      </div>
-
-      <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden min-h-[600px] border border-gray-100 flex flex-col md:flex-row">
+      <div className="bg-[oklch(0.67_0.00_68)] text-white rounded-[2rem] shadow-2xl overflow-hidden min-h-[600px] border border-gray-100/10 flex flex-col md:flex-row transition-colors duration-500">
           
           {step < 3 && (
             <div className="w-full p-8 md:p-12">
                  {step === 1 && (
-                    <>
-                        <h3 className="font-serif text-2xl mb-8 text-center text-slate-800">1. Selecciona el mueble a retapizar</h3>
+                    <div className="animate-fade-in">
+                        <h3 className="font-serif text-3xl mb-8 text-center text-white">1. Selecciona el mueble a retapizar</h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                             {templates.map((item) => (
-                                <div key={item.id} onClick={() => { setSelectedFurniture(item); setStep(2); }} className="cursor-pointer rounded-3xl border border-gray-100 hover:border-black overflow-hidden group shadow-sm hover:shadow-xl transition-all relative bg-white">
+                                <div key={item.id} onClick={() => { setSelectedFurniture(item); setStep(2); }} className="cursor-pointer rounded-3xl border border-white/20 hover:border-white bg-white/10 hover:bg-white/20 overflow-hidden group shadow-lg transition-all relative backdrop-blur-sm">
                                     <img 
                                       src={item.imageUrl} 
                                       className="w-full h-48 object-contain p-4 group-hover:scale-105 transition-transform duration-700" 
                                       alt={item.name}
                                     />
-                                    <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm p-3 text-center border-t border-gray-50">
-                                        <h4 className="font-serif font-bold text-sm text-slate-900 line-clamp-1">{item.name}</h4>
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black/40 backdrop-blur-md p-3 text-center border-t border-white/10">
+                                        <h4 className="font-serif font-bold text-sm text-white line-clamp-1">{item.name}</h4>
                                     </div>
                                 </div>
                             ))}
                         </div>
-                    </>
+                    </div>
                  )}
 
                  {step === 2 && (
-                    <div className="flex flex-col md:flex-row gap-12 h-full">
+                    <div className="flex flex-col md:flex-row gap-12 h-full animate-fade-in">
+                        {/* Left Side: Furniture */}
                         <div className="w-full md:w-1/3 flex flex-col items-center">
                             <div className="aspect-square w-full bg-white rounded-3xl overflow-hidden border border-gray-100 mb-6 p-6 relative shadow-inner">
                                 <img src={selectedFurniture?.imageUrl} className="w-full h-full object-contain drop-shadow-lg" />
                             </div>
-                            <button onClick={() => setStep(1)} className="text-[10px] uppercase font-bold text-gray-400 hover:text-black border-b border-transparent hover:border-black transition-all pb-0.5">
-                                ← Cambiar Mueble
+                            <button 
+                                onClick={() => setStep(1)} 
+                                className="text-sm font-bold uppercase tracking-widest text-white/70 hover:text-white border-b border-transparent hover:border-white transition-all pb-1 flex items-center gap-2"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                                Cambiar Mueble
                             </button>
                         </div>
-                        <div className="flex-1 flex flex-col justify-center space-y-8">
+
+                        {/* Right Side: Fabric Selection */}
+                        <div className="flex-1 flex flex-col space-y-8">
                             <div>
-                                <h3 className="font-serif text-3xl mb-2">2. Elige la textura</h3>
-                                <p className="text-sm text-gray-400">Selecciona una tela para ver cómo quedaría.</p>
+                                <h3 className="font-serif text-4xl mb-2 text-white">2. Elige la textura</h3>
+                                <p className="text-sm text-white/70 font-medium">Selecciona una tela para ver cómo quedaría.</p>
                             </div>
                             
-                            <select value={selectedModelName} onChange={(e) => { setSelectedModelName(e.target.value); setSelectedColorName(''); }} className="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-serif text-lg text-slate-900 outline-none">
-                                <option value="">Selecciona el Modelo...</option>
-                                {fabrics.filter(f => f.category !== 'wood').sort((a,b)=>a.name.localeCompare(b.name)).map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
-                            </select>
+                            {/* Model Selector */}
+                            <div className="relative">
+                                <select 
+                                    value={selectedModelName} 
+                                    onChange={(e) => { setSelectedModelName(e.target.value); setSelectedColorName(''); }} 
+                                    className="w-full p-4 pl-6 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 focus:ring-2 focus:ring-white font-serif text-xl text-white outline-none appearance-none cursor-pointer hover:bg-white/20 transition-colors"
+                                >
+                                    <option value="" className="text-black">Selecciona el Modelo...</option>
+                                    {fabrics.filter(f => f.category !== 'wood').sort((a,b)=>a.name.localeCompare(b.name)).map(f => (
+                                        <option key={f.id} value={f.name} className="text-black">{f.name}</option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-white">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                </div>
+                            </div>
 
                             {selectedModelName ? (
-                                <div className="space-y-4 animate-fade-in">
-                                    <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest">Variantes Disponibles</p>
-                                    <div className="flex flex-wrap gap-4 max-h-60 overflow-y-auto pr-2">
-                                        {activeFabric?.colors.map((color, idx) => (
-                                            <div 
-                                                key={idx} 
-                                                onClick={() => setSelectedColorName(color)} 
-                                                className={`group relative w-16 h-16 rounded-full cursor-pointer transition-all duration-300 ${selectedColorName === color ? 'ring-2 ring-offset-2 ring-black scale-110' : 'hover:scale-105'}`}
-                                            >
-                                                <img src={activeFabric.colorImages?.[color] || activeFabric.mainImage} className="w-full h-full rounded-full object-cover shadow-md border border-gray-100" />
-                                            </div>
-                                        ))}
+                                <div className="space-y-4 animate-fade-in flex-1">
+                                    <div className="flex justify-between items-end border-b border-white/20 pb-2">
+                                        <p className="text-xs uppercase font-bold text-white/80 tracking-[0.2em]">Variantes Disponibles</p>
+                                        {selectedColorName && (
+                                            <p className="text-sm font-serif font-bold text-white animate-fade-in">{toSentenceCase(selectedColorName)}</p>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Variants Grid - No Scrollbar, Wrapped, Larger Items */}
+                                    <div className="flex flex-wrap gap-6 py-2">
+                                        {activeFabric?.colors.map((color, idx) => {
+                                            const imgUrl = activeFabric.colorImages?.[color] || activeFabric.mainImage;
+                                            const isSelected = selectedColorName === color;
+                                            
+                                            return (
+                                                <div key={idx} className="flex flex-col items-center gap-2 group">
+                                                    <div 
+                                                        onClick={() => setSelectedColorName(color)} 
+                                                        className={`relative w-20 h-20 md:w-24 md:h-24 rounded-full cursor-pointer transition-all duration-300 shadow-lg ${isSelected ? 'ring-4 ring-offset-2 ring-offset-transparent ring-white scale-110 z-10' : 'hover:scale-105 hover:ring-2 hover:ring-white/50'}`}
+                                                    >
+                                                        <img src={imgUrl} className="w-full h-full rounded-full object-cover border border-white/10" alt={color} />
+                                                        
+                                                        {/* Hover / Select Actions */}
+                                                        <div className={`absolute inset-0 rounded-full flex items-center justify-center transition-opacity duration-300 ${isSelected ? 'bg-black/20' : 'bg-black/0 group-hover:bg-black/20'}`}>
+                                                            {/* View Original Icon */}
+                                                            <button 
+                                                                onClick={(e) => handleViewOriginal(imgUrl, e)}
+                                                                className={`p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white hover:text-black transition-all transform ${isSelected ? 'scale-100 opacity-100' : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100'}`}
+                                                                title="Ver textura original"
+                                                            >
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wider text-white transition-opacity ${isSelected ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'}`}>
+                                                        {toSentenceCase(color)}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             ) : (
-                                <div className="h-40 flex items-center justify-center bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-gray-400 text-sm">
-                                    Selecciona un modelo arriba para continuar
+                                <div className="h-40 flex items-center justify-center bg-white/5 rounded-2xl border border-dashed border-white/20 text-white/50 text-sm italic">
+                                    Selecciona un modelo arriba para ver sus colores
                                 </div>
                             )}
 
-                            <button disabled={!selectedColorName} onClick={handleGenerate} className="w-full bg-black text-white py-5 rounded-xl font-bold uppercase tracking-[0.2em] text-xs shadow-xl disabled:opacity-50 hover:scale-[1.02] transition-transform mt-auto">
+                            <button 
+                                disabled={!selectedColorName} 
+                                onClick={handleGenerate} 
+                                className="w-full bg-[oklch(0.58_0.07_251)] text-white py-6 rounded-2xl font-bold uppercase tracking-[0.2em] text-sm shadow-xl disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] hover:shadow-2xl hover:brightness-110 transition-all mt-auto"
+                            >
                                 Ver Resultado Pro
                             </button>
                         </div>
@@ -239,6 +303,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
           {step === 3 && (
             <>
+                {/* Result Area - Keep Background Light for contrast with render? Or match theme? 
+                    Screenshot 2 shows light background for Step 2, but text implies card bg change. 
+                    Let's keep result area standard but the container is now grey.
+                    We need to make sure the result area stands out.
+                */}
                 <div className="w-full md:w-[65%] bg-[#F0F0F0] relative flex items-center justify-center overflow-hidden min-h-[500px]">
                      {isGenerating ? (
                         <div className="text-center z-10 p-6 animate-fade-in">
@@ -281,40 +350,59 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                      ) : null}
                 </div>
 
-                <div className="w-full md:w-[35%] bg-white border-l border-gray-100 flex flex-col items-center text-center p-8 md:p-10 z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.02)]">
-                    <div className="w-full border-b border-gray-100 pb-6 mb-8">
-                        <h3 className="text-xs font-bold uppercase tracking-[0.25em] text-gray-900">Resultado Generado</h3>
+                {/* Info Panel - Keeping the same BG as main card for consistency or slightly darker? 
+                    The request said "coloca el color ... de fondo" for the button, not this panel.
+                    This panel already had a custom color in previous version.
+                    Let's adapt it to the new theme.
+                */}
+                <div className="w-full md:w-[35%] bg-[oklch(0.80_0.00_68)] flex flex-col items-center text-center p-8 md:p-10 z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transition-colors duration-500 text-white">
+                    <div className="w-full border-b border-white/20 pb-6 mb-8">
+                        <h3 className="text-xs font-bold uppercase tracking-[0.25em] text-white/80">Resultado Generado</h3>
                     </div>
 
                     <div className="flex-1 w-full flex flex-col items-center justify-center space-y-12">
                         <div>
-                            <p className="text-[10px] font-bold uppercase text-gray-500 tracking-[0.2em] mb-2">Mueble</p>
-                            <h2 className="font-serif text-3xl text-slate-900 leading-none">
+                            <p className="text-[10px] font-bold uppercase text-white/60 tracking-[0.2em] mb-2">Mueble</p>
+                            <h2 className="font-serif text-3xl text-white leading-none">
                                 {toSentenceCase(selectedFurniture?.name || 'Mueble')}
                             </h2>
                         </div>
 
                         <div className="w-full relative">
-                             <div className="w-12 h-px bg-gray-200 mx-auto mb-8"></div>
-                             <p className="text-[10px] font-bold uppercase text-gray-500 tracking-[0.2em] mb-2">Tapizado con</p>
-                             <h2 className="font-serif text-4xl text-slate-900 leading-tight mb-2">
+                             <div className="w-12 h-px bg-white/20 mx-auto mb-8"></div>
+                             
+                             {/* FOTO DEL COLOR DE LA TELA (MINIATURA INTERACTIVA) */}
+                             <div className="mb-6 relative group inline-block">
+                                <p className="text-[10px] font-bold uppercase text-white/60 tracking-[0.2em] mb-4">Tapizado con</p>
+                                <div 
+                                    onClick={() => { setPreviewImage(selectedSwatchUrl || null); setShowOriginalTexture(true); }}
+                                    className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-white/30 shadow-xl cursor-pointer hover:scale-110 transition-transform duration-300 mx-auto group"
+                                >
+                                    <img src={selectedSwatchUrl || ''} className="w-full h-full object-cover" alt="Swatch" />
+                                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
+                                    </div>
+                                </div>
+                             </div>
+
+                             <h2 className="font-serif text-4xl text-white leading-tight mb-2">
                                 {toSentenceCase(selectedModelName)}
                              </h2>
-                             <p className="text-sm font-serif italic text-gray-500">{toSentenceCase(selectedColorName)}</p>
+                             <p className="text-sm font-serif italic text-white/80">{toSentenceCase(selectedColorName)}</p>
                         </div>
                     </div>
 
-                    <div className="w-full space-y-3 mt-8 pt-8 border-t border-gray-100">
+                    <div className="w-full space-y-3 mt-8 pt-8 border-t border-white/20">
                         <button 
                             onClick={handleDownload}
                             disabled={!resultImage}
-                            className="w-full bg-black text-white py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] shadow-lg hover:scale-105 transition-transform disabled:opacity-50"
+                            className="w-full bg-white text-black py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] shadow-lg hover:bg-gray-100 hover:scale-105 transition-all disabled:opacity-50"
                         >
                             Descargar Imagen
                         </button>
                         <button 
                             onClick={() => setStep(2)}
-                            className="w-full bg-white text-gray-900 border border-gray-200 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] hover:bg-gray-50 transition-colors"
+                            className="w-full bg-transparent text-white border border-white/30 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] hover:bg-white/10 transition-colors"
                         >
                             Cambiar Textura
                         </button>
