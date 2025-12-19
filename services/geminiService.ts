@@ -1,17 +1,8 @@
 
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 
-// Ensure API Key is present
-const apiKey = process.env.API_KEY;
-if (!apiKey) {
-  console.error("API_KEY is missing from environment variables.");
-}
-
-const ai = new GoogleGenAI({ apiKey: apiKey || 'dummy-key' });
-
 /**
  * Helper function to retry operations with exponential backoff.
- * Handles 503 (Service Unavailable) and 429 (Too Many Requests).
  */
 async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
   try {
@@ -30,44 +21,16 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 3, del
 }
 
 /**
- * Uploads a PDF or Image (base64) to extract Fabric Data.
- * Fix: Use gemini-3-flash-preview for efficiency and compliance with Basic Text Tasks.
+ * Extrae datos técnicos de la tela usando Gemini 3 Flash.
  */
 export const extractFabricData = async (base64Data: string, mimeType: string) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   try {
     const prompt = `
-    You are a strict data extraction expert for "Creata Collection".
-    Analyze the provided document (PDF) or Image (Color Swatch).
-
-    RULES FOR EXTRACTION:
-    
-    1. **FABRIC NAME (Nombre de la tela):**
-       - Extract ONLY the specific model name (e.g., "Analis", "Slate", "Bikendi").
-       - **FORBIDDEN:** Do NOT include the supplier name (e.g., DO NOT include "Formatex", "Creata", "Textiles").
-       - **FORBIDDEN:** Do NOT include color names in the main fabric name.
-       - If you are unsure, check the largest bold text but strip generic words.
-       
-    2. **SUPPLIER NAME (Nombre del proveedor):**
-       - **CRITICAL:** Scan the entire document thoroughly. Look at the HEADER, FOOTER, and especially small LEGAL TEXT at the bottom.
-       - Look for keywords like "Distributed by", "Textiles", "Colección", "Marca".
-       - Look for company names like "FORMATEX", "CREATA", "TEXTILES", "KRAVET", "SUNBRELLA", "WARWICK", "JAMES DUNLOP", "FIBREGUARD".
-       - If you see a website like "www.formatex.com", extract "FORMATEX".
-       - If you see a logo with text, extract that text.
-       - Only return "Consultar" if you are 100% sure there is NO company name mentioned anywhere.
-       
-    3. **COLOR NAMES (Nombre de color):**
-       - Look at the TEXT INSIDE THE IMAGE (OCR).
-       - If the image contains text labels (e.g., "Slate", "Ash", "102 Grey"), use that EXACT name.
-       - **FORBIDDEN:** Do not include the supplier name in the color name.
-       - If looking at a PDF list, extract the color names listed.
-    
-    4. **TECHNICAL SUMMARY:**
-       - Create a concise 3-4 line summary in **SPANISH**.
-       - Include Composition, Weight, and Martindale if available.
-
-    5. **SPECS:** Extract Composition, Martindale, Usage, Weight.
-
-    Return JSON strictly adhering to this schema.
+    Eres un experto en extracción de datos para "Creata Collection".
+    Analiza el documento (PDF) o imagen (Muestra de color).
+    Extrae: Nombre (modelo limpio), Proveedor (busca logos o encabezados), Resumen Técnico (Español), Specs (Composición, Martindale, Uso, Peso).
+    Retorna JSON.
     `;
 
     const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
@@ -83,8 +46,8 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            name: { type: Type.STRING, description: "The clean model name only. No supplier." },
-            supplier: { type: Type.STRING, description: "The manufacturer name found in headers/footers/logos." },
+            name: { type: Type.STRING },
+            supplier: { type: Type.STRING },
             technicalSummary: { type: Type.STRING },
             specs: {
               type: Type.OBJECT,
@@ -102,167 +65,52 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
 
     return JSON.parse(response.text || '{}');
   } catch (error: any) {
-    console.error("Error extracting fabric data:", error?.message || String(error));
+    console.error("Error extrayendo datos de tela:", error);
     throw error;
   }
 };
 
 /**
- * Extracts ONLY the color name from a specific swatch image.
- * Fix: Use gemini-3-flash-preview for OCR capabilities.
+ * Detecta el nombre de un color a partir de una muestra de tela.
  */
 export const extractColorFromSwatch = async (base64Data: string): Promise<string | null> => {
-    try {
-        const prompt = `
-        Look at this fabric swatch image.
-        Find the text label that represents the COLOR NAME.
-        
-        Rules:
-        1. It is usually located at the bottom right, bottom left, or bottom center.
-        2. Ignore supplier names like "Formatex", "Creata", "Textiles".
-        3. Ignore codes that look like ISBNs or phone numbers.
-        4. Return ONLY the extracted text of the color (e.g., "Ash", "Navy", "102 Grey").
-        5. If NO text is clearly a color name, return null.
-        `;
-
-        const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
-                    { text: prompt }
-                ]
-            },
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        colorName: { type: Type.STRING, nullable: true }
-                    }
-                }
-            }
-        }));
-        
-        const result = JSON.parse(response.text || '{}');
-        return result.colorName || null;
-
-    } catch (error) {
-        // Silently fail for individual colors to keep the process moving
-        return null; 
-    }
-};
-
-/**
- * Generates a new fabric design image.
- * Uses gemini-3-pro-image-preview.
- */
-export const generateFabricDesign = async (prompt: string, aspectRatio: string = "1:1", size: string = "1K") => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   try {
+    const prompt = "Identifica el nombre del color en esta muestra. Retorna solo el texto en español.";
     const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: {
-        parts: [{ text: `Generate a high-quality close-up texture image of a fabric: ${prompt}` }]
-      },
-      config: {
-        imageConfig: {
-          aspectRatio: aspectRatio as any,
-          imageSize: size as any,
-        }
-      }
-    }));
-    
-    // Extract image
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-       if (part.inlineData) {
-         return `data:image/png;base64,${part.inlineData.data}`;
-       }
-    }
-    return null;
-  } catch (error: any) {
-    console.error("Error generating fabric:", error?.message || String(error));
-    throw error;
-  }
-};
-
-// enhanceFabricTexture function removed as requested to disable AI enhancement button/logic
-export const enhanceFabricTexture = async (base64Image: string) => {
-    return base64Image; // Pass-through stub
-};
-
-/**
- * Edits an existing fabric image using text prompts.
- * Uses gemini-2.5-flash-image.
- */
-export const editFabricImage = async (base64Image: string, prompt: string) => {
-  try {
-    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-2.5-flash-image', // Optimized for editing/multimodal
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
-          { inlineData: { mimeType: 'image/png', data: base64Image } },
+          { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
           { text: prompt }
         ]
       }
     }));
-
-     // Extract image
-     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
-   }
-   return null;
-  } catch (error: any) {
-    console.error("Error editing fabric:", error?.message || String(error));
-    throw error;
+    return response.text?.trim() || null;
+  } catch (error) {
+    return null;
   }
 };
 
 /**
- * Simulates upholstery by mapping a macro texture to a full furniture shot.
- * Uses gemini-2.5-flash-image (Nano Banana).
+ * Genera un diseño de tela fotorrealista usando Nano Banana Pro (Gemini 3 Pro Image).
  */
-export const visualizeUpholstery = async (furnitureImageBase64: string, fabricSwatchBase64: string) => {
+export const generateFabricDesign = async (prompt: string, aspectRatio: string = "1:1", imageSize: string = "1K"): Promise<string | null> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
     try {
-        const prompt = `
-        Task: Perform a professional re-upholstery and background isolation retouch on the provided product.
-
-        INPUTS:
-        1. Furniture Reference (First Image): The object to re-upholster.
-        2. Fabric Swatch Reference (Second Image): The texture to apply.
-
-        CRITICAL SCALE INSTRUCTION (MUST FOLLOW):
-        The 'Fabric Swatch Reference' is a MACRO PHOTOGRAPH taken from very close range (approximately 5 to 10 centimeters wide). It shows microscopic weave detail.
-        The 'Furniture Reference' is a full-shot taken from several meters away (100cm - 200cm wide).
-        
-        ACTION: You must shrink the texture pattern drastically to adapt it to the furniture. 
-        - Do NOT stretch the swatch image. 
-        - TILE and REPEAT the pattern significantly (e.g., repeat the pattern 30x to 50x) to create a fine, realistic grain that matches the scale of the furniture.
-        - If you do not shrink the pattern, it will look like a giant blurry print, which is wrong. It must look like real upholstery fabric viewed from a distance.
-
-        THE ENVIRONMENT (Studio Finish):
-        - Remove the original background completely.
-        - Place the finished piece on a clean, seamless Pure White Background (Hex #FFFFFF).
-        - Generate a realistic, soft contact shadow on the "floor" directly beneath the furniture to ground it.
-
-        PRESERVATION:
-        - Keep the original shape, folds, wrinkles, and perspective of the furniture exactly as they are.
-        - Do not modify legs, frames, or non-fabric parts.
-        `;
-
-        // Note: For Gemini 2.5 Flash Image, we send multiple image parts.
-        // Order matters: Furniture first, then Fabric.
-        const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
+        const fullPrompt = `Textura de tela de alta calidad: ${prompt}. Fotografía textil profesional, iluminación de estudio, tejido detallado visible.`;
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-pro-image-preview',
             contents: {
-                parts: [
-                    { inlineData: { mimeType: 'image/jpeg', data: furnitureImageBase64 } },
-                    { inlineData: { mimeType: 'image/jpeg', data: fabricSwatchBase64 } },
-                    { text: prompt }
-                ]
+                parts: [{ text: fullPrompt }]
+            },
+            config: {
+                imageConfig: { 
+                    aspectRatio: aspectRatio as any, 
+                    imageSize: imageSize as any 
+                }
             }
-        }));
+        });
 
         for (const part of response.candidates?.[0]?.content?.parts || []) {
             if (part.inlineData) {
@@ -270,51 +118,102 @@ export const visualizeUpholstery = async (furnitureImageBase64: string, fabricSw
             }
         }
         return null;
-
-    } catch (error: any) {
-        console.error("Error visualizing upholstery:", error?.message || String(error));
+    } catch (error) {
+        console.error("Error generating fabric design:", error);
         throw error;
     }
 };
 
 /**
- * Chatbot with Grounding and Catalog Context.
- * Uses gemini-3-pro-preview + googleSearch.
+ * Visualización de retapizado usando Nano Banana Pro (Gemini 3 Pro Image).
+ * Prioriza la física de la nueva tela sobre las arrugas originales, manteniendo la forma del mueble.
+ */
+export const visualizeUpholstery = async (
+    furnitureImageBase64: string, 
+    fabricSwatchBase64: string,
+    fabricSpecs?: { composition: string; weight?: string; technicalSummary?: string }
+) => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+    
+    try {
+        const physicalContext = fabricSpecs 
+            ? `DATOS TÉCNICOS DE LA TELA A APLICAR: ${fabricSpecs.technicalSummary || ''}. Composición: ${fabricSpecs.composition}. Peso: ${fabricSpecs.weight || 'Medio'}.`
+            : "Tela de tapicería estándar.";
+
+        // 🔒 PROMPT BLINDADO - CÓDIGO DE SEGURIDAD 6
+        // RESTRICCIÓN ABSOLUTA DE MODIFICACIÓN GEOMÉTRICA
+        const prompt = `
+        ACTÚA COMO UN EXPERTO EN SIMULACIÓN TEXTIL Y RETAPIZADO VIRTUAL:
+        
+        INPUTS:
+        - IMAGEN 1 (BASE): Mueble original.
+        - IMAGEN 2 (TEXTURA): Tela nueva.
+
+        TAREA: Reemplazar EXCLUSIVAMENTE EL MATERIAL del tapizado de la Imagen 1 con la Tela de la Imagen 2.
+
+        REGLAS DE GEOMETRÍA (ESTRICTAS - PRIORIDAD ABSOLUTA):
+        1. CONGELA LA POSICIÓN Y EL TAMAÑO: La imagen resultante debe superponerse perfectamente píxel por píxel con la original. NO hagas zoom, NO recortes, NO cambies el encuadre.
+        2. MANTÉN LA SILUETA EXACTA: El contorno del mueble no puede cambiar ni un milímetro. Respeta patas, brazos y estructura rígida.
+        3. PERSPECTIVA INTACTA: No rotes ni inclines el objeto.
+
+        REGLAS DE COMPORTAMIENTO TEXTIL:
+        1. ADAPTACIÓN DE SUPERFICIE: Aplica la nueva textura sobre el volumen existente.
+        2. GESTIÓN DE ARRUGAS: Si el mueble original tiene arrugas profundas (ej. cuero viejo) y la nueva tela es rígida, ALISA la superficie visualmente, pero SIN cambiar el volumen del cojín.
+        3. ILUMINACIÓN: Conserva las sombras y luces originales para mantener el realismo.
+        
+        ESTILO: Fotorrealismo de producto. Fondo idéntico al original.
+        ${physicalContext}
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-pro-image-preview', // NANO BANANA PRO
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/jpeg', data: furnitureImageBase64 } },
+                    { inlineData: { mimeType: 'image/jpeg', data: fabricSwatchBase64 } },
+                    { text: prompt }
+                ]
+            },
+            config: {
+                imageConfig: { aspectRatio: "1:1", imageSize: "1K" }
+            }
+        });
+
+        const candidate = response.candidates?.[0];
+        if (!candidate) throw new Error("La IA no pudo procesar la imagen.");
+
+        for (const part of candidate.content.parts) {
+            if (part.inlineData) {
+                return `data:image/png;base64,${part.inlineData.data}`;
+            }
+        }
+        
+        throw new Error("No se recibió el renderizado.");
+
+    } catch (error: any) {
+        if (error?.message?.includes("Requested entity was not found")) {
+            throw new Error("API_KEY_RESET");
+        }
+        throw error;
+    }
+};
+
+/**
+ * Chatbot con búsqueda en Google.
  */
 export const chatWithExpert = async (message: string, history: any[], catalogContext?: string) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   try {
-    const systemInstruction = `
-    You are a helpful expert assistant for 'Creata Collection', a premium fabric catalog. 
-    You help designers find trends, technical info, and fabric care advice. Respond in Spanish.
-    
-    ${catalogContext ? `Here is the specific data of the fabrics currently in the catalog. Use this to answer availability questions:\n${catalogContext}` : ''}
-    
-    If the user asks about a fabric not in the list, offer to search online for trends or general information.
-    `;
-
-    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
+    const systemInstruction = `Eres el experto de 'Creata Collection'. Ayuda con dudas técnicas. ${catalogContext || ''}`;
+    const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: [
-        ...history,
-        { role: 'user', parts: [{ text: message }] }
-      ],
-      config: {
-        tools: [{ googleSearch: {} }],
-        systemInstruction: systemInstruction
-      }
-    }));
-
-    const text = response.text;
-    const grounding = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-    
-    const sources = grounding?.map((chunk: any) => ({
-      title: chunk.web?.title || 'Source',
+      contents: [...history, { role: 'user', parts: [{ text: message }] }],
+      config: { tools: [{ googleSearch: {} }], systemInstruction }
+    });
+    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
+      title: chunk.web?.title || 'Fuente',
       uri: chunk.web?.uri || '#'
     })) || [];
-
-    return { text, sources };
-  } catch (error: any) {
-    console.error("Error in chat:", error?.message || String(error));
-    return { text: "I'm having trouble connecting to the design studio. Please try again.", sources: [] };
-  }
+    return { text: response.text, sources };
+  } catch (error) { return { text: "Error de conexión.", sources: [] }; }
 };

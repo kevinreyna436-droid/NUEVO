@@ -5,9 +5,17 @@ interface PinModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  requiredPin?: string;
+  isBlocking?: boolean; // If true, hides the close button (for App Lock)
 }
 
-const PinModal: React.FC<PinModalProps> = ({ isOpen, onClose, onSuccess }) => {
+const PinModal: React.FC<PinModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  onSuccess, 
+  requiredPin = '2717', 
+  isBlocking = false 
+}) => {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
 
@@ -20,10 +28,10 @@ const PinModal: React.FC<PinModalProps> = ({ isOpen, onClose, onSuccess }) => {
 
   useEffect(() => {
     if (pin.length === 4) {
-      if (pin === '3942') {
+      if (pin === requiredPin) {
         setTimeout(() => {
             onSuccess();
-            onClose();
+            if (!isBlocking) onClose();
         }, 200);
       } else {
         setError(true);
@@ -33,7 +41,7 @@ const PinModal: React.FC<PinModalProps> = ({ isOpen, onClose, onSuccess }) => {
         }, 500);
       }
     }
-  }, [pin, onSuccess, onClose]);
+  }, [pin, onSuccess, onClose, requiredPin, isBlocking]);
 
   if (!isOpen) return null;
 
@@ -49,21 +57,27 @@ const PinModal: React.FC<PinModalProps> = ({ isOpen, onClose, onSuccess }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
       <div 
         className="bg-white w-72 rounded-3xl shadow-2xl overflow-hidden flex flex-col p-6 relative"
         onClick={(e) => e.stopPropagation()}
       >
-        <button 
-            onClick={onClose}
-            className="absolute top-4 right-4 text-gray-300 hover:text-black"
-        >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-        </button>
+        {!isBlocking && (
+            <button 
+                onClick={onClose}
+                className="absolute top-4 right-4 text-gray-300 hover:text-black"
+            >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        )}
 
         <div className="text-center mb-6 mt-2">
-            <h3 className="font-serif text-xl font-bold text-slate-900">Seguridad</h3>
-            <p className="text-xs text-gray-400 mt-1 uppercase tracking-wider">Ingresa la contraseña</p>
+            <h3 className="font-serif text-xl font-bold text-slate-900">
+                {isBlocking ? 'Creata Collection' : 'Seguridad'}
+            </h3>
+            <p className="text-xs text-gray-400 mt-1 uppercase tracking-wider">
+                {isBlocking ? 'Ingrese código de acceso' : 'Ingresa la contraseña'}
+            </p>
         </div>
 
         {/* PIN Display */}

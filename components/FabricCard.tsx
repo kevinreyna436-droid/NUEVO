@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { memo } from 'react';
 import { Fabric } from '../types';
 import { IN_STOCK_DB } from '../constants';
 
@@ -58,6 +58,8 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
           <img 
             src={displayImage} 
             alt={mode === 'model' ? fabric.name : `${fabric.name} - ${specificColorName}`} 
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover object-center transition-transform duration-700 scale-[1.1] group-hover:scale-[1.15]"
           />
         ) : (
@@ -129,4 +131,4 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
   );
 };
 
-export default FabricCard;
+export default memo(FabricCard);
