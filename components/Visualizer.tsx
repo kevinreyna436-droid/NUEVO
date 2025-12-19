@@ -19,17 +19,14 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Effect to handle incoming selection from FabricDetail
   useEffect(() => {
     if (initialSelection) {
         setSelectedModelName(initialSelection.model);
         setSelectedColorName(initialSelection.color);
-        // Start at Step 1 (Furniture) so user can choose where to apply the pre-selected fabric
         setStep(1);
     }
   }, [initialSelection]);
 
-  // Helper for consistent capitalization
   const toSentenceCase = (str: string) => {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -41,7 +38,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       return input.split(',')[1];
     }
     
-    // Intento 1: Fetch directo (si CORS lo permite, ej. Firebase Storage configurado correctamente)
     try {
         const response = await fetch(input, { mode: 'cors' });
         if (response.ok) {
@@ -53,11 +49,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                 reader.readAsDataURL(blob);
             });
         }
-    } catch (e) {
-        // Fallback a proxy si falla
-    }
+    } catch (e) {}
 
-    // Intento 2: Proxy
     try {
         const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(input)}`;
         const response = await fetch(proxyUrl);
@@ -77,8 +70,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
   const handleGenerate = async () => {
       setErrorMessage(null);
-      // Eliminada la comprobación de window.aistudio para permitir uso en móviles/web desplegada
-
       setIsGenerating(true);
       setResultImage(null);
       setStep(3);
@@ -108,10 +99,16 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           }
       } catch (error: any) {
           console.error("Error visualización Pro:", error);
-          if (error.message === "API_KEY_RESET") {
-              setErrorMessage("Error de API Key. Contacte al administrador del sistema.");
+          
+          const errorText = error?.message || JSON.stringify(error);
+          const isOverloaded = errorText.includes('503') || errorText.includes('overloaded') || errorText.includes('capacity') || errorText.includes('UNAVAILABLE');
+
+          if (isOverloaded) {
+              setErrorMessage("El motor de IA está saturado por alta demanda. Por favor, intenta de nuevo en unos segundos.");
+          } else if (errorText === "API_KEY_RESET") {
+              setErrorMessage("Error de configuración. Contacte soporte.");
           } else {
-              setErrorMessage(error.message || "Error al conectar con Nano Banana Pro.");
+              setErrorMessage("No se pudo generar la vista previa. Verifica tu conexión e intenta nuevamente.");
           }
       } finally {
           setIsGenerating(false);
@@ -156,18 +153,14 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
       <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden min-h-[600px] border border-gray-100 flex flex-col md:flex-row">
           
-          {/* STEP 1 & 2 CONTENT */}
           {step < 3 && (
             <div className="w-full p-8 md:p-12">
                  {step === 1 && (
                     <>
                         <h3 className="font-serif text-2xl mb-8 text-center text-slate-800">1. Selecciona el mueble a retapizar</h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                            
-                            {/* Templates Grid */}
                             {templates.map((item) => (
                                 <div key={item.id} onClick={() => { setSelectedFurniture(item); setStep(2); }} className="cursor-pointer rounded-3xl border border-gray-100 hover:border-black overflow-hidden group shadow-sm hover:shadow-xl transition-all relative bg-white">
-                                    {/* Edit Button for Furniture */}
                                     {onEditFurniture && (
                                         <button 
                                             onClick={(e) => {
@@ -180,7 +173,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                                         </button>
                                     )}
-
                                     <img 
                                       src={item.imageUrl} 
                                       className="w-full h-48 object-contain p-4 group-hover:scale-105 transition-transform duration-700" 
@@ -253,25 +245,23 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
             </div>
           )}
 
-          {/* STEP 3 CONTENT (Split View) */}
           {step === 3 && (
             <>
-                {/* LEFT: IMAGE AREA (65%) */}
                 <div className="w-full md:w-[65%] bg-[#F0F0F0] relative flex items-center justify-center overflow-hidden min-h-[500px]">
                      {isGenerating ? (
-                        <div className="text-center z-10">
+                        <div className="text-center z-10 p-6">
                             <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-black mx-auto mb-6"></div>
                             <h3 className="font-serif text-2xl animate-pulse text-slate-800">Tapizando digitalmente...</h3>
-                            <p className="text-xs text-gray-500 mt-2 uppercase tracking-widest">Analizando luces y sombras</p>
+                            <p className="text-[10px] text-gray-500 mt-3 uppercase tracking-widest font-bold">Analizando luces y sombras</p>
                         </div>
                      ) : errorMessage ? (
-                        <div className="text-center p-8 max-w-md">
-                            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
-                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        <div className="text-center p-10 max-w-md animate-fade-in">
+                            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 text-red-400 border border-red-100">
+                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                             </div>
-                            <h3 className="font-bold text-slate-800 mb-2">Hubo un problema</h3>
-                            <p className="text-sm text-gray-500 mb-6">{errorMessage}</p>
-                            <button onClick={() => setStep(2)} className="text-xs font-bold uppercase border-b border-black pb-1">Intentar de nuevo</button>
+                            <h3 className="font-bold text-slate-800 mb-3 text-lg">Hubo un problema</h3>
+                            <p className="text-sm text-gray-500 mb-8 leading-relaxed">{errorMessage}</p>
+                            <button onClick={() => setStep(2)} className="text-xs font-bold uppercase tracking-widest border-b-2 border-black pb-1 hover:text-black/70 transition-colors">Intentar de nuevo</button>
                         </div>
                      ) : resultImage ? (
                         <img src={resultImage} alt="Render Final" className="w-full h-full object-contain md:object-cover animate-fade-in" />
@@ -282,7 +272,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                      </div>
                 </div>
 
-                {/* RIGHT: INFO SIDEBAR (35%) */}
                 <div className="w-full md:w-[35%] bg-white border-l border-gray-100 flex flex-col items-center text-center p-8 md:p-10 z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.02)]">
                     
                     <div className="w-full border-b border-gray-100 pb-6 mb-8">
@@ -290,7 +279,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                     </div>
 
                     <div className="flex-1 w-full flex flex-col items-center justify-center space-y-12">
-                        {/* Mueble Section */}
                         <div className="w-full">
                             <p className="text-[10px] font-bold uppercase text-gray-500 tracking-[0.2em] mb-3">Modelo de Mueble</p>
                             <h2 className="font-serif text-4xl text-slate-900 leading-none mb-1">
@@ -301,9 +289,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                             </p>
                         </div>
 
-                        {/* Tela Section */}
                         <div className="w-full relative">
-                             {/* Decorative line */}
                              <div className="w-16 h-px bg-gray-300 mx-auto mb-8"></div>
                              
                              <p className="text-[10px] font-bold uppercase text-gray-500 tracking-[0.2em] mb-3">Tela Seleccionada</p>
@@ -318,7 +304,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                              </div>
                         </div>
 
-                        {/* Proveedor Section */}
                         <div className="w-full">
                             <p className="text-[10px] font-bold uppercase text-gray-500 tracking-[0.2em] mb-2">Proveedor Textil</p>
                             <p className="text-sm font-bold text-slate-900 uppercase tracking-widest">
@@ -343,11 +328,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                             Volver a Editar
                         </button>
                     </div>
-
                 </div>
             </>
           )}
-
       </div>
     </div>
   );

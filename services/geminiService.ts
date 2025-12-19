@@ -2,14 +2,13 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 
 // Inicializar cliente
-// NOTA: La API Key se inyecta vía process.env.API_KEY según la configuración de vite.config.ts
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
  * Helper para reintentar operaciones cuando el modelo está sobrecargado (503).
- * Espera exponencialmente: 2s -> 4s -> 8s
+ * Espera exponencialmente: 2s -> 4s -> 8s -> 16s -> 32s
  */
-async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
+async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 5, delay = 2500): Promise<T> {
   let lastError: any;
   
   for (let i = 0; i < retries; i++) {
@@ -18,20 +17,20 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 3, del
     } catch (error: any) {
       lastError = error;
       const status = error?.status || error?.response?.status;
-      const message = error?.message || JSON.stringify(error);
+      const message = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
       
       // Detectar error 503 o mensajes de sobrecarga
-      const isOverloaded = status === 503 || message.includes('503') || message.includes('overloaded') || message.includes('capacity');
+      const isOverloaded = status === 503 || message.includes('503') || message.includes('overloaded') || message.includes('capacity') || message.includes('UNAVAILABLE');
       
       if (isOverloaded && i < retries - 1) {
         const waitTime = delay * Math.pow(2, i);
-        console.warn(`⚠️ Modelo saturado (503). Reintentando en ${waitTime/1000}s... (Intento ${i + 1}/${retries})`);
+        console.warn(`⚠️ Motor saturado. Reintentando en ${waitTime/1000}s... (Intento ${i + 1}/${retries})`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
       }
       
       // Si no es un error de sobrecarga o se acabaron los intentos, lanzar error
-      if (!isOverloaded) throw error;
+      throw error;
     }
   }
   throw lastError;
@@ -124,9 +123,6 @@ export const visualizeUpholstery = async (
           { inlineData: { mimeType: "image/jpeg", data: fabricBase64 } },
           { text: promptText }
         ]
-      },
-      config: {
-        // No soportado responseMimeType/responseSchema para modelos de imagen nano banana
       }
     });
 
@@ -184,18 +180,15 @@ export const chatWithExpert = async (message: string, history: any[], context: s
     If the answer is not in the context, use your general knowledge but mention it's general info.
     Be concise, professional, and helpful. Always answer in Spanish.`;
 
-    // Usar generateContent para chat simple (stateless para esta función, aunque history se pasa para contexto si se implementara chat session)
-    // Para simplificar y usar grounding, usamos generateContent con systemInstruction
-    
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [
-            ...history, // Mensajes previos
+            ...history,
             { role: 'user', parts: [{ text: message }] }
         ],
         config: {
             systemInstruction: systemInstruction,
-            tools: [{ googleSearch: {} }] // Activar grounding
+            tools: [{ googleSearch: {} }]
         }
     });
 
