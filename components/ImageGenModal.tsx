@@ -12,21 +12,9 @@ const ImageGenModal: React.FC<ImageGenModalProps> = ({ onClose }) => {
   const [size, setSize] = useState('1K');
   const [loading, setLoading] = useState(false);
   const [resultImage, setResultImage] = useState<string | null>(null);
-  const [hasApiKey, setHasApiKey] = useState(false);
-
-  useEffect(() => {
-    if (window.aistudio) {
-        window.aistudio.hasSelectedApiKey().then(setHasApiKey);
-    }
-  }, []);
 
   const handleGenerate = async () => {
     if (!prompt) return;
-
-    if (!hasApiKey && window.aistudio) {
-        await window.aistudio.openSelectKey();
-        setHasApiKey(true);
-    }
 
     setLoading(true);
     setResultImage(null);
@@ -35,8 +23,7 @@ const ImageGenModal: React.FC<ImageGenModalProps> = ({ onClose }) => {
       setResultImage(img);
     } catch (e: any) {
       if (e.message === "API_KEY_RESET") {
-          setHasApiKey(false);
-          alert("Por favor, selecciona tu API Key de nuevo.");
+          alert("Error de API Key. Verifica la configuración del despliegue.");
       } else {
           alert("Error generando diseño de tela.");
       }
@@ -94,12 +81,6 @@ const ImageGenModal: React.FC<ImageGenModalProps> = ({ onClose }) => {
             >
               {loading ? 'Generando Hilos...' : 'Crear Diseño con Gemini 3'}
             </button>
-            
-            {!hasApiKey && (
-                 <p className="text-[9px] text-gray-400 text-center italic mt-4">
-                    Se te pedirá seleccionar una API Key con facturación activa.
-                 </p>
-            )}
           </div>
         </div>
 

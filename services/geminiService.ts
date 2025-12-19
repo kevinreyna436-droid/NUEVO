@@ -1,48 +1,57 @@
 
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 
-/**
- * Helper function to retry operations with exponential backoff.
- */
-async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
-  try {
-    return await operation();
-  } catch (error: any) {
-    const errorCode = error?.status || error?.code;
-    const isTransientError = errorCode === 503 || errorCode === 429 || (error.message && error.message.includes('overloaded'));
+// Inicializar cliente
+// NOTA: La API Key se inyecta vía process.env.API_KEY según la configuración de vite.config.ts
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-    if (retries > 0 && isTransientError) {
-      console.warn(`Gemini API overloaded or rate-limited (${errorCode}). Retrying in ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return retryWithBackoff(operation, retries - 1, delay * 2);
+/**
+ * Helper para reintentar operaciones cuando el modelo está sobrecargado (503).
+ * Espera exponencialmente: 2s -> 4s -> 8s
+ */
+async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
+  let lastError: any;
+  
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+      const status = error?.status || error?.response?.status;
+      const message = error?.message || JSON.stringify(error);
+      
+      // Detectar error 503 o mensajes de sobrecarga
+      const isOverloaded = status === 503 || message.includes('503') || message.includes('overloaded') || message.includes('capacity');
+      
+      if (isOverloaded && i < retries - 1) {
+        const waitTime = delay * Math.pow(2, i);
+        console.warn(`⚠️ Modelo saturado (503). Reintentando en ${waitTime/1000}s... (Intento ${i + 1}/${retries})`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      
+      // Si no es un error de sobrecarga o se acabaron los intentos, lanzar error
+      if (!isOverloaded) throw error;
     }
-    throw error;
   }
+  throw lastError;
 }
 
 /**
- * Extrae datos técnicos de la tela usando Gemini 3 Flash.
+ * Extrae datos técnicos de una tela a partir de una imagen o PDF.
  */
-export const extractFabricData = async (base64Data: string, mimeType: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-  try {
-    const prompt = `
-    Eres un experto en extracción de datos para "Creata Collection".
-    Analiza el documento (PDF) o imagen (Muestra de color).
-    Extrae: Nombre (modelo limpio), Proveedor (busca logos o encabezados), Resumen Técnico (Español), Specs (Composición, Martindale, Uso, Peso).
-    Retorna JSON.
-    `;
-
-    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+export const extractFabricData = async (base64Data: string, mimeType: string): Promise<any> => {
+  return retryWithBackoff(async () => {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: prompt }
+          { text: "Analyze this fabric swatch or technical sheet. Extract: name (string), supplier (string), technicalSummary (string), and specs object with composition, weight, martindale, usage. Return JSON." }
         ]
       },
       config: {
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -53,167 +62,149 @@ export const extractFabricData = async (base64Data: string, mimeType: string) =>
               type: Type.OBJECT,
               properties: {
                 composition: { type: Type.STRING },
+                weight: { type: Type.STRING },
                 martindale: { type: Type.STRING },
-                usage: { type: Type.STRING },
-                weight: { type: Type.STRING }
+                usage: { type: Type.STRING }
               }
             }
           }
         }
       }
-    }));
+    });
 
-    return JSON.parse(response.text || '{}');
-  } catch (error: any) {
-    console.error("Error extrayendo datos de tela:", error);
-    throw error;
-  }
+    return JSON.parse(response.text || "{}");
+  });
 };
 
 /**
- * Detecta el nombre de un color a partir de una muestra de tela.
+ * Identifica el nombre del color dominante en una muestra.
  */
-export const extractColorFromSwatch = async (base64Data: string): Promise<string | null> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-  try {
-    const prompt = "Identifica el nombre del color en esta muestra. Retorna solo el texto en español.";
-    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+export const extractColorFromSwatch = async (base64Data: string): Promise<string> => {
+  return retryWithBackoff(async () => {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
       contents: {
         parts: [
-          { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
-          { text: prompt }
+          { inlineData: { mimeType: "image/jpeg", data: base64Data } },
+          { text: "What is the single best color name for this fabric swatch? Return only the color name (e.g. 'Navy Blue', 'Mustard', 'Charcoal'). in Spanish." }
         ]
       }
-    }));
-    return response.text?.trim() || null;
-  } catch (error) {
-    return null;
-  }
+    });
+    return response.text?.trim() || "Desconocido";
+  });
 };
 
 /**
- * Genera un diseño de tela fotorrealista usando Nano Banana Pro (Gemini 3 Pro Image).
- */
-export const generateFabricDesign = async (prompt: string, aspectRatio: string = "1:1", imageSize: string = "1K"): Promise<string | null> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-    try {
-        const fullPrompt = `Textura de tela de alta calidad: ${prompt}. Fotografía textil profesional, iluminación de estudio, tejido detallado visible.`;
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview',
-            contents: {
-                parts: [{ text: fullPrompt }]
-            },
-            config: {
-                imageConfig: { 
-                    aspectRatio: aspectRatio as any, 
-                    imageSize: imageSize as any 
-                }
-            }
-        });
-
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-                return `data:image/png;base64,${part.inlineData.data}`;
-            }
-        }
-        return null;
-    } catch (error) {
-        console.error("Error generating fabric design:", error);
-        throw error;
-    }
-};
-
-/**
- * Visualización de retapizado usando Nano Banana Pro (Gemini 3 Pro Image).
- * Prioriza la física de la nueva tela sobre las arrugas originales, manteniendo la forma del mueble.
+ * Visualizador Pro: Aplica la tela al mueble (Nano Banana Pro / Gemini 3 Pro Image).
  */
 export const visualizeUpholstery = async (
-    furnitureImageBase64: string, 
-    fabricSwatchBase64: string,
-    fabricSpecs?: { composition: string; weight?: string; technicalSummary?: string }
-) => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-    
-    try {
-        const physicalContext = fabricSpecs 
-            ? `DATOS TÉCNICOS DE LA TELA A APLICAR: ${fabricSpecs.technicalSummary || ''}. Composición: ${fabricSpecs.composition}. Peso: ${fabricSpecs.weight || 'Medio'}.`
-            : "Tela de tapicería estándar.";
+    furnitureBase64: string, 
+    fabricBase64: string,
+    fabricInfo?: any
+): Promise<string | null> => {
+  return retryWithBackoff(async () => {
+    const promptText = `
+      Act as a professional photo editor. 
+      Image 1 is a piece of furniture.
+      Image 2 is a fabric texture.
+      Task: Retouch Image 1 by replacing the existing upholstery with the fabric texture from Image 2.
+      
+      Requirements:
+      - Maintain perfect perspective, folds, shadows, and lighting from the original furniture image.
+      - The fabric pattern scale should be realistic for the furniture size.
+      - If the furniture has legs or wood parts, DO NOT change them. Only change the fabric.
+      - Output a high-quality photorealistic image.
+    `;
 
-        // 🔒 PROMPT BLINDADO - CÓDIGO DE SEGURIDAD 6
-        // RESTRICCIÓN ABSOLUTA DE MODIFICACIÓN GEOMÉTRICA
-        const prompt = `
-        ACTÚA COMO UN EXPERTO EN SIMULACIÓN TEXTIL Y RETAPIZADO VIRTUAL:
-        
-        INPUTS:
-        - IMAGEN 1 (BASE): Mueble original.
-        - IMAGEN 2 (TEXTURA): Tela nueva.
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-image-preview",
+      contents: {
+        parts: [
+          { inlineData: { mimeType: "image/jpeg", data: furnitureBase64 } },
+          { inlineData: { mimeType: "image/jpeg", data: fabricBase64 } },
+          { text: promptText }
+        ]
+      },
+      config: {
+        // No soportado responseMimeType/responseSchema para modelos de imagen nano banana
+      }
+    });
 
-        TAREA: Reemplazar EXCLUSIVAMENTE EL MATERIAL del tapizado de la Imagen 1 con la Tela de la Imagen 2.
-
-        REGLAS DE GEOMETRÍA (ESTRICTAS - PRIORIDAD ABSOLUTA):
-        1. CONGELA LA POSICIÓN Y EL TAMAÑO: La imagen resultante debe superponerse perfectamente píxel por píxel con la original. NO hagas zoom, NO recortes, NO cambies el encuadre.
-        2. MANTÉN LA SILUETA EXACTA: El contorno del mueble no puede cambiar ni un milímetro. Respeta patas, brazos y estructura rígida.
-        3. PERSPECTIVA INTACTA: No rotes ni inclines el objeto.
-
-        REGLAS DE COMPORTAMIENTO TEXTIL:
-        1. ADAPTACIÓN DE SUPERFICIE: Aplica la nueva textura sobre el volumen existente.
-        2. GESTIÓN DE ARRUGAS: Si el mueble original tiene arrugas profundas (ej. cuero viejo) y la nueva tela es rígida, ALISA la superficie visualmente, pero SIN cambiar el volumen del cojín.
-        3. ILUMINACIÓN: Conserva las sombras y luces originales para mantener el realismo.
-        
-        ESTILO: Fotorrealismo de producto. Fondo idéntico al original.
-        ${physicalContext}
-        `;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview', // NANO BANANA PRO
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: 'image/jpeg', data: furnitureImageBase64 } },
-                    { inlineData: { mimeType: 'image/jpeg', data: fabricSwatchBase64 } },
-                    { text: prompt }
-                ]
-            },
-            config: {
-                imageConfig: { aspectRatio: "1:1", imageSize: "1K" }
-            }
-        });
-
-        const candidate = response.candidates?.[0];
-        if (!candidate) throw new Error("La IA no pudo procesar la imagen.");
-
-        for (const part of candidate.content.parts) {
-            if (part.inlineData) {
-                return `data:image/png;base64,${part.inlineData.data}`;
-            }
+    // Buscar la parte de imagen en la respuesta
+    for (const candidate of response.candidates || []) {
+      for (const part of candidate.content.parts) {
+        if (part.inlineData && part.inlineData.data) {
+          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
         }
-        
-        throw new Error("No se recibió el renderizado.");
-
-    } catch (error: any) {
-        if (error?.message?.includes("Requested entity was not found")) {
-            throw new Error("API_KEY_RESET");
-        }
-        throw error;
+      }
     }
+    
+    throw new Error("No image generated by the model");
+  });
 };
 
 /**
- * Chatbot con búsqueda en Google.
+ * Generador de diseños de tela (Image Gen).
  */
-export const chatWithExpert = async (message: string, history: any[], catalogContext?: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-  try {
-    const systemInstruction = `Eres el experto de 'Creata Collection'. Ayuda con dudas técnicas. ${catalogContext || ''}`;
+export const generateFabricDesign = async (prompt: string, aspectRatio: string = "1:1", size: string = "1K"): Promise<string> => {
+  return retryWithBackoff(async () => {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: [...history, { role: 'user', parts: [{ text: message }] }],
-      config: { tools: [{ googleSearch: {} }], systemInstruction }
+      model: "gemini-3-pro-image-preview",
+      contents: {
+        parts: [{ text: `Design a seamless fabric pattern: ${prompt}. High quality, detailed texture.` }]
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: aspectRatio as any, 
+          imageSize: size as any
+        }
+      }
     });
+
+    for (const candidate of response.candidates || []) {
+      for (const part of candidate.content.parts) {
+        if (part.inlineData && part.inlineData.data) {
+          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        }
+      }
+    }
+    throw new Error("No design generated");
+  });
+};
+
+/**
+ * ChatBot Experto.
+ */
+export const chatWithExpert = async (message: string, history: any[], context: string): Promise<{ text: string, sources?: any[] }> => {
+  return retryWithBackoff(async () => {
+    const systemInstruction = `You are an expert textile consultant for 'Creata Collection'. 
+    Use the following catalog data to answer questions: 
+    ${context}
+    
+    If the answer is not in the context, use your general knowledge but mention it's general info.
+    Be concise, professional, and helpful. Always answer in Spanish.`;
+
+    // Usar generateContent para chat simple (stateless para esta función, aunque history se pasa para contexto si se implementara chat session)
+    // Para simplificar y usar grounding, usamos generateContent con systemInstruction
+    
+    const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [
+            ...history, // Mensajes previos
+            { role: 'user', parts: [{ text: message }] }
+        ],
+        config: {
+            systemInstruction: systemInstruction,
+            tools: [{ googleSearch: {} }] // Activar grounding
+        }
+    });
+
+    const text = response.text || "";
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
-      title: chunk.web?.title || 'Fuente',
-      uri: chunk.web?.uri || '#'
-    })) || [];
-    return { text: response.text, sources };
-  } catch (error) { return { text: "Error de conexión.", sources: [] }; }
+        title: chunk.web?.title || "Fuente Web",
+        uri: chunk.web?.uri || "#"
+    })).filter((s: any) => s.uri !== "#") || [];
+
+    return { text, sources };
+  });
 };

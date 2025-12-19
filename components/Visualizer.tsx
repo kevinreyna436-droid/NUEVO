@@ -7,21 +7,17 @@ interface VisualizerProps {
   fabrics: Fabric[];
   templates: FurnitureTemplate[];
   initialSelection?: { model: string; color: string } | null;
+  onEditFurniture?: (template: FurnitureTemplate) => void;
 }
 
-const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSelection }) => {
+const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSelection, onEditFurniture }) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedFurniture, setSelectedFurniture] = useState<FurnitureTemplate | null>(null);
   const [selectedModelName, setSelectedModelName] = useState<string>('');
   const [selectedColorName, setSelectedColorName] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [resultImage, setResultImage] = useState<string | null>(null);
-  const [hasApiKey, setHasApiKey] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    checkApiKey();
-  }, []);
 
   // Effect to handle incoming selection from FabricDetail
   useEffect(() => {
@@ -32,20 +28,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         setStep(1);
     }
   }, [initialSelection]);
-
-  const checkApiKey = async () => {
-    if (window.aistudio) {
-        const selected = await window.aistudio.hasSelectedApiKey();
-        setHasApiKey(selected);
-    }
-  };
-
-  const handleOpenKeySelector = async () => {
-    if (window.aistudio) {
-        await window.aistudio.openSelectKey();
-        setHasApiKey(true);
-    }
-  };
 
   // Helper for consistent capitalization
   const toSentenceCase = (str: string) => {
@@ -58,6 +40,24 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
     if (input.startsWith('data:')) {
       return input.split(',')[1];
     }
+    
+    // Intento 1: Fetch directo (si CORS lo permite, ej. Firebase Storage configurado correctamente)
+    try {
+        const response = await fetch(input, { mode: 'cors' });
+        if (response.ok) {
+            const blob = await response.blob();
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+    } catch (e) {
+        // Fallback a proxy si falla
+    }
+
+    // Intento 2: Proxy
     try {
         const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(input)}`;
         const response = await fetch(proxyUrl);
@@ -71,15 +71,13 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         });
     } catch (e: any) {
         console.error("Error en conversion Base64:", e);
-        throw new Error("Error procesando imagen para la IA.");
+        throw new Error("Error procesando imagen para la IA. Verifica tu conexión.");
     }
   };
 
   const handleGenerate = async () => {
       setErrorMessage(null);
-      if (!hasApiKey && window.aistudio) {
-          await handleOpenKeySelector();
-      }
+      // Eliminada la comprobación de window.aistudio para permitir uso en móviles/web desplegada
 
       setIsGenerating(true);
       setResultImage(null);
@@ -111,8 +109,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       } catch (error: any) {
           console.error("Error visualización Pro:", error);
           if (error.message === "API_KEY_RESET") {
-              setHasApiKey(false);
-              setErrorMessage("API Key no válida. Por favor, selecciona una llave con facturación activa.");
+              setErrorMessage("Error de API Key. Contacte al administrador del sistema.");
           } else {
               setErrorMessage(error.message || "Error al conectar con Nano Banana Pro.");
           }
@@ -139,9 +136,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       <div className="text-center mb-8">
         <h2 className="font-serif text-4xl md:text-5xl font-bold text-slate-900">Visualizador Pro</h2>
         <div className="flex items-center justify-center gap-2 mt-3">
-            <span className={`w-2 h-2 rounded-full ${hasApiKey ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+            <span className="w-2 h-2 rounded-full bg-green-500"></span>
             <p className="text-[10px] uppercase tracking-widest font-bold text-gray-500">
-                {hasApiKey ? 'Motor Nano Banana Pro Activo' : 'Configura tu API Key'}
+                Motor Nano Banana Pro Activo
             </p>
         </div>
       </div>
@@ -167,11 +164,23 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                         <h3 className="font-serif text-2xl mb-8 text-center text-slate-800">1. Selecciona el mueble a retapizar</h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                             
-                            {/* SE HA ELIMINADO EL BOTÓN 'SUBIR FOTO PROPIA' POR SOLICITUD DEL USUARIO */}
-
+                            {/* Templates Grid */}
                             {templates.map((item) => (
                                 <div key={item.id} onClick={() => { setSelectedFurniture(item); setStep(2); }} className="cursor-pointer rounded-3xl border border-gray-100 hover:border-black overflow-hidden group shadow-sm hover:shadow-xl transition-all relative bg-white">
-                                    {/* CAMBIO: object-cover a object-contain y añadido padding (p-4) para que se vea TODO el mueble */}
+                                    {/* Edit Button for Furniture */}
+                                    {onEditFurniture && (
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onEditFurniture(item);
+                                            }}
+                                            className="absolute top-2 right-2 z-10 w-8 h-8 bg-white/90 rounded-full shadow-md flex items-center justify-center text-gray-400 hover:text-black hover:scale-110 transition-all opacity-0 group-hover:opacity-100"
+                                            title="Editar mueble"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                        </button>
+                                    )}
+
                                     <img 
                                       src={item.imageUrl} 
                                       className="w-full h-48 object-contain p-4 group-hover:scale-105 transition-transform duration-700" 

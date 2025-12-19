@@ -8,7 +8,8 @@ import {
   doc, 
   deleteDoc, 
   writeBatch,
-  initializeFirestore
+  initializeFirestore,
+  enableIndexedDbPersistence
 } from "firebase/firestore";
 import { 
   getStorage, 
@@ -76,9 +77,18 @@ const initAuth = async () => {
 initAuth();
 
 // Initialize Firestore
+// Se usa enableIndexedDbPersistence posteriormente para evitar errores de exportación con la API nueva
 const db = initializeFirestore(app, {
-  ignoreUndefinedProperties: true,
-  experimentalAutoDetectLongPolling: true 
+  ignoreUndefinedProperties: true
+});
+
+// Habilitar Persistencia Offline (Legacy API compatible)
+enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code == 'failed-precondition') {
+        console.warn('Persistencia falló: Multiples pestañas abiertas.');
+    } else if (err.code == 'unimplemented') {
+        console.warn('El navegador no soporta persistencia.');
+    }
 });
 
 const storage = getStorage(app);
@@ -118,7 +128,12 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
         const blob = dataURItoBlob(base64String);
         if (blob.size === 0) return base64String;
 
-        await uploadBytes(storageRef, blob);
+        // Metadatos para caché del navegador (Cache-Control)
+        const metadata = {
+          cacheControl: 'public,max-age=31536000', // 1 año de caché
+        };
+
+        await uploadBytes(storageRef, blob, metadata);
         return await getDownloadURL(storageRef);
     } catch (error: any) {
         console.warn(`Fallo al subir imagen ${path}:`, error.message);
@@ -169,6 +184,7 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   await authReadyPromise;
 
   try {
+    // getDocs usará caché primero si está disponible gracias a enableIndexedDbPersistence
     const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
     const fabrics: Fabric[] = [];
     
@@ -176,7 +192,7 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
       fabrics.push(doc.data() as Fabric);
     });
 
-    console.log(`☁️ Descargadas ${fabrics.length} telas de la nube.`);
+    console.log(`☁️ Cargadas ${fabrics.length} telas (Sincronizado/Caché).`);
     globalOfflineMode = false;
     authConfigMissing = false;
     return fabrics;
@@ -196,7 +212,7 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
     
     console.log("✅ Tela guardada:", cloudFabric.name);
 
-    // Backup local
+    // Backup local (Legacy)
     try {
         const currentLocal = localStorage.getItem("creata_fabrics_offline_backup");
         const parsed = currentLocal ? JSON.parse(currentLocal) : [];
@@ -247,7 +263,6 @@ export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTem
         });
 
         if (furniture.length === 0) {
-            // If empty, return default templates from constants
             return DEFAULT_FURNITURE;
         }
 
@@ -261,7 +276,6 @@ export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTem
 export const saveFurnitureTemplateToFirestore = async (template: FurnitureTemplate) => {
     try {
         let imageUrl = template.imageUrl;
-        // Upload image if base64
         if (imageUrl.startsWith('data:')) {
             const timestamp = Date.now();
             const cleanId = template.id.replace(/[^a-zA-Z0-9]/g, '_');
@@ -287,7 +301,6 @@ export const deleteFurnitureTemplateFromFirestore = async (id: string) => {
 };
 
 export const clearFirestoreCollection = async () => {
-    // Clears FABRICS only based on previous context, but could be extended
     const snapshot = await getDocs(collection(db, COLLECTION_NAME));
     const batch = writeBatch(db);
     snapshot.docs.forEach((doc) => {

@@ -21,19 +21,29 @@ const UploadModal: React.FC<UploadModalProps> = ({
     existingFurniture = [], onSaveFurniture, onDeleteFurniture
 }) => {
   const [activeTab, setActiveTab] = useState<'fabrics' | 'furniture'>('fabrics');
+  
+  // States for Fabrics
   const [step, setStep] = useState<'upload' | 'processing' | 'review'>('upload');
   const [files, setFiles] = useState<File[]>([]);
   const [extractedFabrics, setExtractedFabrics] = useState<Partial<Fabric>[]>([]);
   const [currentProgress, setCurrentProgress] = useState<string>('');
+  
+  // States for Furniture
+  const [furnName, setFurnName] = useState('');
+  const [furnCategory, setFurnCategory] = useState('sofa');
+  const [furnImage, setFurnImage] = useState<string | null>(null);
+  
   const [isSaving, setIsSaving] = useState(false);
 
   const folderInputRef = useRef<HTMLInputElement>(null);
   const mobileInputRef = useRef<HTMLInputElement>(null);
+  const furnitureInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
   const toSentenceCase = (str: string) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
 
+  // --- LOGIC FOR FABRICS ---
   const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -115,10 +125,46 @@ const UploadModal: React.FC<UploadModalProps> = ({
     onClose();
   };
 
+  // --- LOGIC FOR FURNITURE ---
+  const handleFurnitureImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          try {
+              // Comprimir para web (2K es suficiente para visualizador)
+              const base64 = await compressImage(e.target.files[0], 2048, 0.9);
+              setFurnImage(base64);
+          } catch (err) {
+              alert("Error procesando imagen");
+          }
+      }
+  };
+
+  const handleSaveFurnitureInternal = async () => {
+      if (!furnName || !furnImage) {
+          alert("El nombre y la imagen son obligatorios");
+          return;
+      }
+      setIsSaving(true);
+      const newFurniture: FurnitureTemplate = {
+          id: `furn-${Date.now()}`,
+          name: toSentenceCase(furnName),
+          category: furnCategory,
+          imageUrl: furnImage,
+          supplier: 'CREATA INTERNAL'
+      };
+      if (onSaveFurniture) await onSaveFurniture(newFurniture);
+      
+      // Reset form
+      setFurnName('');
+      setFurnImage(null);
+      setIsSaving(false);
+      alert("Mueble guardado exitosamente");
+  };
+
+
   // Helper to trigger inputs safely
   const triggerFolderUpload = () => {
       if (folderInputRef.current) {
-          folderInputRef.current.value = ''; // Reset to allow re-selecting same folder
+          folderInputRef.current.value = ''; 
           folderInputRef.current.click();
       }
   };
@@ -134,20 +180,14 @@ const UploadModal: React.FC<UploadModalProps> = ({
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div 
         className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside content
+        onClick={(e) => e.stopPropagation()} 
       >
-        {/* HEADER REDISEÑADO */}
+        {/* HEADER */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-gray-50/50 sticky top-0 z-10">
-            {/* IZQUIERDA: BOTÓN REGRESAR */}
             <button 
               type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onClose();
-              }}
+              onClick={(e) => { e.preventDefault(); onClose(); }}
               className="flex items-center gap-3 group p-2 -ml-2 rounded-xl hover:bg-white transition-all cursor-pointer relative z-50 select-none"
-              title="Regresar al menú"
             >
                <div className="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm group-hover:border-black transition-colors">
                    <svg className="w-4 h-4 text-gray-500 group-hover:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -157,17 +197,31 @@ const UploadModal: React.FC<UploadModalProps> = ({
                <span className="text-xs font-bold uppercase tracking-widest text-gray-500 group-hover:text-black">Regresar</span>
             </button>
 
-            {/* DERECHA: TÍTULO */}
-            <h2 className="font-serif text-xl md:text-2xl font-bold text-slate-900">Gestión de Catálogo</h2>
+            {/* TAB SWITCHER */}
+            <div className="flex bg-gray-200 p-1 rounded-full">
+                <button 
+                    onClick={() => setActiveTab('fabrics')}
+                    className={`px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'fabrics' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Telas
+                </button>
+                <button 
+                    onClick={() => setActiveTab('furniture')}
+                    className={`px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'furniture' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Muebles
+                </button>
+            </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-8">
             {isSaving ? (
                 <div className="flex flex-col items-center justify-center h-64">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
-                    <p className="font-bold">Guardando catálogo...</p>
+                    <p className="font-bold">Guardando en la nube...</p>
                 </div>
-            ) : (
+            ) : activeTab === 'fabrics' ? (
+                /* --- FABRICS UI --- */
                 <>
                     {step === 'upload' && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full items-center">
@@ -216,16 +270,87 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         </div>
                     )}
                 </>
+            ) : (
+                /* --- FURNITURE UI --- */
+                <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
+                    <div className="text-center mb-8">
+                        <h3 className="font-serif text-3xl font-bold mb-2">Nuevo Mueble</h3>
+                        <p className="text-gray-400 text-sm">Sube una foto del mueble con fondo claro preferiblemente.</p>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row gap-8 items-start">
+                        {/* Image Upload */}
+                        <div 
+                            onClick={() => furnitureInputRef.current?.click()}
+                            className="w-full md:w-1/2 aspect-square bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 hover:border-black hover:bg-gray-100 cursor-pointer flex flex-col items-center justify-center relative overflow-hidden group transition-all"
+                        >
+                            {furnImage ? (
+                                <img src={furnImage} className="w-full h-full object-contain p-4" />
+                            ) : (
+                                <>
+                                    <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                    </div>
+                                    <span className="text-xs font-bold uppercase text-gray-400">Subir Foto</span>
+                                </>
+                            )}
+                            {furnImage && (
+                                <div className="absolute inset-0 bg-black/20 hidden group-hover:flex items-center justify-center">
+                                    <span className="text-white text-xs font-bold uppercase tracking-widest border border-white px-4 py-2 rounded-full backdrop-blur-sm">Cambiar</span>
+                                </div>
+                            )}
+                        </div>
+                        <input ref={furnitureInputRef} type="file" accept="image/*" className="hidden" onChange={handleFurnitureImageChange} />
+
+                        {/* Details Form */}
+                        <div className="w-full md:w-1/2 space-y-6">
+                            <div>
+                                <label className="block text-xs font-bold uppercase text-gray-400 mb-2 tracking-widest">Nombre del Modelo</label>
+                                <input 
+                                    type="text" 
+                                    value={furnName} 
+                                    onChange={(e) => setFurnName(e.target.value)}
+                                    placeholder="Ej: Sofá Chesterfield" 
+                                    className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black font-serif text-lg" 
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold uppercase text-gray-400 mb-2 tracking-widest">Categoría</label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {['sofa', 'chair', 'armchair', 'bed'].map(cat => (
+                                        <button 
+                                            key={cat}
+                                            onClick={() => setFurnCategory(cat)}
+                                            className={`p-3 rounded-lg text-xs font-bold uppercase border transition-all ${furnCategory === cat ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}
+                                        >
+                                            {cat === 'sofa' ? 'Sofá' : cat === 'chair' ? 'Silla' : cat === 'armchair' ? 'Butaca' : 'Cama'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={handleSaveFurnitureInternal}
+                                disabled={!furnImage || !furnName}
+                                className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100"
+                            >
+                                Guardar Mueble
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
         
-        {step !== 'upload' && !isSaving && (
+        {/* FOOTER ACTIONS FOR FABRICS */}
+        {activeTab === 'fabrics' && step !== 'upload' && !isSaving && (
             <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end gap-4">
                 <button onClick={() => setStep('upload')} className="text-gray-400 uppercase text-xs font-bold tracking-widest hover:text-black">Atrás</button>
                 <button onClick={handleFinalSave} className="bg-black text-white px-8 py-3 rounded-xl font-bold uppercase text-xs tracking-widest shadow-lg hover:scale-105 transition-transform">Guardar todo en Nube</button>
             </div>
         )}
-        {step === 'upload' && files.length > 0 && (
+        {activeTab === 'fabrics' && step === 'upload' && files.length > 0 && (
             <div className="p-6 bg-gray-50 text-center border-t border-gray-100">
                 <button onClick={processFiles} className="bg-black text-white px-10 py-4 rounded-xl font-bold uppercase tracking-widest shadow-xl hover:scale-105 transition-transform">Procesar {files.length} archivos con IA</button>
             </div>

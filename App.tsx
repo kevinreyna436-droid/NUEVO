@@ -7,6 +7,7 @@ import ChatBot from './components/ChatBot';
 import PinModal from './components/PinModal';
 import ImageGenModal from './components/ImageGenModal';
 import Visualizer from './components/Visualizer';
+import EditFurnitureModal from './components/EditFurnitureModal'; // IMPORTADO
 import { IN_STOCK_DB } from './constants';
 import { Fabric, AppView, FurnitureTemplate } from './types';
 import { 
@@ -47,6 +48,9 @@ function App() {
   const [isRecentOnly, setIsRecentOnly] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
   const [isSupplierMenuOpen, setSupplierMenuOpen] = useState(false);
+
+  // Furniture Edit State
+  const [selectedFurnitureToEdit, setSelectedFurnitureToEdit] = useState<FurnitureTemplate | null>(null);
 
   // State for Visualizer Pre-selection
   const [visualizerPreSelection, setVisualizerPreSelection] = useState<{model: string, color: string} | null>(null);
@@ -183,6 +187,10 @@ function App() {
     }
   };
 
+  const handleEditFurnitureRequest = (template: FurnitureTemplate) => {
+      setSelectedFurnitureToEdit(template);
+  };
+
   // --- MEMOIZED FILTERING LOGIC ---
   
   const filteredItems = useMemo(() => {
@@ -266,7 +274,7 @@ function App() {
             <FabricCard key={`${item.fabric.id}-${item.colorName}-${idx}`} fabric={item.fabric} mode="color" specificColorName={item.colorName} onClick={() => handleFabricClick(item.fabric, item.colorName)} index={idx} />
         ));
     }
-    if (activeTab === 'visualizer') return <Visualizer fabrics={fabrics} templates={furnitureTemplates} initialSelection={visualizerPreSelection} />;
+    if (activeTab === 'visualizer') return <Visualizer fabrics={fabrics} templates={furnitureTemplates} initialSelection={visualizerPreSelection} onEditFurniture={handleEditFurnitureRequest} />;
   };
 
   return (
@@ -288,6 +296,16 @@ function App() {
           <>
             <button onClick={handleUploadClick} className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors">.</button>
             <PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="2717" />
+
+            {/* Furniture Edit Modal */}
+            {selectedFurnitureToEdit && (
+                <EditFurnitureModal 
+                    furniture={selectedFurnitureToEdit} 
+                    onClose={() => setSelectedFurnitureToEdit(null)}
+                    onSave={handleSaveFurniture}
+                    onDelete={handleDeleteFurniture}
+                />
+            )}
 
             {view === 'grid' && (
                 <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative text-center">
