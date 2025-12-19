@@ -3,8 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { Fabric, FurnitureTemplate } from '../types';
 import { visualizeUpholstery } from '../services/geminiService';
 
-// Removed conflicting declare global block for aistudio as it is already provided by the environment.
-
 interface VisualizerProps {
   fabrics: Fabric[];
   templates: FurnitureTemplate[];
@@ -33,7 +31,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
   const checkApiKey = async () => {
     try {
-      // @ts-ignore - Assuming window.aistudio is provided by the environment
+      // @ts-ignore
       const selected = await window.aistudio.hasSelectedApiKey();
       setHasKey(selected);
     } catch (e) {
@@ -42,11 +40,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   };
 
   const handleOpenKeyDialog = async () => {
-    // @ts-ignore - Assuming window.aistudio is provided by the environment
+    // @ts-ignore
     await window.aistudio.openSelectKey();
-    setHasKey(true); // Asumimos éxito tras el diálogo para evitar race conditions
-    if (errorMessage && errorMessage.includes("saturado")) {
-        setErrorMessage(null); // Limpiar error tras intentar poner llave
+    setHasKey(true);
+    if (errorMessage && (errorMessage.includes("saturado") || errorMessage.includes("cuota"))) {
+        setErrorMessage(null);
     }
   };
 
@@ -77,7 +75,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
     try {
         const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(input)}`;
         const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error("No se pudo descargar la imagen del servidor.");
+        if (!response.ok) throw new Error("No se pudo descargar la imagen.");
         const blob = await response.blob();
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -86,7 +84,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
             reader.readAsDataURL(blob);
         });
     } catch (e: any) {
-        console.error("Error en conversion Base64:", e);
         throw new Error("Error procesando imagen para la IA.");
     }
   };
@@ -107,32 +104,22 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           if (!swatchRaw) throw new Error("No se encontró la muestra de tela.");
           const swatchB64 = await ensureBase64(swatchRaw);
 
-          const result = await visualizeUpholstery(
-              furnitureB64, 
-              swatchB64,
-              fabric ? { 
-                  composition: fabric.specs.composition, 
-                  weight: fabric.specs.weight,
-                  technicalSummary: fabric.technicalSummary
-              } : undefined
-          );
-          
-          if (result) {
-              setResultImage(result);
-          }
+          const result = await visualizeUpholstery(furnitureB64, swatchB64);
+          if (result) setResultImage(result);
+
       } catch (error: any) {
           console.error("Error visualización Pro:", error);
-          
           const errorText = error?.message || JSON.stringify(error);
-          const isOverloaded = errorText.includes('503') || errorText.includes('overloaded') || errorText.includes('capacity') || errorText.includes('UNAVAILABLE');
+          
+          const isOverloaded = errorText.includes('503') || errorText.includes('overloaded') || errorText.includes('UNAVAILABLE');
+          const isQuotaLimit = errorText.includes('429') || errorText.includes('exhausted') || errorText.includes('limit');
 
-          if (isOverloaded) {
-              setErrorMessage("El motor de IA está saturado por alta demanda. Para evitar esto, puedes activar tu propio motor privado.");
-          } else if (errorText.includes("not found")) {
-              setErrorMessage("Llave de API no válida o expirada. Por favor, selecciona una llave de un proyecto con facturación activa.");
-              setHasKey(false);
+          if (isQuotaLimit) {
+              setErrorMessage("Has alcanzado el límite de cuota gratuita de Google. Espera 30 segundos o activa tu propio motor privado para uso ilimitado.");
+          } else if (isOverloaded) {
+              setErrorMessage("El motor de IA está saturado por alta demanda global. Para prioridad inmediata, activa tu propio motor privado.");
           } else {
-              setErrorMessage("No se pudo generar la vista previa. Verifica tu conexión e intenta nuevamente.");
+              setErrorMessage("No se pudo generar la vista previa. Intenta nuevamente o cambia de mueble/tela.");
           }
       } finally {
           setIsGenerating(false);
@@ -159,7 +146,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         <div className="flex items-center justify-center gap-2 mt-3">
             <span className={`w-2 h-2 rounded-full ${hasKey ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
             <p className="text-[10px] uppercase tracking-widest font-bold text-gray-500">
-                {hasKey ? 'Motor Privado Activo' : 'Motor Compartido (Sujeto a saturación)'}
+                {hasKey ? 'Motor Privado Activo (Uso Ilimitado)' : 'Motor Compartido (Sujeto a límites de cuota)'}
             </p>
         </div>
       </div>
@@ -185,17 +172,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                             {templates.map((item) => (
                                 <div key={item.id} onClick={() => { setSelectedFurniture(item); setStep(2); }} className="cursor-pointer rounded-3xl border border-gray-100 hover:border-black overflow-hidden group shadow-sm hover:shadow-xl transition-all relative bg-white">
-                                    {onEditFurniture && (
-                                        <button 
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onEditFurniture(item);
-                                            }}
-                                            className="absolute top-2 right-2 z-10 w-8 h-8 bg-white/90 rounded-full shadow-md flex items-center justify-center text-gray-400 hover:text-black hover:scale-110 transition-all opacity-0 group-hover:opacity-100"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                        </button>
-                                    )}
                                     <img 
                                       src={item.imageUrl} 
                                       className="w-full h-48 object-contain p-4 group-hover:scale-105 transition-transform duration-700" 
@@ -223,7 +199,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                         <div className="flex-1 flex flex-col justify-center space-y-8">
                             <div>
                                 <h3 className="font-serif text-3xl mb-2">2. Elige la textura</h3>
-                                <p className="text-sm text-gray-400">Selecciona una tela del catálogo para aplicar.</p>
+                                <p className="text-sm text-gray-400">Selecciona una tela para ver cómo quedaría.</p>
                             </div>
                             
                             <select value={selectedModelName} onChange={(e) => { setSelectedModelName(e.target.value); setSelectedColorName(''); }} className="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-serif text-lg text-slate-900 outline-none">
@@ -240,27 +216,20 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                                 key={idx} 
                                                 onClick={() => setSelectedColorName(color)} 
                                                 className={`group relative w-16 h-16 rounded-full cursor-pointer transition-all duration-300 ${selectedColorName === color ? 'ring-2 ring-offset-2 ring-black scale-110' : 'hover:scale-105'}`}
-                                                title={color}
                                             >
                                                 <img src={activeFabric.colorImages?.[color] || activeFabric.mainImage} className="w-full h-full rounded-full object-cover shadow-md border border-gray-100" />
-                                                {selectedColorName === color && (
-                                                    <div className="absolute inset-0 bg-black/10 rounded-full flex items-center justify-center">
-                                                        <div className="w-2 h-2 bg-white rounded-full shadow-sm"></div>
-                                                    </div>
-                                                )}
                                             </div>
                                         ))}
                                     </div>
-                                    {selectedColorName && <p className="text-sm font-medium text-slate-900">Color seleccionado: <span className="font-serif italic">{selectedColorName}</span></p>}
                                 </div>
                             ) : (
                                 <div className="h-40 flex items-center justify-center bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-gray-400 text-sm">
-                                    Selecciona un modelo arriba para ver colores
+                                    Selecciona un modelo arriba para continuar
                                 </div>
                             )}
 
                             <button disabled={!selectedColorName} onClick={handleGenerate} className="w-full bg-black text-white py-5 rounded-xl font-bold uppercase tracking-[0.2em] text-xs shadow-xl disabled:opacity-50 hover:scale-[1.02] transition-transform mt-auto">
-                                Generar Visualización
+                                Ver Resultado Pro
                             </button>
                         </div>
                     </div>
@@ -272,87 +241,66 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
             <>
                 <div className="w-full md:w-[65%] bg-[#F0F0F0] relative flex items-center justify-center overflow-hidden min-h-[500px]">
                      {isGenerating ? (
-                        <div className="text-center z-10 p-6">
+                        <div className="text-center z-10 p-6 animate-fade-in">
                             <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-black mx-auto mb-6"></div>
                             <h3 className="font-serif text-2xl animate-pulse text-slate-800">Tapizando digitalmente...</h3>
-                            <p className="text-[10px] text-gray-500 mt-3 uppercase tracking-widest font-bold">Analizando luces y sombras</p>
+                            <p className="text-[10px] text-gray-500 mt-3 uppercase tracking-widest font-bold">Respetando sombras y luces originales</p>
                         </div>
                      ) : errorMessage ? (
-                        <div className="text-center p-10 max-w-md animate-fade-in">
-                            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 text-red-400 border border-red-100">
+                        <div className="text-center p-10 max-w-md animate-fade-in bg-white/50 backdrop-blur-md rounded-3xl border border-white shadow-xl">
+                            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500 border border-red-100">
                                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                             </div>
-                            <h3 className="font-bold text-slate-800 mb-3 text-lg">Hubo un problema</h3>
-                            <p className="text-sm text-gray-500 mb-8 leading-relaxed">{errorMessage}</p>
+                            <h3 className="font-serif text-xl font-bold text-slate-900 mb-4">¡Motor Ocupado!</h3>
+                            <p className="text-sm text-gray-600 mb-8 leading-relaxed">
+                                {errorMessage}
+                            </p>
                             
                             <div className="flex flex-col gap-3">
-                                <button 
-                                    onClick={handleGenerate} 
-                                    className="bg-black text-white px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest hover:scale-105 transition-transform"
-                                >
-                                    Reintentar ahora
-                                </button>
-                                
                                 {!hasKey && (
                                     <button 
                                         onClick={handleOpenKeyDialog}
-                                        className="text-blue-600 font-bold text-xs uppercase tracking-widest border border-blue-200 px-6 py-3 rounded-full hover:bg-blue-50 transition-colors"
+                                        className="bg-blue-600 text-white px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest hover:scale-105 transition-transform shadow-lg shadow-blue-200"
                                     >
-                                        Activar Motor Privado (Recomendado)
+                                        Activar Motor Privado (Solución Final)
                                     </button>
                                 )}
                                 
-                                <button onClick={() => setStep(2)} className="text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-black transition-colors pt-2">Volver a Selección</button>
+                                <button 
+                                    onClick={handleGenerate} 
+                                    className="bg-black text-white px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-slate-800 transition-colors"
+                                >
+                                    Intentar nuevamente
+                                </button>
+                                
+                                <button onClick={() => setStep(2)} className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-black transition-colors pt-2">Volver a Selección</button>
                             </div>
-                            
-                            <p className="text-[9px] text-gray-400 mt-10">Nota: El motor Nano Banana Pro puede demorar en horas pico.</p>
                         </div>
                      ) : resultImage ? (
                         <img src={resultImage} alt="Render Final" className="w-full h-full object-contain md:object-cover animate-fade-in" />
                      ) : null}
-                     
-                     <div className="absolute bottom-6 left-6 opacity-30 pointer-events-none">
-                         <span className="font-serif text-xl font-bold tracking-tighter">CREATA</span>
-                     </div>
                 </div>
 
                 <div className="w-full md:w-[35%] bg-white border-l border-gray-100 flex flex-col items-center text-center p-8 md:p-10 z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.02)]">
-                    
                     <div className="w-full border-b border-gray-100 pb-6 mb-8">
-                        <h3 className="text-xs font-bold uppercase tracking-[0.25em] text-gray-900">Ficha de Composición</h3>
+                        <h3 className="text-xs font-bold uppercase tracking-[0.25em] text-gray-900">Resultado Generado</h3>
                     </div>
 
                     <div className="flex-1 w-full flex flex-col items-center justify-center space-y-12">
-                        <div className="w-full">
-                            <p className="text-[10px] font-bold uppercase text-gray-500 tracking-[0.2em] mb-3">Modelo de Mueble</p>
-                            <h2 className="font-serif text-4xl text-slate-900 leading-none mb-1">
-                                {toSentenceCase(selectedFurniture?.name || 'Personalizado')}
+                        <div>
+                            <p className="text-[10px] font-bold uppercase text-gray-500 tracking-[0.2em] mb-2">Mueble</p>
+                            <h2 className="font-serif text-3xl text-slate-900 leading-none">
+                                {toSentenceCase(selectedFurniture?.name || 'Mueble')}
                             </h2>
-                            <p className="text-[11px] text-gray-400 font-medium uppercase tracking-widest mt-2">
-                                {selectedFurniture?.category || 'Cliente'}
-                            </p>
                         </div>
 
                         <div className="w-full relative">
-                             <div className="w-16 h-px bg-gray-300 mx-auto mb-8"></div>
-                             
-                             <p className="text-[10px] font-bold uppercase text-gray-500 tracking-[0.2em] mb-3">Tela Seleccionada</p>
-                             <h2 className="font-serif text-4xl text-slate-900 leading-tight mb-4">
+                             <div className="w-12 h-px bg-gray-200 mx-auto mb-8"></div>
+                             <p className="text-[10px] font-bold uppercase text-gray-500 tracking-[0.2em] mb-2">Tapizado con</p>
+                             <h2 className="font-serif text-4xl text-slate-900 leading-tight mb-2">
                                 {toSentenceCase(selectedModelName)}
                              </h2>
-                             
-                             <div className="inline-block px-6 py-2 rounded-full bg-black text-white mt-1 shadow-md">
-                                <p className="text-xs font-bold uppercase tracking-[0.2em]">
-                                    {toSentenceCase(selectedColorName)}
-                                </p>
-                             </div>
-                        </div>
-
-                        <div className="w-full">
-                            <p className="text-[10px] font-bold uppercase text-gray-500 tracking-[0.2em] mb-2">Proveedor Textil</p>
-                            <p className="text-sm font-bold text-slate-900 uppercase tracking-widest">
-                                {activeFabric?.supplier || 'CREATA STOCK'}
-                            </p>
+                             <p className="text-sm font-serif italic text-gray-500">{toSentenceCase(selectedColorName)}</p>
                         </div>
                     </div>
 
@@ -360,26 +308,16 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                         <button 
                             onClick={handleDownload}
                             disabled={!resultImage}
-                            className="w-full bg-black text-white py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] shadow-lg hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100"
+                            className="w-full bg-black text-white py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] shadow-lg hover:scale-105 transition-transform disabled:opacity-50"
                         >
                             Descargar Imagen
                         </button>
-                        
                         <button 
                             onClick={() => setStep(2)}
                             className="w-full bg-white text-gray-900 border border-gray-200 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] hover:bg-gray-50 transition-colors"
                         >
-                            Volver a Editar
+                            Cambiar Textura
                         </button>
-                        
-                        {!hasKey && (
-                            <button 
-                                onClick={handleOpenKeyDialog}
-                                className="text-[9px] text-blue-500 font-bold uppercase hover:underline pt-2"
-                            >
-                                ¿Demasiado lento? Activa Motor Privado
-                            </button>
-                        )}
                     </div>
                 </div>
             </>

@@ -2,10 +2,10 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 
 /**
- * Helper para reintentar operaciones cuando el modelo está sobrecargado (503).
- * Espera exponencialmente: 2.5s -> 5s -> 10s -> 20s -> 40s
+ * Helper para reintentar operaciones cuando el modelo está sobrecargado (503) o tiene límites de cuota (429).
+ * Espera exponencialmente: 3s -> 6s -> 12s -> 24s -> 48s -> 60s
  */
-async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 5, delay = 2500): Promise<T> {
+async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 6, delay = 3000): Promise<T> {
   let lastError: any;
   
   for (let i = 0; i < retries; i++) {
@@ -16,11 +16,15 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 5, del
       const status = error?.status || error?.response?.status;
       const message = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
       
-      const isOverloaded = status === 503 || message.includes('503') || message.includes('overloaded') || message.includes('capacity') || message.includes('UNAVAILABLE');
+      // Detectar saturación (503), límites de cuota (429) o disponibilidad (UNAVAILABLE)
+      const isOverloaded = status === 503 || status === 429 || 
+                          message.includes('503') || message.includes('429') ||
+                          message.includes('overloaded') || message.includes('capacity') || 
+                          message.includes('UNAVAILABLE') || message.includes('exhausted');
       
       if (isOverloaded && i < retries - 1) {
-        const waitTime = delay * Math.pow(2, i);
-        console.warn(`⚠️ Motor saturado. Reintentando en ${waitTime/1000}s... (Intento ${i + 1}/${retries})`);
+        const waitTime = Math.min(delay * Math.pow(2, i), 60000);
+        console.warn(`⚠️ Motor limitado o saturado. Reintentando en ${waitTime/1000}s... (Intento ${i + 1}/${retries})`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
       }
@@ -98,20 +102,19 @@ export const visualizeUpholstery = async (
     fabricInfo?: any
 ): Promise<string | null> => {
   return retryWithBackoff(async () => {
-    // IMPORTANTE: Crear instancia nueva para captar la API Key del diálogo
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const promptText = `
-      Act as a professional photo editor for Creata Collection. 
-      Image 1 is a piece of furniture (sofa/chair).
-      Image 2 is a high-quality fabric texture swatch.
-      Task: Photorealistically replace the upholstery of the furniture in Image 1 using the texture from Image 2.
+      Act as a high-end photo retoucher. 
+      Input 1: A piece of furniture.
+      Input 2: A close-up fabric texture.
+      Task: Create a photorealistic visualization by wrapping the fabric from Input 2 onto the furniture in Input 1.
       
       Requirements:
-      - Preserve ALL shadows, lighting, and wrinkles from the original furniture to ensure depth.
-      - The fabric wrap must follow the curves and perspective of the furniture perfectly.
-      - Do not modify legs, wooden frames, or the background.
-      - Output the final edited furniture as an image.
+      - Preserve original shadows, highlights, and micro-folds to maintain realism.
+      - The fabric must follow the furniture's volume and perspective.
+      - Keep legs, frame, and environment untouched.
+      - Final result must look like a professional studio product catalog photo.
     `;
 
     const response = await ai.models.generateContent({
