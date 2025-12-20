@@ -321,18 +321,65 @@ function App() {
       {/* Lightbox para Vista Colores */}
       {colorLightbox && colorLightbox.isOpen && (
           <div 
-            className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 cursor-pointer" 
+            className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-4" 
             onClick={() => setColorLightbox(null)}
           >
-              <img src={colorLightbox.image} className="max-w-full max-h-full rounded-lg shadow-2xl animate-fade-in" alt={colorLightbox.colorName} />
-              
-              <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 text-white text-center pointer-events-none">
-                  <h3 className="text-2xl font-serif font-bold">{toSentenceCase(colorLightbox.colorName)}</h3>
-                  <p className="text-sm uppercase tracking-widest opacity-80">{fabrics.find(f => f.id === colorLightbox.fabricId)?.name}</p>
+              {/* Contenedor principal para centrar y contener botones */}
+              <div 
+                className="relative flex flex-col items-center justify-center max-w-5xl w-full h-full pointer-events-none" 
+              >
+                  {/* Imagen clickable para cerrar o no hacer nada, pointer-events-auto para capturar click */}
+                  <img 
+                    src={colorLightbox.image} 
+                    className="max-w-full max-h-[70vh] rounded-sm shadow-2xl animate-fade-in pointer-events-auto cursor-default" 
+                    alt={colorLightbox.colorName} 
+                    onClick={(e) => e.stopPropagation()} 
+                  />
+
+                  {/* Info Text */}
+                  <div className="mt-6 text-center text-white pointer-events-auto">
+                      <h3 className="text-3xl font-serif font-bold mb-1">{toSentenceCase(colorLightbox.colorName)}</h3>
+                      <p className="text-sm uppercase tracking-[0.2em] opacity-60 mb-6">{fabrics.find(f => f.id === colorLightbox.fabricId)?.name}</p>
+                      
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-center gap-4">
+                          <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                const fabric = fabrics.find(f => f.id === colorLightbox.fabricId);
+                                if (fabric) {
+                                    setColorLightbox(null);
+                                    handleGoToDetail(fabric);
+                                }
+                            }}
+                            className="bg-white text-black px-6 py-3 rounded-full font-bold uppercase text-[10px] tracking-widest hover:bg-gray-200 transition-colors shadow-lg flex items-center gap-2"
+                          >
+                             <span>Ver Ficha Modelo</span>
+                          </button>
+
+                          <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                const fabric = fabrics.find(f => f.id === colorLightbox.fabricId);
+                                if (fabric) {
+                                    setColorLightbox(null);
+                                    handleVisualizeAction(fabric, colorLightbox.colorName);
+                                }
+                            }}
+                            className="bg-transparent border border-white text-white px-6 py-3 rounded-full font-bold uppercase text-[10px] tracking-widest hover:bg-white/10 transition-colors shadow-lg flex items-center gap-2"
+                          >
+                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                             <span>Probar</span>
+                          </button>
+                      </div>
+                  </div>
               </div>
 
-              <button className="absolute top-6 right-6 text-white/70 hover:text-white">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              <button 
+                  onClick={() => setColorLightbox(null)}
+                  className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors cursor-pointer z-[210]"
+              >
+                  <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
           </div>
       )}

@@ -83,35 +83,6 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, onDetail, onQu
           </div>
         )}
         
-        {/* OVERLAY DE ACCIONES */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col items-center justify-center gap-4 backdrop-blur-[2px] z-40">
-            {/* Botón Ampliar (Lightbox) */}
-            <button 
-                onClick={(e) => { e.stopPropagation(); onQuickView(displayImage); }}
-                className="w-12 h-12 bg-white/20 hover:bg-white text-white hover:text-black rounded-full backdrop-blur-md flex items-center justify-center transition-all duration-300 transform translate-y-4 group-hover:translate-y-0"
-                title="Ampliar Foto"
-            >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
-            </button>
-
-            {/* Botón Ver Detalle / Colección */}
-            <button 
-                onClick={(e) => { e.stopPropagation(); onDetail(); }}
-                className="px-6 py-2 bg-white text-black text-[10px] font-bold uppercase tracking-widest rounded-full shadow-xl transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 delay-75 hover:scale-105"
-            >
-                {mode === 'model' ? 'Ver Colección' : 'Ver Ficha Modelo'}
-            </button>
-
-            {/* Botón Probar */}
-            <button 
-                onClick={(e) => { e.stopPropagation(); onVisualize(); }}
-                className="w-12 h-12 bg-[oklch(0.58_0.07_251)] hover:brightness-110 text-white rounded-full backdrop-blur-md flex items-center justify-center transition-all duration-300 transform translate-y-4 group-hover:translate-y-0 delay-100 shadow-lg"
-                title="Probar en mueble"
-            >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-            </button>
-        </div>
-        
         {/* STOCK INDICATOR - GREEN DOT */}
         {showGreenDot && (
             <div 
