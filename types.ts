@@ -31,6 +31,7 @@ export interface FurnitureTemplate {
   imageUrl: string; // URL of the "white" furniture
   category: string;
   supplier?: string;
+  catalog?: string; // New: Catalog/Collection name
 }
 
 export interface ChatMessage {

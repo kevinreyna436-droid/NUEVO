@@ -40,7 +40,7 @@ function App() {
   const [offlineStatus, setOfflineStatus] = useState(false);
   const [authMissing, setAuthMissing] = useState(false);
   
-  // App Lock State
+  // App Lock State (Entry)
   const [isAppLocked, setIsAppLocked] = useState(true);
 
   // Sorting/Filtering State
@@ -389,7 +389,7 @@ function App() {
             isOpen={true} 
             onClose={() => {}} 
             onSuccess={() => setIsAppLocked(false)} 
-            requiredPin="2717"
+            requiredPin="3942"
             isBlocking={true}
           />
       )}
@@ -397,7 +397,7 @@ function App() {
       {!isAppLocked && (
           <>
             <button onClick={handleUploadClick} className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors">.</button>
-            <PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="2717" />
+            <PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="3942" />
 
             {selectedFurnitureToEdit && (
                 <EditFurnitureModal 

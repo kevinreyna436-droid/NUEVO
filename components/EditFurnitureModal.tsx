@@ -51,7 +51,7 @@ const EditFurnitureModal: React.FC<EditFurnitureModalProps> = ({ furniture, onCl
             </button>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 overflow-y-auto max-h-[70vh] pr-2">
             {/* Image Preview */}
             <div 
                 onClick={() => fileInputRef.current?.click()}
@@ -77,27 +77,51 @@ const EditFurnitureModal: React.FC<EditFurnitureModalProps> = ({ furniture, onCl
 
             {/* Fields */}
             <div>
-                <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Nombre</label>
+                <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Nombre Modelo</label>
                 <input 
                     type="text" 
                     value={formData.name} 
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                     className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black"
+                    placeholder="Ej: Sofá Chesterfield"
                 />
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Proveedor</label>
+                    <input 
+                        type="text" 
+                        value={formData.supplier || ''} 
+                        onChange={(e) => setFormData({...formData, supplier: e.target.value.toUpperCase()})}
+                        className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black uppercase"
+                        placeholder="PROVEEDOR"
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Categoría</label>
+                    <select 
+                        value={formData.category} 
+                        onChange={(e) => setFormData({...formData, category: e.target.value})}
+                        className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black"
+                    >
+                        <option value="sofa">Sofá</option>
+                        <option value="chair">Silla</option>
+                        <option value="armchair">Butaca</option>
+                        <option value="bed">Cama</option>
+                    </select>
+                </div>
+            </div>
+
             <div>
-                <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Categoría</label>
-                <select 
-                    value={formData.category} 
-                    onChange={(e) => setFormData({...formData, category: e.target.value})}
+                <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Catálogo / Colección</label>
+                <input 
+                    type="text" 
+                    value={formData.catalog || ''} 
+                    onChange={(e) => setFormData({...formData, catalog: e.target.value})}
                     className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black"
-                >
-                    <option value="sofa">Sofá</option>
-                    <option value="chair">Silla</option>
-                    <option value="armchair">Butaca</option>
-                    <option value="bed">Cama</option>
-                </select>
+                    placeholder="Ej: Colección 2024"
+                />
             </div>
 
             <div className="flex gap-4 pt-4">

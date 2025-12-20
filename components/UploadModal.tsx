@@ -35,9 +35,17 @@ const UploadModal: React.FC<UploadModalProps> = ({
   
   const [isSaving, setIsSaving] = useState(false);
 
+  // Upload helpers
+  const [uploadTarget, setUploadTarget] = useState<{
+    fabricIndex: number;
+    type: 'main' | 'color' | 'specsImage' | 'pdfUrl';
+    colorIndex?: number;
+  } | null>(null);
+
   const folderInputRef = useRef<HTMLInputElement>(null);
   const mobileInputRef = useRef<HTMLInputElement>(null);
   const furnitureInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -108,6 +116,120 @@ const UploadModal: React.FC<UploadModalProps> = ({
     }
   };
 
+  // --- EDITING LOGIC FOR REVIEW STEP ---
+  const updateExtractedFabric = (index: number, field: keyof Fabric, value: any) => {
+    const updated = [...extractedFabrics];
+    updated[index] = { ...updated[index], [field]: value };
+    setExtractedFabrics(updated);
+  };
+
+  const updateFabricColor = (fabricIndex: number, colorIndex: number, newNameRaw: string) => {
+    const newName = toSentenceCase(newNameRaw);
+    const updated = [...extractedFabrics];
+    const fabric = { ...updated[fabricIndex] };
+    
+    if (fabric.colors && fabric.colorImages) {
+        const oldName = fabric.colors[colorIndex];
+        const newColors = [...fabric.colors];
+        newColors[colorIndex] = newName;
+        
+        const newImages = { ...fabric.colorImages };
+        // Transfer the image to the new key
+        if (newImages[oldName]) {
+            newImages[newName] = newImages[oldName];
+            delete newImages[oldName];
+        }
+        
+        fabric.colors = newColors;
+        fabric.colorImages = newImages;
+        
+        updated[fabricIndex] = fabric;
+        setExtractedFabrics(updated);
+    }
+  };
+
+  const handleEditFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && uploadTarget) {
+        const file = e.target.files[0];
+        const { fabricIndex, type, colorIndex } = uploadTarget;
+        
+        let result: string = "";
+
+        if (type === 'pdfUrl') {
+             if (file.type !== 'application/pdf') {
+                 alert("Solo se permiten archivos PDF para la ficha técnica."); return;
+             }
+             result = await fileToBase64(file);
+        } else {
+             result = await compressImage(file, 2048, 0.9);
+        }
+
+        const updated = [...extractedFabrics];
+        const fabric = { ...updated[fabricIndex] };
+
+        if (type === 'main') {
+            fabric.mainImage = result;
+        } else if (type === 'specsImage') {
+            fabric.specsImage = result;
+        } else if (type === 'pdfUrl') {
+            fabric.pdfUrl = result;
+        } else if (type === 'color' && typeof colorIndex === 'number' && fabric.colors) {
+            const colorName = fabric.colors[colorIndex];
+            fabric.colorImages = { ...fabric.colorImages, [colorName]: result };
+        }
+        
+        updated[fabricIndex] = fabric;
+        setExtractedFabrics(updated);
+        setUploadTarget(null);
+        if (editFileInputRef.current) editFileInputRef.current.value = '';
+    }
+  };
+
+  const triggerEditUpload = (fabricIndex: number, type: 'main' | 'color' | 'specsImage' | 'pdfUrl', colorIndex?: number) => {
+      setUploadTarget({ fabricIndex, type, colorIndex });
+      if (editFileInputRef.current) {
+          editFileInputRef.current.accept = type === 'pdfUrl' ? 'application/pdf' : 'image/*';
+          editFileInputRef.current.click();
+      }
+  };
+
+  const handleAddColor = (fabricIndex: number) => {
+      const updated = [...extractedFabrics];
+      const fabric = updated[fabricIndex];
+      const newColorName = "Nuevo Color";
+      
+      fabric.colors = [...(fabric.colors || []), newColorName];
+      // Init with main image if exists, or empty
+      if (fabric.mainImage) {
+          fabric.colorImages = { ...fabric.colorImages, [newColorName]: fabric.mainImage };
+      }
+      
+      updated[fabricIndex] = fabric;
+      setExtractedFabrics(updated);
+  };
+
+  const handleRemoveColor = (fabricIndex: number, colorIndex: number) => {
+      const updated = [...extractedFabrics];
+      const fabric = updated[fabricIndex];
+      if (!fabric.colors) return;
+      
+      const colorToRemove = fabric.colors[colorIndex];
+      const newColors = fabric.colors.filter((_, i) => i !== colorIndex);
+      
+      const newImages = { ...fabric.colorImages };
+      delete newImages[colorToRemove];
+      
+      fabric.colors = newColors;
+      fabric.colorImages = newImages;
+      updated[fabricIndex] = fabric;
+      setExtractedFabrics(updated);
+  };
+
+  const isDuplicate = (name: string) => {
+      if (!name) return false;
+      return existingFabrics.some(f => f.name.trim().toLowerCase() === name.trim().toLowerCase());
+  };
+
   const handleFinalSave = async () => {
     setIsSaving(true);
     const finalFabrics: Fabric[] = extractedFabrics.map(data => ({
@@ -119,7 +241,10 @@ const UploadModal: React.FC<UploadModalProps> = ({
         colors: data.colors || [],
         colorImages: data.colorImages || {},
         mainImage: data.mainImage || '',
+        specsImage: data.specsImage,
+        pdfUrl: data.pdfUrl,
         category: 'model',
+        customCatalog: data.customCatalog // Include custom catalog if edited
     }));
     if (onBulkSave) await onBulkSave(finalFabrics);
     onClose();
@@ -255,16 +380,128 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         </div>
                     )}
                     {step === 'review' && (
-                        <div className="space-y-4">
-                            <h3 className="font-serif text-xl mb-4">Revisa las telas detectadas ({extractedFabrics.length})</h3>
+                        <div className="space-y-6 animate-fade-in pb-10">
+                            <div className="flex items-center justify-between">
+                                <h3 className="font-serif text-xl font-bold">Revisa y edita las telas detectadas ({extractedFabrics.length})</h3>
+                                <p className="text-xs text-gray-400">Puedes modificar los nombres antes de guardar.</p>
+                            </div>
+                            
                             {extractedFabrics.map((f, i) => (
-                                <div key={i} className="p-4 bg-gray-50 rounded-2xl flex gap-4 items-center border border-gray-100">
-                                    <div className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 shadow-sm"><img src={f.mainImage} className="w-full h-full object-cover" /></div>
-                                    <div className="flex-1">
-                                        <p className="font-bold text-slate-800">{f.name}</p>
-                                        <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest">{f.supplier}</p>
+                                <div key={i} className="p-6 bg-white rounded-3xl border border-gray-200 shadow-sm hover:shadow-md transition-all relative">
+                                    {isDuplicate(f.name || '') && (
+                                        <div className="absolute top-4 right-4 bg-red-100 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-red-200 flex items-center gap-1 shadow-sm z-10">
+                                            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                                            Repetida
+                                        </div>
+                                    )}
+
+                                    <div className="flex flex-col md:flex-row gap-6 items-start">
+                                        {/* Image - Clickable to edit */}
+                                        <div 
+                                            onClick={() => triggerEditUpload(i, 'main')}
+                                            className="w-24 h-24 rounded-2xl overflow-hidden border border-gray-200 shrink-0 bg-gray-50 relative group cursor-pointer"
+                                            title="Cambiar foto principal"
+                                        >
+                                            <img src={f.mainImage} className="w-full h-full object-cover" alt="Fabric" />
+                                            <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center transition-opacity">
+                                                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                            </div>
+                                        </div>
+
+                                        {/* Inputs */}
+                                        <div className="flex-1 space-y-5 w-full">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Nombre Modelo</label>
+                                                    <input 
+                                                        value={f.name || ''} 
+                                                        onChange={(e) => updateExtractedFabric(i, 'name', toSentenceCase(e.target.value))}
+                                                        className={`w-full p-2.5 bg-gray-50 rounded-lg border focus:ring-1 focus:ring-black outline-none font-serif text-lg text-slate-900 placeholder-gray-300 ${isDuplicate(f.name || '') ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-black'}`}
+                                                        placeholder="Nombre del Modelo"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Proveedor</label>
+                                                    <input 
+                                                        value={f.supplier || ''} 
+                                                        onChange={(e) => updateExtractedFabric(i, 'supplier', e.target.value.toUpperCase())}
+                                                        className="w-full p-2.5 bg-gray-50 rounded-lg border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none font-sans text-sm uppercase font-bold text-slate-700 placeholder-gray-300"
+                                                        placeholder="PROVEEDOR"
+                                                    />
+                                                </div>
+                                            </div>
+                                            
+                                            <div>
+                                                <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Colección / Catálogo</label>
+                                                <input 
+                                                    value={f.customCatalog || ''} 
+                                                    onChange={(e) => updateExtractedFabric(i, 'customCatalog', e.target.value.toUpperCase())}
+                                                    className="w-full p-2.5 bg-blue-50/50 rounded-lg border border-blue-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-sans text-sm uppercase text-blue-700 font-bold placeholder-blue-200"
+                                                    placeholder="EJ: COLECCIÓN VERANO 2024"
+                                                />
+                                            </div>
+
+                                            {/* Colors expander */}
+                                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                                <div className="flex justify-between items-center mb-3">
+                                                    <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest">Colores Detectados ({f.colors?.length}) - Edita los nombres</label>
+                                                    <button onClick={() => handleAddColor(i)} className="text-[10px] font-bold uppercase text-blue-600 hover:underline">+ Agregar Color</button>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                    {f.colors?.map((color, colorIdx) => (
+                                                        <div key={colorIdx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm focus-within:ring-1 focus-within:ring-black relative group/item">
+                                                            <div 
+                                                                onClick={() => triggerEditUpload(i, 'color', colorIdx)}
+                                                                className="w-8 h-8 rounded-md overflow-hidden shrink-0 border border-gray-100 cursor-pointer relative group/img"
+                                                                title="Cambiar imagen"
+                                                            >
+                                                                <img src={f.colorImages?.[color]} className="w-full h-full object-cover" alt={color} />
+                                                                <div className="absolute inset-0 bg-black/30 hidden group-hover/img:flex items-center justify-center">
+                                                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                                </div>
+                                                            </div>
+                                                            <input 
+                                                                value={color}
+                                                                onChange={(e) => updateFabricColor(i, colorIdx, e.target.value)}
+                                                                className="w-full text-xs font-medium outline-none bg-transparent text-slate-700 min-w-0"
+                                                            />
+                                                            <button 
+                                                                onClick={() => handleRemoveColor(i, colorIdx)}
+                                                                className="text-gray-300 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-opacity px-1"
+                                                                title="Quitar"
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Technical Sheet Uploader */}
+                                            <div className="border-t border-gray-100 pt-4 mt-2">
+                                                <label className="block text-[10px] font-bold uppercase text-gray-400 mb-3 tracking-widest">Agregar Ficha Técnica (Opcional)</label>
+                                                <div className="flex flex-wrap gap-4">
+                                                    <button 
+                                                        onClick={() => triggerEditUpload(i, 'specsImage')}
+                                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${f.specsImage ? 'bg-green-50 border-green-200 text-green-700' : 'bg-white border-gray-200 text-gray-500 hover:border-black hover:text-black'}`}
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                        {f.specsImage ? 'Imagen Cargada' : 'Subir Imagen'}
+                                                    </button>
+                                                    
+                                                    <button 
+                                                        onClick={() => triggerEditUpload(i, 'pdfUrl')}
+                                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${f.pdfUrl ? 'bg-green-50 border-green-200 text-green-700' : 'bg-white border-gray-200 text-gray-500 hover:border-black hover:text-black'}`}
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                                        {f.pdfUrl ? 'PDF Cargado' : 'Subir PDF'}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                        </div>
                                     </div>
-                                    <div className="text-[10px] bg-white px-2 py-1 rounded-full border border-gray-200">{f.colors?.length} colores</div>
                                 </div>
                             ))}
                         </div>
@@ -356,6 +593,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
             </div>
         )}
       </div>
+
+      <input ref={editFileInputRef} type="file" className="hidden" onChange={handleEditFileChange} />
     </div>
   );
 };
