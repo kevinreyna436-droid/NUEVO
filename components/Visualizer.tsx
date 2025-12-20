@@ -221,7 +221,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         )}
       </div>
 
-      <div className="bg-[rgb(233,212,255)] text-slate-900 rounded-[2rem] shadow-2xl overflow-hidden min-h-[600px] border border-white/40 flex flex-col md:flex-row transition-colors duration-500 relative">
+      <div className="bg-[rgb(241,245,249)] text-slate-900 rounded-[2rem] shadow-2xl overflow-hidden min-h-[600px] border border-white/40 flex flex-col md:flex-row transition-colors duration-500 relative">
           
           {step < 3 && (
             <div className="w-full p-8 md:p-12">
@@ -408,7 +408,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                 </div>
 
                 {/* Info Panel */}
-                <div className="w-full md:w-[35%] bg-[rgb(233,212,255)] flex flex-col items-center text-center p-8 md:p-10 z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transition-colors duration-500 text-slate-900">
+                <div className="w-full md:w-[35%] bg-[rgb(241,245,249)] flex flex-col items-center text-center p-8 md:p-10 z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transition-colors duration-500 text-slate-900">
                     <div className="w-full border-b border-black/10 pb-6 mb-8">
                         <h3 className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">Resultado Generado</h3>
                     </div>
