@@ -165,14 +165,32 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         </div>
       )}
 
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <h2 className="font-serif text-4xl md:text-5xl font-bold text-slate-900">Visualizador Pro</h2>
-        <div className="flex items-center justify-center gap-2 mt-3">
+        <div className="flex items-center justify-center gap-2 mt-3 mb-8">
             <span className={`w-2 h-2 rounded-full ${hasKey ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
             <p className="text-[10px] uppercase tracking-widest font-bold text-gray-500">
                 {hasKey ? 'Motor Privado Activo (Uso Ilimitado)' : 'Motor Compartido (Sujeto a límites de cuota)'}
             </p>
         </div>
+        
+        {/* REEMPLAZO DE PASOS 1-2-3 POR PREVIEW DE TELA (SOLO EN PASO 2) */}
+        {step === 2 && selectedModelName && selectedSwatchUrl && (
+             <div className="flex flex-col items-center justify-center mb-8 animate-fade-in">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Tela Seleccionada</p>
+                <div 
+                  className="w-24 h-24 rounded-full border-4 border-white shadow-xl cursor-pointer hover:scale-110 transition-transform overflow-hidden relative group"
+                  onClick={() => { setPreviewImage(selectedSwatchUrl); setShowOriginalTexture(true); }}
+                  title="Clic para ver foto original"
+                >
+                   <img src={selectedSwatchUrl} className="w-full h-full object-cover" alt="Selected" />
+                   <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                      <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
+                   </div>
+                </div>
+                <p className="mt-2 font-serif text-lg font-bold text-slate-800">{activeFabric?.name} <span className="text-gray-400">|</span> {toSentenceCase(selectedColorName || 'Modelo Base')}</p>
+             </div>
+        )}
       </div>
 
       <div className="bg-[oklch(0.67_0.00_68)] text-white rounded-[2rem] shadow-2xl overflow-hidden min-h-[600px] border border-gray-100/10 flex flex-col md:flex-row transition-colors duration-500">
@@ -206,11 +224,13 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                             <div className="aspect-square w-full bg-white rounded-3xl overflow-hidden border border-gray-100 mb-6 p-6 relative shadow-inner">
                                 <img src={selectedFurniture?.imageUrl} className="w-full h-full object-contain drop-shadow-lg" />
                             </div>
+                            
+                            {/* BOTÓN "CAMBIAR MUEBLE" MÁS GRANDE */}
                             <button 
                                 onClick={() => setStep(1)} 
-                                className="text-sm font-bold uppercase tracking-widest text-white/70 hover:text-white border-b border-transparent hover:border-white transition-all pb-1 flex items-center gap-2"
+                                className="w-full py-4 px-6 bg-white/20 hover:bg-white/30 rounded-full text-sm font-bold uppercase tracking-widest text-white transition-all flex items-center justify-center gap-3 backdrop-blur-md shadow-lg hover:shadow-xl"
                             >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                                 Cambiar Mueble
                             </button>
                         </div>
@@ -248,33 +268,36 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                         )}
                                     </div>
                                     
-                                    {/* Variants Grid - No Scrollbar, Wrapped, Larger Items */}
-                                    <div className="flex flex-wrap gap-6 py-2">
+                                    {/* Variants Grid - AUMENTADA 30% Y SIN SCROLLBAR */}
+                                    <div className="flex flex-wrap gap-6 py-4 justify-start">
                                         {activeFabric?.colors.map((color, idx) => {
                                             const imgUrl = activeFabric.colorImages?.[color] || activeFabric.mainImage;
                                             const isSelected = selectedColorName === color;
                                             
                                             return (
-                                                <div key={idx} className="flex flex-col items-center gap-2 group">
+                                                <div key={idx} className="flex flex-col items-center gap-2 group mb-4">
                                                     <div 
                                                         onClick={() => setSelectedColorName(color)} 
-                                                        className={`relative w-20 h-20 md:w-24 md:h-24 rounded-full cursor-pointer transition-all duration-300 shadow-lg ${isSelected ? 'ring-4 ring-offset-2 ring-offset-transparent ring-white scale-110 z-10' : 'hover:scale-105 hover:ring-2 hover:ring-white/50'}`}
+                                                        className={`relative w-28 h-28 md:w-32 md:h-32 rounded-[2rem] cursor-pointer transition-all duration-300 shadow-lg overflow-hidden ${isSelected ? 'ring-4 ring-offset-2 ring-offset-transparent ring-white scale-105 z-10' : 'hover:scale-105 hover:ring-2 hover:ring-white/50'}`}
                                                     >
-                                                        <img src={imgUrl} className="w-full h-full rounded-full object-cover border border-white/10" alt={color} />
+                                                        <img src={imgUrl} className="w-full h-full object-cover" alt={color} />
+                                                        
+                                                        {/* Gradient Overlay for Name visibility */}
+                                                        <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/60 to-transparent"></div>
                                                         
                                                         {/* Hover / Select Actions */}
-                                                        <div className={`absolute inset-0 rounded-full flex items-center justify-center transition-opacity duration-300 ${isSelected ? 'bg-black/20' : 'bg-black/0 group-hover:bg-black/20'}`}>
+                                                        <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isSelected ? 'bg-black/20' : 'bg-black/0 group-hover:bg-black/20'}`}>
                                                             {/* View Original Icon */}
                                                             <button 
                                                                 onClick={(e) => handleViewOriginal(imgUrl, e)}
                                                                 className={`p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white hover:text-black transition-all transform ${isSelected ? 'scale-100 opacity-100' : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100'}`}
                                                                 title="Ver textura original"
                                                             >
-                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
+                                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    <span className={`text-[10px] font-bold uppercase tracking-wider text-white transition-opacity ${isSelected ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'}`}>
+                                                    <span className={`text-xs font-bold uppercase tracking-wider text-white transition-opacity ${isSelected ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'}`}>
                                                         {toSentenceCase(color)}
                                                     </span>
                                                 </div>
@@ -288,6 +311,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 </div>
                             )}
 
+                            {/* BOTÓN VER RESULTADO PRO - COLOR AZUL ESPECÍFICO */}
                             <button 
                                 disabled={!selectedColorName} 
                                 onClick={handleGenerate} 
@@ -303,11 +327,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
           {step === 3 && (
             <>
-                {/* Result Area - Keep Background Light for contrast with render? Or match theme? 
-                    Screenshot 2 shows light background for Step 2, but text implies card bg change. 
-                    Let's keep result area standard but the container is now grey.
-                    We need to make sure the result area stands out.
-                */}
+                {/* Result Area */}
                 <div className="w-full md:w-[65%] bg-[#F0F0F0] relative flex items-center justify-center overflow-hidden min-h-[500px]">
                      {isGenerating ? (
                         <div className="text-center z-10 p-6 animate-fade-in">
@@ -350,11 +370,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                      ) : null}
                 </div>
 
-                {/* Info Panel - Keeping the same BG as main card for consistency or slightly darker? 
-                    The request said "coloca el color ... de fondo" for the button, not this panel.
-                    This panel already had a custom color in previous version.
-                    Let's adapt it to the new theme.
-                */}
+                {/* Info Panel - Using the same grey bg to match theme consistency */}
                 <div className="w-full md:w-[35%] bg-[oklch(0.80_0.00_68)] flex flex-col items-center text-center p-8 md:p-10 z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transition-colors duration-500 text-white">
                     <div className="w-full border-b border-white/20 pb-6 mb-8">
                         <h3 className="text-xs font-bold uppercase tracking-[0.25em] text-white/80">Resultado Generado</h3>

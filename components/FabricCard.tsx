@@ -5,13 +5,16 @@ import { IN_STOCK_DB } from '../constants';
 
 interface FabricCardProps {
   fabric: Fabric;
-  onClick: () => void;
+  onClick: () => void; // Main Click (Context dependent)
+  onDetail: () => void; // Go to Detail View
+  onQuickView: (img: string) => void; // Open Lightbox
+  onVisualize: () => void; // Go to Visualizer
   mode: 'model' | 'color';
   specificColorName?: string;
   index: number;
 }
 
-const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specificColorName }) => {
+const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, onDetail, onQuickView, onVisualize, mode, specificColorName }) => {
   // Determine which image to show
   let displayImage = fabric.mainImage;
   if (mode === 'color' && specificColorName && fabric.colorImages?.[specificColorName]) {
@@ -21,7 +24,6 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
   // Safe access to colors
   const colorList = fabric.colors || [];
 
-  // Helper to force Sentence Case (First upper, rest lower) purely for display
   const toSentenceCase = (str: string) => {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -29,16 +31,12 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
 
   // --- LOGIC FOR STOCK INDICATOR (GREEN DOT) ---
   const isVerifiedStock = (): boolean => {
-      // Find matching key in DB (case-insensitive)
       const modelKey = Object.keys(IN_STOCK_DB).find(k => k.toLowerCase() === fabric.name.toLowerCase());
-      
       if (!modelKey) return false;
 
       if (mode === 'model') {
-          // If in Model View, just checking if the Model exists in the Stock DB is enough
           return true;
       } else if (mode === 'color' && specificColorName) {
-          // If in Color View, check if the specific color exists in that model's list
           const stockColors = IN_STOCK_DB[modelKey];
           return stockColors.some(c => c.toLowerCase() === specificColorName.toLowerCase());
       }
@@ -47,9 +45,19 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
 
   const showGreenDot = isVerifiedStock();
 
+  // In Color Mode: Main Click = Lightbox (User Request)
+  // In Model Mode: Main Click = Detail View
+  const handleMainClick = (e: React.MouseEvent) => {
+      if (mode === 'color') {
+          onQuickView(displayImage);
+      } else {
+          onClick();
+      }
+  };
+
   return (
     <div 
-      onClick={onClick}
+      onClick={handleMainClick}
       className="group relative w-full aspect-[3/4] md:aspect-[4/5] bg-white rounded-3xl shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden cursor-pointer flex flex-col hover:-translate-y-2 hover:scale-[0.97] transform-gpu scale-[0.95]"
     >
       {/* SECTION SUPERIOR (Imagen) - 70% height */}
@@ -74,6 +82,35 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, mode, specific
             </div>
           </div>
         )}
+        
+        {/* OVERLAY DE ACCIONES */}
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col items-center justify-center gap-4 backdrop-blur-[2px] z-40">
+            {/* Botón Ampliar (Lightbox) */}
+            <button 
+                onClick={(e) => { e.stopPropagation(); onQuickView(displayImage); }}
+                className="w-12 h-12 bg-white/20 hover:bg-white text-white hover:text-black rounded-full backdrop-blur-md flex items-center justify-center transition-all duration-300 transform translate-y-4 group-hover:translate-y-0"
+                title="Ampliar Foto"
+            >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
+            </button>
+
+            {/* Botón Ver Detalle / Colección */}
+            <button 
+                onClick={(e) => { e.stopPropagation(); onDetail(); }}
+                className="px-6 py-2 bg-white text-black text-[10px] font-bold uppercase tracking-widest rounded-full shadow-xl transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 delay-75 hover:scale-105"
+            >
+                {mode === 'model' ? 'Ver Colección' : 'Ver Ficha Modelo'}
+            </button>
+
+            {/* Botón Probar */}
+            <button 
+                onClick={(e) => { e.stopPropagation(); onVisualize(); }}
+                className="w-12 h-12 bg-[oklch(0.58_0.07_251)] hover:brightness-110 text-white rounded-full backdrop-blur-md flex items-center justify-center transition-all duration-300 transform translate-y-4 group-hover:translate-y-0 delay-100 shadow-lg"
+                title="Probar en mueble"
+            >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+            </button>
+        </div>
         
         {/* STOCK INDICATOR - GREEN DOT */}
         {showGreenDot && (

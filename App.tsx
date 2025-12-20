@@ -7,7 +7,7 @@ import ChatBot from './components/ChatBot';
 import PinModal from './components/PinModal';
 import ImageGenModal from './components/ImageGenModal';
 import Visualizer from './components/Visualizer';
-import EditFurnitureModal from './components/EditFurnitureModal'; // IMPORTADO
+import EditFurnitureModal from './components/EditFurnitureModal';
 import { IN_STOCK_DB } from './constants';
 import { Fabric, AppView, FurnitureTemplate } from './types';
 import { 
@@ -55,7 +55,7 @@ function App() {
   // State for Visualizer Pre-selection
   const [visualizerPreSelection, setVisualizerPreSelection] = useState<{model: string, color: string} | null>(null);
 
-  // State for Color View Lightbox
+  // State for Color View Lightbox (Vista Colores - Ampliar)
   const [colorLightbox, setColorLightbox] = useState<{
     isOpen: boolean;
     image: string;
@@ -95,6 +95,9 @@ function App() {
   };
 
   const handleFabricClick = (fabric: Fabric, specificColor?: string) => {
+    // This is the main card click handler.
+    // In 'model' tab -> Go to detail.
+    // In 'color' tab -> Open Lightbox (Requested Behavior).
     if (activeTab === 'model') {
         setSelectedFabricId(fabric.id);
         setView('detail');
@@ -102,7 +105,7 @@ function App() {
         const img = specificColor && fabric.colorImages?.[specificColor] 
             ? fabric.colorImages[specificColor] 
             : fabric.mainImage;
-            
+        
         setColorLightbox({
             isOpen: true,
             image: img || '', 
@@ -112,8 +115,23 @@ function App() {
     }
   };
 
-  const handleVisualize = (fabric: Fabric, color: string) => {
-      setVisualizerPreSelection({ model: fabric.name, color });
+  const handleGoToDetail = (fabric: Fabric) => {
+      setSelectedFabricId(fabric.id);
+      setView('detail');
+  };
+
+  const handleQuickView = (img: string, fabric: Fabric, colorName?: string) => {
+        setColorLightbox({
+            isOpen: true,
+            image: img, 
+            fabricId: fabric.id,
+            colorName: colorName || 'Vista Rápida'
+        });
+  };
+
+  const handleVisualizeAction = (fabric: Fabric, color?: string) => {
+      const colorName = color || (fabric.colors?.[0] || '');
+      setVisualizerPreSelection({ model: fabric.name, color: colorName });
       setActiveTab('visualizer');
       setView('grid');
   };
@@ -191,12 +209,16 @@ function App() {
       setSelectedFurnitureToEdit(template);
   };
 
+  const toSentenceCase = (str: string) => {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  };
+
   // --- MEMOIZED FILTERING LOGIC ---
   
   const filteredItems = useMemo(() => {
     let items = [...fabrics];
     
-    // Filtro de Recientes (Últimos 15 días basado en el ID/Timestamp)
     if (isRecentOnly) {
         const fifteenDaysInMs = 15 * 24 * 60 * 60 * 1000;
         items = items.filter(f => {
@@ -207,7 +229,6 @@ function App() {
         });
     }
 
-    // Filtro por Proveedor o Stock Especial
     if (selectedSupplier === 'CREATA_STOCK') {
         items = items.filter(f => Object.keys(IN_STOCK_DB).some(k => k.toLowerCase() === f.name.toLowerCase()));
     } else if (selectedSupplier) {
@@ -247,11 +268,9 @@ function App() {
           });
       }
 
-      // Si Recientes está activo, ordenamos por ID de la tela (que es cronológico) descendente
       if (isRecentOnly) {
         allColorCards.sort((a, b) => b.fabric.id.localeCompare(a.fabric.id));
       } else {
-        // Orden alfabético por defecto para colores
         allColorCards.sort((a, b) => a.colorName.localeCompare(b.colorName, 'es'));
       }
       return allColorCards;
@@ -266,12 +285,31 @@ function App() {
   const renderGridContent = () => {
     if (activeTab === 'model') {
         return sortedModelCards.map((fabric, idx) => (
-            <FabricCard key={fabric.id} fabric={fabric} mode="model" onClick={() => handleFabricClick(fabric)} index={idx} />
+            <FabricCard 
+                key={fabric.id} 
+                fabric={fabric} 
+                mode="model" 
+                onClick={() => handleFabricClick(fabric)} 
+                onDetail={() => handleGoToDetail(fabric)}
+                onQuickView={(img) => handleQuickView(img, fabric)}
+                onVisualize={() => handleVisualizeAction(fabric)}
+                index={idx} 
+            />
         ));
     }
     if (activeTab === 'color') {
         return sortedColorCards.map((item, idx) => (
-            <FabricCard key={`${item.fabric.id}-${item.colorName}-${idx}`} fabric={item.fabric} mode="color" specificColorName={item.colorName} onClick={() => handleFabricClick(item.fabric, item.colorName)} index={idx} />
+            <FabricCard 
+                key={`${item.fabric.id}-${item.colorName}-${idx}`} 
+                fabric={item.fabric} 
+                mode="color" 
+                specificColorName={item.colorName} 
+                onClick={() => handleFabricClick(item.fabric, item.colorName)} 
+                onDetail={() => handleGoToDetail(item.fabric)}
+                onQuickView={(img) => handleQuickView(img, item.fabric, item.colorName)}
+                onVisualize={() => handleVisualizeAction(item.fabric, item.colorName)}
+                index={idx} 
+            />
         ));
     }
     if (activeTab === 'visualizer') return <Visualizer fabrics={fabrics} templates={furnitureTemplates} initialSelection={visualizerPreSelection} onEditFurniture={handleEditFurnitureRequest} />;
@@ -280,7 +318,25 @@ function App() {
   return (
     <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans relative">
       
-      {/* APP STARTUP LOCK */}
+      {/* Lightbox para Vista Colores */}
+      {colorLightbox && colorLightbox.isOpen && (
+          <div 
+            className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 cursor-pointer" 
+            onClick={() => setColorLightbox(null)}
+          >
+              <img src={colorLightbox.image} className="max-w-full max-h-full rounded-lg shadow-2xl animate-fade-in" alt={colorLightbox.colorName} />
+              
+              <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 text-white text-center pointer-events-none">
+                  <h3 className="text-2xl font-serif font-bold">{toSentenceCase(colorLightbox.colorName)}</h3>
+                  <p className="text-sm uppercase tracking-widest opacity-80">{fabrics.find(f => f.id === colorLightbox.fabricId)?.name}</p>
+              </div>
+
+              <button className="absolute top-6 right-6 text-white/70 hover:text-white">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+          </div>
+      )}
+
       {isAppLocked && (
           <PinModal 
             isOpen={true} 
@@ -291,13 +347,11 @@ function App() {
           />
       )}
 
-      {/* Main Content only fully interactive if unlocked, though CSS might blur it or it's just covered by modal */}
       {!isAppLocked && (
           <>
             <button onClick={handleUploadClick} className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors">.</button>
             <PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="2717" />
 
-            {/* Furniture Edit Modal */}
             {selectedFurnitureToEdit && (
                 <EditFurnitureModal 
                     furniture={selectedFurnitureToEdit} 
@@ -385,7 +439,7 @@ function App() {
                     onBack={() => setView('grid')} 
                     onEdit={handleUpdateFabric} 
                     onDelete={handleDeleteFabric} 
-                    onVisualize={handleVisualize}
+                    onVisualize={handleVisualizeAction}
                 />
                 )}
             </main>
