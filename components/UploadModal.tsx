@@ -554,17 +554,13 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
                             <div>
                                 <label className="block text-xs font-bold uppercase text-gray-400 mb-2 tracking-widest">Categoría</label>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {['sofa', 'chair', 'armchair', 'bed'].map(cat => (
-                                        <button 
-                                            key={cat}
-                                            onClick={() => setFurnCategory(cat)}
-                                            className={`p-3 rounded-lg text-xs font-bold uppercase border transition-all ${furnCategory === cat ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}
-                                        >
-                                            {cat === 'sofa' ? 'Sofá' : cat === 'chair' ? 'Silla' : cat === 'armchair' ? 'Butaca' : 'Cama'}
-                                        </button>
-                                    ))}
-                                </div>
+                                <input 
+                                    type="text" 
+                                    value={furnCategory} 
+                                    onChange={(e) => setFurnCategory(e.target.value)}
+                                    placeholder="Ej: Sofá, Butaca, Cama..." 
+                                    className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black font-serif text-lg" 
+                                />
                             </div>
 
                             <button 

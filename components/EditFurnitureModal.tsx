@@ -100,16 +100,13 @@ const EditFurnitureModal: React.FC<EditFurnitureModalProps> = ({ furniture, onCl
                 </div>
                 <div>
                     <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Categoría</label>
-                    <select 
+                    <input 
+                        type="text" 
                         value={formData.category} 
                         onChange={(e) => setFormData({...formData, category: e.target.value})}
                         className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black"
-                    >
-                        <option value="sofa">Sofá</option>
-                        <option value="chair">Silla</option>
-                        <option value="armchair">Butaca</option>
-                        <option value="bed">Cama</option>
-                    </select>
+                        placeholder="Ej: Sofá, Butaca, Cama..."
+                    />
                 </div>
             </div>
 

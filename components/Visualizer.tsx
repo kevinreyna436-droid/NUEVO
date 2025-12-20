@@ -61,13 +61,20 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   };
 
   const getCategoryLabel = (cat: string) => {
-    switch(cat?.toLowerCase()) {
-        case 'sofa': return 'Sofá';
-        case 'chair': return 'Silla';
-        case 'armchair': return 'Butaca';
-        case 'bed': return 'Cama';
-        default: return 'Mueble';
-    }
+    if (!cat) return 'Mueble';
+    // Dictionary for translation/formatting of known keys
+    const map: Record<string, string> = {
+        'sofa': 'Sofá',
+        'chair': 'Silla',
+        'armchair': 'Butaca',
+        'bed': 'Cama'
+    };
+    
+    const lower = cat.toLowerCase();
+    if (map[lower]) return map[lower];
+
+    // For custom categories, format nicely
+    return cat.charAt(0).toUpperCase() + cat.slice(1).toLowerCase();
   };
 
   const ensureBase64 = async (input: string): Promise<string> => {
