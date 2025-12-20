@@ -214,6 +214,33 @@ function App() {
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
   };
 
+  const handleExportCSV = () => {
+    // BOM for Excel compatibility with UTF-8
+    const BOM = "\uFEFF"; 
+    const headers = ['Nombre', 'Proveedor', 'Categoría', 'Colores', 'Descripción Técnica', 'ID'];
+    
+    const rows = fabrics.map(f => [
+        `"${f.name.replace(/"/g, '""')}"`,
+        `"${f.supplier.replace(/"/g, '""')}"`,
+        `"${f.category}"`,
+        `"${(f.colors || []).join('; ')}"`,
+        `"${(f.technicalSummary || '').replace(/"/g, '""')}"`,
+        `"${f.id}"`
+    ]);
+
+    const csvContent = BOM + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `catalogo_creata_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setSupplierMenuOpen(false);
+  };
+
   // --- MEMOIZED FILTERING LOGIC ---
   
   const filteredItems = useMemo(() => {
@@ -459,6 +486,12 @@ function App() {
                                             <span>{supplier}</span>
                                         </button>
                                     ))}
+
+                                    <div className="border-t border-gray-100 my-1"></div>
+                                    <button onClick={handleExportCSV} className="w-full text-left px-4 py-3 text-sm flex items-center gap-2 hover:bg-gray-50 text-blue-600 font-bold">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                        <span>Exportar Lista (CSV)</span>
+                                    </button>
                                 </div>
                             )}
                             {isSupplierMenuOpen && <div className="fixed inset-0 z-40" onClick={() => setSupplierMenuOpen(false)}></div>}
