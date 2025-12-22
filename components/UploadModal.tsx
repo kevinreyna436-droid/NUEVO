@@ -31,6 +31,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
   // States for Furniture
   const [furnName, setFurnName] = useState('');
   const [furnCategory, setFurnCategory] = useState('sofa');
+  const [furnSupplier, setFurnSupplier] = useState(''); // Added Supplier State
   const [furnImage, setFurnImage] = useState<string | null>(null);
   
   const [isSaving, setIsSaving] = useState(false);
@@ -274,12 +275,14 @@ const UploadModal: React.FC<UploadModalProps> = ({
           name: toSentenceCase(furnName),
           category: furnCategory,
           imageUrl: furnImage,
-          supplier: 'CREATA INTERNAL'
+          supplier: furnSupplier ? furnSupplier.toUpperCase() : 'CREATA INTERNAL'
       };
       if (onSaveFurniture) await onSaveFurniture(newFurniture);
       
       // Reset form
       setFurnName('');
+      setFurnCategory('sofa');
+      setFurnSupplier('');
       setFurnImage(null);
       setIsSaving(false);
       alert("Mueble guardado exitosamente");
@@ -552,15 +555,27 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                 />
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold uppercase text-gray-400 mb-2 tracking-widest">Categoría</label>
-                                <input 
-                                    type="text" 
-                                    value={furnCategory} 
-                                    onChange={(e) => setFurnCategory(e.target.value)}
-                                    placeholder="Ej: Sofá, Butaca, Cama..." 
-                                    className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black font-serif text-lg" 
-                                />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold uppercase text-gray-400 mb-2 tracking-widest">Categoría</label>
+                                    <input 
+                                        type="text" 
+                                        value={furnCategory} 
+                                        onChange={(e) => setFurnCategory(e.target.value)}
+                                        placeholder="Ej: Sofá" 
+                                        className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black font-serif text-sm" 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase text-gray-400 mb-2 tracking-widest">Proveedor</label>
+                                    <input 
+                                        type="text" 
+                                        value={furnSupplier} 
+                                        onChange={(e) => setFurnSupplier(e.target.value.toUpperCase())}
+                                        placeholder="PROVEEDOR" 
+                                        className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black font-serif text-sm uppercase" 
+                                    />
+                                </div>
                             </div>
 
                             <button 
