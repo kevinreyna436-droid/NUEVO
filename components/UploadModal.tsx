@@ -1,8 +1,8 @@
-
 import React, { useState, useRef } from 'react';
 import { extractFabricData } from '../services/geminiService';
 import { Fabric, FurnitureTemplate } from '../types';
 import { compressImage } from '../utils/imageCompression';
+import { diagnoseConnection } from '../services/firebase';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -39,6 +39,11 @@ const UploadModal: React.FC<UploadModalProps> = ({
   if (!isOpen) return null;
 
   const toSentenceCase = (str: string) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
+
+  const handleCheckConnection = async () => {
+      const status = await diagnoseConnection();
+      alert(status);
+  };
 
   /**
    * Carga individual de Fichas para IA
@@ -156,7 +161,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
     setIsSaving(true);
     setCurrentProgress("Analizando estructura de carpetas...");
 
-    const files = Array.from(fileList);
+    const files = Array.from(fileList) as any[];
     const groups: Record<string, { main?: File, pdf?: File, colors: File[] }> = {};
     let fabricsProcessed = 0;
     let newFabricsCreated = 0;
@@ -410,18 +415,28 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         )}
                     </div>
                     
-                    {/* BUTTON BORRAR TODO */}
-                    {onClearDatabase && (
-                        <div className="pt-8 mt-8 border-t border-red-100 flex flex-col items-center">
-                            <button 
-                                onClick={onClearDatabase}
-                                className="text-red-500 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 px-8 py-3 rounded-xl font-bold uppercase text-xs tracking-widest transition-all"
-                            >
-                                BORRAR TODO
-                            </button>
-                            <p className="text-[10px] text-red-300 mt-2">Esta acción eliminará todas las telas del sistema</p>
-                        </div>
-                    )}
+                    {/* BUTTONS ZONA DE GESTIÓN */}
+                    <div className="pt-8 mt-8 border-t border-gray-100 flex flex-col items-center gap-4">
+                        <button 
+                            onClick={handleCheckConnection}
+                            className="text-gray-500 hover:text-black border border-gray-300 hover:border-black px-6 py-3 rounded-xl font-bold uppercase text-xs tracking-widest transition-all flex items-center gap-2"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z" /></svg>
+                            Verificar Conexión
+                        </button>
+
+                        {onClearDatabase && (
+                            <div className="flex flex-col items-center">
+                                <button 
+                                    onClick={onClearDatabase}
+                                    className="text-red-500 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 px-8 py-3 rounded-xl font-bold uppercase text-xs tracking-widest transition-all"
+                                >
+                                    BORRAR TODO
+                                </button>
+                                <p className="text-[10px] text-red-300 mt-2">Eliminará todas las telas del sistema</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             ) : (
                 <div className="max-w-xl mx-auto space-y-6 py-10">

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import FabricCard from './components/FabricCard';
 import FabricDetail from './components/FabricDetail';
@@ -21,7 +22,8 @@ import {
   isOfflineMode,
   isAuthConfigMissing,
   retryAuth,
-  pushLocalBackupToCloud
+  pushLocalBackupToCloud,
+  diagnoseConnection
 } from './services/firebase';
 
 function App() {
@@ -199,12 +201,21 @@ function App() {
           </button>
       )}
 
-      {/* Status Bar */}
+      {/* Status Bar - Clickable for Diagnosis */}
       <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 items-start">
-        <div className={`px-4 py-2 rounded-full text-[10px] font-bold shadow-sm border border-gray-200 flex items-center gap-2 transition-all duration-500 ${offlineStatus ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white/80 backdrop-blur text-green-700'}`}>
+        <button 
+            onClick={async () => {
+                setLoading(true);
+                const status = await diagnoseConnection();
+                alert(status);
+                setLoading(false);
+            }}
+            className={`px-4 py-2 rounded-full text-[10px] font-bold shadow-sm border border-gray-200 flex items-center gap-2 transition-all duration-500 cursor-pointer hover:scale-105 ${offlineStatus ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white/80 backdrop-blur text-green-700'}`}
+            title="Clic para diagnosticar conexión"
+        >
             <div className={`w-2 h-2 rounded-full ${offlineStatus ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-            {offlineStatus ? <span>Modo Offline</span> : <span>Conectado ({fabrics.length} telas)</span>}
-        </div>
+            {offlineStatus ? <span>Modo Offline (Clic para ver error)</span> : <span>Conectado ({fabrics.length} telas)</span>}
+        </button>
       </div>
 
       {isAppLocked && <PinModal isOpen={true} onClose={() => {}} onSuccess={() => setIsAppLocked(false)} requiredPin="3942" isBlocking={true} />}
