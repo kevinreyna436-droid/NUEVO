@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import FabricCard from './components/FabricCard';
 import FabricDetail from './components/FabricDetail';
@@ -48,30 +47,35 @@ function App() {
 
   const loadData = async () => {
     setLoading(true);
+    // Verificar respaldo local (donde se guardan las fotos temporalmente)
     const localBackup = localStorage.getItem("creata_fabrics_offline_backup");
     let localCount = 0;
     if (localBackup) {
         try {
             const parsed = JSON.parse(localBackup);
             if (Array.isArray(parsed) && parsed.length > 0) {
-                localCount = parsed.length;
+                // Solo contar si tienen imagen
+                localCount = parsed.filter((f: any) => f.mainImage && f.mainImage.startsWith('data:')).length;
                 setLocalBackupCount(localCount);
             }
         } catch(e) {}
     }
+
     try {
       const dbData = await getFabricsFromFirestore();
       const furnitureData = await getFurnitureTemplatesFromFirestore();
       setFurnitureTemplates(furnitureData);
       setOfflineStatus(isOfflineMode());
+      
       if (dbData && dbData.length > 0) {
         setFabrics(dbData);
       } else {
-        if (localCount === 0) setFabrics(INITIAL_FABRICS);
-        else { setFabrics([]); setShowRescueModal(true); }
+        // Si no hay nada en la nube, cargar iniciales
+        setFabrics(INITIAL_FABRICS);
+        if (localCount > 0) setShowRescueModal(true);
       }
     } catch (e: any) {
-      if (localCount === 0) setFabrics(INITIAL_FABRICS);
+      setFabrics(INITIAL_FABRICS);
     } finally { setLoading(false); }
   };
 
@@ -104,7 +108,7 @@ function App() {
     setShowRescueModal(false);
     try {
         const count = await pushLocalBackupToCloud();
-        alert(`¡Restauración exitosa! Se han resincronizado ${count} telas con sus imágenes.`);
+        alert(`¡Restauración completada! Se han sincronizado ${count} registros con sus imágenes.`);
         loadData();
     } catch(e: any) {
         alert("Error al restaurar: " + e.message);
@@ -112,23 +116,32 @@ function App() {
     }
   };
 
+  const handleClearDatabase = async () => {
+      if (window.confirm("¡ATENCIÓN! ¿Estás seguro de que quieres BORRAR TODO el catálogo?\n\nEsta acción eliminará todas las telas y no se puede deshacer.")) {
+          setLoading(true);
+          try {
+              await clearFirestoreCollection();
+              await loadData();
+              alert("Base de datos borrada correctamente.");
+          } catch (e) {
+              console.error(e);
+              alert("Error al borrar la base de datos.");
+          } finally {
+              setLoading(false);
+          }
+      }
+  };
+
   const filteredItems = useMemo(() => {
     let items = [...fabrics];
-    if (isRecentOnly) {
-        items = items.filter(f => {
-            try { if (f.id.startsWith('stock-')) return false; const ts = parseInt(f.id.substring(0, 13)); return Date.now() - ts < 15 * 24 * 60 * 60 * 1000; } catch(e) { return false; }
-        });
-    }
-    if (selectedSupplier === 'CREATA_STOCK') {
-        items = items.filter(f => Object.keys(IN_STOCK_DB).some(k => k.toLowerCase() === f.name.toLowerCase()));
-    } else if (selectedSupplier) {
-        items = items.filter(f => f.supplier === selectedSupplier);
-    }
     if (searchQuery) {
-        items = items.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()) || (f.colors || []).some(c => c.toLowerCase().includes(searchQuery.toLowerCase())));
+        items = items.filter(f => 
+            f.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            (f.colors || []).some(c => c.toLowerCase().includes(searchQuery.toLowerCase()))
+        );
     }
     return items;
-  }, [fabrics, isRecentOnly, selectedSupplier, searchQuery]);
+  }, [fabrics, searchQuery]);
 
   const renderGridContent = () => {
     if (activeTab === 'model') {
@@ -160,35 +173,37 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans relative">
+      {/* Rescue Modal */}
       {showRescueModal && (
         <div className="fixed inset-0 z-[400] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md">
             <div className="bg-white max-w-md w-full rounded-3xl p-8 text-center shadow-2xl relative">
                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
                     <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4 4m0 0L8 8m4-4v12" /></svg>
                 </div>
-                <h2 className="text-2xl font-serif font-bold mb-2">¡Recuperar Trabajo!</h2>
-                <p className="text-gray-600 mb-6 text-sm">Detectamos {localBackupCount} telas guardadas en tu navegador. Haz clic abajo para volver a verlas con sus fotos.</p>
-                <button onClick={handleRestoreLocalData} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm shadow-xl hover:scale-105 transition-transform">Sincronizar Mis Fotos</button>
-                <button onClick={() => setShowRescueModal(false)} className="text-gray-400 text-xs font-bold uppercase mt-4">Ignorar</button>
+                <h2 className="text-2xl font-serif font-bold mb-2">Sincronizar Fotos</h2>
+                <p className="text-gray-600 mb-6 text-sm">Hemos detectado {localBackupCount} fotos en este dispositivo que no están en la nube. ¿Quieres subirlas ahora?</p>
+                <button onClick={handleRestoreLocalData} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm shadow-xl hover:scale-105 transition-transform">Subir Fotos a la Nube</button>
+                <button onClick={() => setShowRescueModal(false)} className="text-gray-400 text-xs font-bold uppercase mt-4">Ahora no</button>
             </div>
         </div>
       )}
 
-      {/* Floating Repair Button (Persistent) */}
+      {/* Floating Action for Repair */}
       {!showRescueModal && localBackupCount > 0 && (
           <button 
               onClick={() => setShowRescueModal(true)}
-              className="fixed bottom-24 left-4 z-50 bg-blue-600 text-white px-5 py-3 rounded-full text-[10px] font-bold shadow-2xl hover:scale-110 transition-transform flex items-center gap-2 animate-bounce border border-blue-400"
+              className="fixed bottom-24 left-4 z-50 bg-blue-600 text-white px-6 py-3 rounded-full text-xs font-bold shadow-2xl hover:bg-blue-700 transition-colors flex items-center gap-2 animate-bounce border border-blue-400"
           >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-              ¡Reparar Fotos! ({localBackupCount})
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              Sincronizar Fotos ({localBackupCount})
           </button>
       )}
 
+      {/* Status Bar */}
       <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 items-start">
         <div className={`px-4 py-2 rounded-full text-[10px] font-bold shadow-sm border border-gray-200 flex items-center gap-2 transition-all duration-500 ${offlineStatus ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white/80 backdrop-blur text-green-700'}`}>
             <div className={`w-2 h-2 rounded-full ${offlineStatus ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-            {offlineStatus ? <span>Modo Offline</span> : <span>Nube Conectada ({fabrics.length} telas)</span>}
+            {offlineStatus ? <span>Modo Offline</span> : <span>Conectado ({fabrics.length} telas)</span>}
         </div>
       </div>
 
@@ -209,7 +224,7 @@ function App() {
                     </div>
                     {activeTab !== 'visualizer' && (
                     <div className="flex flex-row items-center gap-3 w-full max-w-2xl relative">
-                        <input type="text" placeholder="Buscar..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-gray-200 rounded-full py-3 px-12 text-sm focus:ring-1 focus:ring-black outline-none shadow-sm" />
+                        <input type="text" placeholder="Buscar tela o color..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-gray-200 rounded-full py-3 px-12 text-sm focus:ring-1 focus:ring-black outline-none shadow-sm" />
                     </div>
                     )}
                 </header>
@@ -239,7 +254,8 @@ function App() {
                 existingFabrics={fabrics} 
                 existingFurniture={furnitureTemplates} 
                 onSaveFurniture={(t)=>saveFurnitureTemplateToFirestore(t)} 
-                onDeleteFurniture={(id)=>deleteFurnitureTemplateFromFirestore(id)} 
+                onDeleteFurniture={(id)=>deleteFurnitureTemplateFromFirestore(id)}
+                onClearDatabase={handleClearDatabase} 
             />
             <ChatBot fabrics={fabrics} />
           </>
