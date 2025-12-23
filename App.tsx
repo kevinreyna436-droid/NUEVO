@@ -29,11 +29,28 @@ const EditFurnitureModal = lazy(() => import('./components/EditFurnitureModal'))
 // Type for Sorting
 type SortOption = 'color' | 'name' | 'model' | 'supplier';
 
-// Loading Fallback Component
-const LoadingSpinner = () => (
-  <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/20 backdrop-blur-sm">
-    <div className="bg-white p-4 rounded-full shadow-xl">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+// --- NEW LOADING SCREEN COMPONENT WITH PROGRESS BAR ---
+const LoadingScreen = ({ progress }: { progress: number }) => (
+  <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-[#f2f2f2] transition-opacity duration-500">
+    <div className="w-full max-w-md px-10 text-center">
+        <h1 className="font-serif text-4xl font-bold text-slate-900 mb-2 tracking-tight">Creata</h1>
+        <p className="text-[10px] uppercase tracking-[0.3em] text-gray-400 mb-10">Collection Manager</p>
+        
+        <div className="relative w-full h-1 bg-gray-200 rounded-full overflow-hidden mb-4">
+            <div 
+                className="absolute top-0 left-0 h-full bg-slate-900 transition-all duration-300 ease-out"
+                style={{ width: `${progress}%` }}
+            ></div>
+        </div>
+        
+        <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-gray-400">
+            <span>
+                {progress < 30 ? 'Conectando...' : 
+                 progress < 70 ? 'Cargando Telas...' : 
+                 progress < 100 ? 'Procesando...' : 'Listo'}
+            </span>
+            <span className="text-slate-900">{Math.round(progress)}%</span>
+        </div>
     </div>
   </div>
 );
@@ -47,7 +64,11 @@ function App() {
   const [isPinModalOpen, setPinModalOpen] = useState(false); 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'visualizer'>('model');
+  
+  // Loading & Progress State
   const [loading, setLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+
   const [offlineStatus, setOfflineStatus] = useState(false);
   
   // Setup Guide Modal State
@@ -84,7 +105,16 @@ function App() {
 
   const loadData = async () => {
     setLoading(true);
+    setLoadingProgress(5); // Start
     
+    // Simulate initial connection progress while async fetch starts
+    const interval = setInterval(() => {
+        setLoadingProgress(prev => {
+            if (prev >= 85) return prev; // Hold at 85% until real data arrives
+            return prev + Math.random() * 5;
+        });
+    }, 150);
+
     // 1. CHECK LOCAL BACKUP IMMEDIATELY
     const localBackup = localStorage.getItem("creata_fabrics_offline_backup");
     let localCount = 0;
@@ -106,6 +136,9 @@ function App() {
           getFurnitureTemplatesFromFirestore()
       ]);
       
+      clearInterval(interval);
+      setLoadingProgress(100);
+
       setFurnitureTemplates(furnitureData);
       setOfflineStatus(isOfflineMode());
 
@@ -116,9 +149,12 @@ function App() {
       }
     } catch (e: any) {
       console.error("Error loading data", e);
+      clearInterval(interval);
+      setLoadingProgress(100);
       if (localCount === 0) setFabrics(INITIAL_FABRICS);
     } finally {
-      setLoading(false);
+      // Small delay to let user see 100%
+      setTimeout(() => setLoading(false), 500);
     }
   };
 
@@ -198,8 +234,11 @@ function App() {
     }
   };
 
+  // NOTE: Bulk save logic moved mostly to UploadModal for better progress tracking UI.
+  // This function now just updates state and saves to cloud (called in loop by Modal).
   const handleBulkSaveFabrics = async (newFabrics: Fabric[]) => {
     try {
+      // Optimistic update for UI
       setFabrics(prev => [...newFabrics, ...prev]);
       await saveBatchFabricsToFirestore(newFabrics);
       setView('grid');
@@ -241,12 +280,22 @@ function App() {
 
   const handleRestoreLocalData = async () => {
     setLoading(true);
+    setLoadingProgress(10);
     setShowRescueModal(false);
+    
+    // Simulate progress while pushing
+    const interval = setInterval(() => {
+        setLoadingProgress(p => p < 90 ? p + 5 : p);
+    }, 200);
+
     try {
         const count = await pushLocalBackupToCloud();
+        clearInterval(interval);
+        setLoadingProgress(100);
         alert(`¡ÉXITO TOTAL! 🎉\n\nSe han recuperado ${count} telas que tenías guardadas. Se recargará la página para mostrarlas.`);
         window.location.reload();
     } catch(e: any) {
+        clearInterval(interval);
         alert("Error al restaurar: " + e.message);
         setLoading(false);
     }
@@ -463,7 +512,7 @@ function App() {
     }
     if (activeTab === 'visualizer') {
         return (
-            <Suspense fallback={<LoadingSpinner />}>
+            <Suspense fallback={<LoadingScreen progress={50} />}>
                 <Visualizer fabrics={fabrics} templates={furnitureTemplates} initialSelection={visualizerPreSelection} onEditFurniture={handleEditFurnitureRequest} />
             </Suspense>
         );
@@ -473,6 +522,9 @@ function App() {
   return (
     <div className="min-h-screen bg-[rgb(241,242,244)] text-primary font-sans relative">
       
+      {/* SHOW LOADING SCREEN IF LOADING IS TRUE */}
+      {loading && <LoadingScreen progress={loadingProgress} />}
+
       {showSetupGuide && <SetupGuide />}
       {showRescueModal && <RescueModal />}
 
@@ -564,7 +616,7 @@ function App() {
       )}
 
       {isAppLocked && (
-        <Suspense fallback={<LoadingSpinner />}>
+        <Suspense fallback={<LoadingScreen progress={50} />}>
           <PinModal 
             isOpen={true} 
             onClose={() => {}} 
@@ -583,7 +635,7 @@ function App() {
                 <PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="3942" />
             </Suspense>
 
-            <Suspense fallback={<LoadingSpinner />}>
+            <Suspense fallback={<LoadingScreen progress={50} />}>
             {selectedFurnitureToEdit && (
                 <EditFurnitureModal 
                     furniture={selectedFurnitureToEdit} 
@@ -643,9 +695,7 @@ function App() {
                 {view === 'grid' && (
                 <div className="container mx-auto px-6 pb-20 flex flex-col items-center">
                     {activeTab === 'visualizer' ? renderGridContent() : (
-                        loading ? (
-                            <div className="py-20 flex justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div></div>
-                        ) : fabrics.length === 0 ? (
+                         fabrics.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-20 opacity-50">
                                 <svg className="w-20 h-20 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                                 <h3 className="text-xl font-serif font-bold text-gray-400">Catálogo Vacío</h3>

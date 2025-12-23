@@ -35,6 +35,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const [furnImage, setFurnImage] = useState<string | null>(null);
   
   const [isSaving, setIsSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0); // 0-100%
+  const [uploadStatusText, setUploadStatusText] = useState('');
 
   // Upload helpers
   const [uploadTarget, setUploadTarget] = useState<{
@@ -233,6 +235,9 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
   const handleFinalSave = async () => {
     setIsSaving(true);
+    setUploadProgress(0);
+    
+    // Prepare all fabrics first
     const finalFabrics: Fabric[] = extractedFabrics.map(data => ({
         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
         name: toSentenceCase(data.name || 'Sin Nombre'),
@@ -245,10 +250,30 @@ const UploadModal: React.FC<UploadModalProps> = ({
         specsImage: data.specsImage,
         pdfUrl: data.pdfUrl,
         category: 'model',
-        customCatalog: data.customCatalog // Include custom catalog if edited
+        customCatalog: data.customCatalog 
     }));
-    if (onBulkSave) await onBulkSave(finalFabrics);
-    onClose();
+
+    const total = finalFabrics.length;
+    
+    // Iterate and save one by one to show true progress
+    for (let i = 0; i < total; i++) {
+        const fabric = finalFabrics[i];
+        const percent = Math.round(((i + 1) / total) * 100);
+        
+        setUploadStatusText(`Subiendo tela ${i + 1} de ${total}: ${fabric.name}`);
+        setUploadProgress(percent);
+        
+        // Wait for cloud save
+        await onSave(fabric);
+    }
+    
+    // Finish
+    setUploadStatusText('¡Carga completada!');
+    setUploadProgress(100);
+    setTimeout(() => {
+        setIsSaving(false);
+        onClose();
+    }, 1000);
   };
 
   // --- LOGIC FOR FURNITURE ---
@@ -270,6 +295,17 @@ const UploadModal: React.FC<UploadModalProps> = ({
           return;
       }
       setIsSaving(true);
+      setUploadProgress(0);
+      setUploadStatusText('Procesando imagen del mueble...');
+
+      // Simulated progress for furniture since it is a single heavy operation
+      const interval = setInterval(() => {
+          setUploadProgress(prev => {
+              if (prev >= 90) return prev;
+              return prev + 10;
+          });
+      }, 300);
+
       const newFurniture: FurnitureTemplate = {
           id: `furn-${Date.now()}`,
           name: toSentenceCase(furnName),
@@ -277,15 +313,22 @@ const UploadModal: React.FC<UploadModalProps> = ({
           imageUrl: furnImage,
           supplier: furnSupplier ? furnSupplier.toUpperCase() : 'CREATA INTERNAL'
       };
+      
       if (onSaveFurniture) await onSaveFurniture(newFurniture);
       
-      // Reset form
-      setFurnName('');
-      setFurnCategory('sofa');
-      setFurnSupplier('');
-      setFurnImage(null);
-      setIsSaving(false);
-      alert("Mueble guardado exitosamente");
+      clearInterval(interval);
+      setUploadProgress(100);
+      setUploadStatusText('¡Guardado!');
+      
+      setTimeout(() => {
+        // Reset form
+        setFurnName('');
+        setFurnCategory('sofa');
+        setFurnSupplier('');
+        setFurnImage(null);
+        setIsSaving(false);
+        alert("Mueble guardado exitosamente");
+      }, 500);
   };
 
 
@@ -345,8 +388,19 @@ const UploadModal: React.FC<UploadModalProps> = ({
         <div className="flex-1 overflow-y-auto p-8">
             {isSaving ? (
                 <div className="flex flex-col items-center justify-center h-64">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
-                    <p className="font-bold">Guardando en la nube...</p>
+                     {/* PROGRESS BAR UI */}
+                     <div className="w-full max-w-md">
+                        <div className="flex justify-between items-center mb-2">
+                             <span className="text-xs font-bold uppercase tracking-widest text-slate-900">{uploadStatusText}</span>
+                             <span className="text-xs font-bold text-slate-500">{uploadProgress}%</span>
+                        </div>
+                        <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
+                            <div 
+                                className="h-full bg-black transition-all duration-300 ease-out" 
+                                style={{ width: `${uploadProgress}%` }}
+                            ></div>
+                        </div>
+                     </div>
                 </div>
             ) : activeTab === 'fabrics' ? (
                 /* --- FABRICS UI --- */
