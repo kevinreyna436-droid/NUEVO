@@ -352,27 +352,43 @@ const UploadModal: React.FC<UploadModalProps> = ({
                 /* --- FABRICS UI --- */
                 <>
                     {step === 'upload' && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full items-center">
-                          <div onClick={triggerFolderUpload} className="h-64 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-black hover:bg-gray-50 transition-all text-center group">
-                              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-gray-400 group-hover:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg></div>
-                              <span className="font-serif text-xl font-bold">Carga Masiva (PC)</span>
-                              <p className="text-[10px] text-gray-400 mt-2 uppercase tracking-widest">Sube carpetas completas</p>
-                              
-                              <input 
-                                ref={folderInputRef} 
-                                type="file" 
-                                className="hidden" 
-                                onChange={(e) => setFiles(Array.from(e.target.files || []))}
-                                {...({ webkitdirectory: "", directory: "" } as any)}
-                              />
+                      <div className="flex flex-col gap-8 h-full">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center flex-1">
+                              <div onClick={triggerFolderUpload} className="h-64 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-black hover:bg-gray-50 transition-all text-center group">
+                                  <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-gray-400 group-hover:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg></div>
+                                  <span className="font-serif text-xl font-bold">Carga Masiva (PC)</span>
+                                  <p className="text-[10px] text-gray-400 mt-2 uppercase tracking-widest">Sube carpetas completas</p>
+                                  
+                                  <input 
+                                    ref={folderInputRef} 
+                                    type="file" 
+                                    className="hidden" 
+                                    onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                                    {...({ webkitdirectory: "", directory: "" } as any)}
+                                  />
+                              </div>
+
+                              <div onClick={triggerMobileUpload} className="h-64 border-2 border-dashed border-blue-200 bg-blue-50/20 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all text-center group">
+                                  <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
+                                  <span className="font-serif text-xl font-bold">Carga Masiva (Móvil)</span>
+                                  <p className="text-[10px] text-blue-400 mt-2 uppercase tracking-widest">Selecciona múltiples fotos</p>
+                                  <input ref={mobileInputRef} type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+                              </div>
                           </div>
 
-                          <div onClick={triggerMobileUpload} className="h-64 border-2 border-dashed border-blue-200 bg-blue-50/20 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all text-center group">
-                              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
-                              <span className="font-serif text-xl font-bold">Carga Masiva (Móvil)</span>
-                              <p className="text-[10px] text-blue-400 mt-2 uppercase tracking-widest">Selecciona múltiples fotos</p>
-                              <input ref={mobileInputRef} type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
-                          </div>
+                          {/* DANGER ZONE: DELETE ALL BUTTON */}
+                          {onReset && (
+                            <div className="mt-8 pt-6 border-t border-gray-100">
+                                <h4 className="text-[10px] font-bold uppercase text-red-400 tracking-widest mb-3">Zona de Peligro</h4>
+                                <button 
+                                    onClick={onReset}
+                                    className="w-full py-4 border border-red-100 text-red-500 bg-red-50/50 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2 group shadow-sm"
+                                >
+                                    <svg className="w-4 h-4 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    Borrar Todo el Catálogo y Restaurar
+                                </button>
+                            </div>
+                          )}
                       </div>
                     )}
                     {step === 'processing' && (

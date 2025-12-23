@@ -1,13 +1,7 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import FabricCard from './components/FabricCard';
 import FabricDetail from './components/FabricDetail';
-import UploadModal from './components/UploadModal';
-import ChatBot from './components/ChatBot';
-import PinModal from './components/PinModal';
-import ImageGenModal from './components/ImageGenModal';
-import Visualizer from './components/Visualizer';
-import EditFurnitureModal from './components/EditFurnitureModal';
 import { IN_STOCK_DB, INITIAL_FABRICS } from './constants';
 import { Fabric, AppView, FurnitureTemplate } from './types';
 import { 
@@ -21,12 +15,28 @@ import {
   deleteFurnitureTemplateFromFirestore,
   isOfflineMode,
   isAuthConfigMissing,
-  retryAuth,
   pushLocalBackupToCloud
 } from './services/firebase';
 
+// Lazy Load Heavy Components
+const UploadModal = lazy(() => import('./components/UploadModal'));
+const ChatBot = lazy(() => import('./components/ChatBot'));
+const PinModal = lazy(() => import('./components/PinModal'));
+const ImageGenModal = lazy(() => import('./components/ImageGenModal'));
+const Visualizer = lazy(() => import('./components/Visualizer'));
+const EditFurnitureModal = lazy(() => import('./components/EditFurnitureModal'));
+
 // Type for Sorting
 type SortOption = 'color' | 'name' | 'model' | 'supplier';
+
+// Loading Fallback Component
+const LoadingSpinner = () => (
+  <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/20 backdrop-blur-sm">
+    <div className="bg-white p-4 rounded-full shadow-xl">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+    </div>
+  </div>
+);
 
 function App() {
   const [view, setView] = useState<AppView>('grid');
@@ -39,7 +49,6 @@ function App() {
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'visualizer'>('model');
   const [loading, setLoading] = useState(true);
   const [offlineStatus, setOfflineStatus] = useState(false);
-  const [authMissing, setAuthMissing] = useState(false);
   
   // Setup Guide Modal State
   const [showSetupGuide, setShowSetupGuide] = useState(false);
@@ -52,11 +61,9 @@ function App() {
   const [isAppLocked, setIsAppLocked] = useState(true);
 
   // Sorting/Filtering State
-  const [sortBy, setSortBy] = useState<SortOption>('color');
   const [isRecentOnly, setIsRecentOnly] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
   const [isSupplierMenuOpen, setSupplierMenuOpen] = useState(false);
-  const [isUsingBackupList, setIsUsingBackupList] = useState(false);
 
   // Furniture Edit State
   const [selectedFurnitureToEdit, setSelectedFurnitureToEdit] = useState<FurnitureTemplate | null>(null);
@@ -72,11 +79,13 @@ function App() {
     colorName: string;
   } | null>(null);
 
+  // --- INFINITE SCROLL STATE ---
+  const [visibleItemsCount, setVisibleItemsCount] = useState(24);
+
   const loadData = async () => {
     setLoading(true);
-    setIsUsingBackupList(false);
     
-    // 1. CHECK LOCAL BACKUP IMMEDIATELY & FORCE MODAL IF DATA EXISTS
+    // 1. CHECK LOCAL BACKUP IMMEDIATELY
     const localBackup = localStorage.getItem("creata_fabrics_offline_backup");
     let localCount = 0;
     if (localBackup) {
@@ -85,41 +94,29 @@ function App() {
             if (Array.isArray(parsed) && parsed.length > 0) {
                 localCount = parsed.length;
                 setLocalBackupCount(localCount);
-                console.log("Datos locales encontrados:", localCount);
-                setShowRescueModal(true); // <--- FORZAR APERTURA INMEDIATA
+                setShowRescueModal(true); 
             }
         } catch(e) {}
     }
 
     try {
-      const dbData = await getFabricsFromFirestore();
-      const furnitureData = await getFurnitureTemplatesFromFirestore();
+      // Parallel Fetching for speed
+      const [dbData, furnitureData] = await Promise.all([
+          getFabricsFromFirestore(),
+          getFurnitureTemplatesFromFirestore()
+      ]);
       
       setFurnitureTemplates(furnitureData);
       setOfflineStatus(isOfflineMode());
-      setAuthMissing(isAuthConfigMissing());
 
       if (dbData && dbData.length > 0) {
         setFabrics(dbData);
-      } else {
-        // Si no hay datos en la nube y NO encontramos backup local, cargamos stock inicial
-        // Si encontramos backup local, dejamos la lista vacía para que el usuario la llene con el botón "Recuperar"
-        if (localCount === 0) {
-             console.warn("Base de datos vacía. Cargando stock inicial.");
-             setFabrics(INITIAL_FABRICS);
-             setIsUsingBackupList(true);
-        } else {
-             // Dejamos vacío para que el modal de rescate sea el protagonista
-             setFabrics([]);
-        }
+      } else if (localCount === 0) {
+         setFabrics(INITIAL_FABRICS);
       }
     } catch (e: any) {
-      console.error("Error loading data", e?.message || "Unknown error");
-      // En error crítico, si no hay backup local, cargamos inicial
-      if (localCount === 0) {
-          setFabrics(INITIAL_FABRICS);
-          setIsUsingBackupList(true);
-      }
+      console.error("Error loading data", e);
+      if (localCount === 0) setFabrics(INITIAL_FABRICS);
     } finally {
       setLoading(false);
     }
@@ -128,6 +125,25 @@ function App() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // --- INFINITE SCROLL HANDLER ---
+  const handleScroll = () => {
+    if (view !== 'grid' || activeTab === 'visualizer') return;
+    
+    const scrollTop = window.scrollY;
+    const windowHeight = window.innerHeight;
+    const docHeight = document.documentElement.scrollHeight;
+
+    // Load more when user is 300px from bottom
+    if (windowHeight + scrollTop >= docHeight - 300) {
+      setVisibleItemsCount(prev => prev + 12);
+    }
+  };
+
+  useEffect(() => {
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [view, activeTab]);
 
   const handleUploadClick = () => {
       setPinModalOpen(true);
@@ -177,7 +193,6 @@ function App() {
       setFabrics(prev => [newFabric, ...prev.filter(f => f.id !== newFabric.id)]);
       await saveFabricToFirestore(newFabric);
       setView('grid');
-      setIsUsingBackupList(false); 
     } catch (e) {
       console.error("Error saving fabric:", e);
     }
@@ -188,7 +203,6 @@ function App() {
       setFabrics(prev => [...newFabrics, ...prev]);
       await saveBatchFabricsToFirestore(newFabrics);
       setView('grid');
-      setIsUsingBackupList(false);
     } catch (e) {
       console.error("Error bulk saving:", e);
     }
@@ -198,7 +212,6 @@ function App() {
     try {
       setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
       await saveFabricToFirestore(updatedFabric);
-      setIsUsingBackupList(false);
     } catch (e) {
       console.error("Error updating fabric:", e);
     }
@@ -219,7 +232,6 @@ function App() {
       try {
         await clearFirestoreCollection();
         setFabrics(INITIAL_FABRICS); 
-        setIsUsingBackupList(true);
         alert("Catálogo borrado. Se ha restaurado la lista de stock por defecto.");
       } catch (e) {
         console.error("Error clearing catalog:", e);
@@ -372,6 +384,13 @@ function App() {
   }, [fabrics, isRecentOnly, selectedSupplier, searchQuery]);
 
 
+  // RESET VISIBLE ITEMS WHEN FILTERS CHANGE
+  useEffect(() => {
+      setVisibleItemsCount(24);
+      window.scrollTo(0, 0);
+  }, [selectedSupplier, isRecentOnly, searchQuery, activeTab]);
+
+
   const sortedModelCards = useMemo(() => {
       const sortedItems = [...filteredItems.filter(f => f.category !== 'wood')];
       if (isRecentOnly) {
@@ -411,7 +430,9 @@ function App() {
 
   const renderGridContent = () => {
     if (activeTab === 'model') {
-        return sortedModelCards.map((fabric, idx) => (
+        // VIRTUALIZATION LITE: Only render visible items
+        const visibleItems = sortedModelCards.slice(0, visibleItemsCount);
+        return visibleItems.map((fabric, idx) => (
             <FabricCard 
                 key={fabric.id} 
                 fabric={fabric} 
@@ -425,7 +446,8 @@ function App() {
         ));
     }
     if (activeTab === 'color') {
-        return sortedColorCards.map((item, idx) => (
+        const visibleItems = sortedColorCards.slice(0, visibleItemsCount);
+        return visibleItems.map((item, idx) => (
             <FabricCard 
                 key={`${item.fabric.id}-${item.colorName}-${idx}`} 
                 fabric={item.fabric} 
@@ -439,7 +461,13 @@ function App() {
             />
         ));
     }
-    if (activeTab === 'visualizer') return <Visualizer fabrics={fabrics} templates={furnitureTemplates} initialSelection={visualizerPreSelection} onEditFurniture={handleEditFurnitureRequest} />;
+    if (activeTab === 'visualizer') {
+        return (
+            <Suspense fallback={<LoadingSpinner />}>
+                <Visualizer fabrics={fabrics} templates={furnitureTemplates} initialSelection={visualizerPreSelection} onEditFurniture={handleEditFurnitureRequest} />
+            </Suspense>
+        );
+    }
   };
 
   return (
@@ -449,7 +477,7 @@ function App() {
       {showRescueModal && <RescueModal />}
 
       <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 items-start">
-        {/* Rescue Button - Only show if modal is closed and data exists */}
+        {/* Rescue Button */}
         {!showRescueModal && localBackupCount > 0 && (
              <button 
                 onClick={() => setShowRescueModal(true)}
@@ -536,6 +564,7 @@ function App() {
       )}
 
       {isAppLocked && (
+        <Suspense fallback={<LoadingSpinner />}>
           <PinModal 
             isOpen={true} 
             onClose={() => {}} 
@@ -543,13 +572,18 @@ function App() {
             requiredPin="3942"
             isBlocking={true}
           />
+        </Suspense>
       )}
 
       {!isAppLocked && (
           <>
             <button onClick={handleUploadClick} className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors">.</button>
-            <PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="3942" />
+            
+            <Suspense fallback={null}>
+                <PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="3942" />
+            </Suspense>
 
+            <Suspense fallback={<LoadingSpinner />}>
             {selectedFurnitureToEdit && (
                 <EditFurnitureModal 
                     furniture={selectedFurnitureToEdit} 
@@ -558,6 +592,7 @@ function App() {
                     onDelete={handleDeleteFurniture}
                 />
             )}
+            </Suspense>
 
             {view === 'grid' && (
                 <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative text-center">
@@ -634,9 +669,11 @@ function App() {
                 />
                 )}
             </main>
-
-            <UploadModal isOpen={isUploadModalOpen} onClose={() => setUploadModalOpen(false)} onSave={handleSaveFabric} onBulkSave={handleBulkSaveFabrics} onReset={handleReset} existingFabrics={fabrics} existingFurniture={furnitureTemplates} onSaveFurniture={handleSaveFurniture} onDeleteFurniture={handleDeleteFurniture} />
-            <ChatBot fabrics={fabrics} />
+            
+            <Suspense fallback={null}>
+                <UploadModal isOpen={isUploadModalOpen} onClose={() => setUploadModalOpen(false)} onSave={handleSaveFabric} onBulkSave={handleBulkSaveFabrics} onReset={handleReset} existingFabrics={fabrics} existingFurniture={furnitureTemplates} onSaveFurniture={handleSaveFurniture} onDeleteFurniture={handleDeleteFurniture} />
+                <ChatBot fabrics={fabrics} />
+            </Suspense>
           </>
       )}
     </div>

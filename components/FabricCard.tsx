@@ -16,6 +16,7 @@ interface FabricCardProps {
 
 const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, onDetail, onQuickView, onVisualize, mode, specificColorName }) => {
   const [imgError, setImgError] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // Determine which image to show
   let displayImage = fabric.mainImage;
@@ -64,14 +65,21 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, onDetail, onQu
     >
       {/* SECTION SUPERIOR (Imagen) - 70% height */}
       <div className="relative h-[70%] w-full bg-gray-100 overflow-hidden">
+        
+        {/* Skeleton Loader - Displays until image is loaded */}
+        {!isLoaded && !imgError && displayImage && (
+            <div className="absolute inset-0 bg-gray-200 animate-pulse z-10"></div>
+        )}
+
         {displayImage && !imgError ? (
           <img 
             src={displayImage} 
             alt={mode === 'model' ? fabric.name : `${fabric.name} - ${specificColorName}`} 
             loading="lazy"
             decoding="async"
+            onLoad={() => setIsLoaded(true)}
             onError={() => setImgError(true)}
-            className="w-full h-full object-cover object-center transition-transform duration-700 scale-[1.1] group-hover:scale-[1.15]"
+            className={`w-full h-full object-cover object-center transition-all duration-700 scale-[1.1] group-hover:scale-[1.15] ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gray-50 group-hover:bg-gray-100 transition-colors flex-col">
