@@ -23,7 +23,8 @@ import {
   isAuthConfigMissing,
   retryAuth,
   pushLocalBackupToCloud,
-  diagnoseConnection
+  diagnoseConnection,
+  currentProjectId
 } from './services/firebase';
 
 function App() {
@@ -214,7 +215,7 @@ function App() {
             title="Clic para diagnosticar conexión"
         >
             <div className={`w-2 h-2 rounded-full ${offlineStatus ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-            {offlineStatus ? <span>Modo Offline (Clic para ver error)</span> : <span>Conectado ({fabrics.length} telas)</span>}
+            {offlineStatus ? <span>Modo Offline (Clic para ver error)</span> : <span>Conectado: {currentProjectId} ({fabrics.length} telas)</span>}
         </button>
       </div>
 
