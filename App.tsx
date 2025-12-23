@@ -15,7 +15,8 @@ import {
   deleteFurnitureTemplateFromFirestore,
   isOfflineMode,
   isAuthConfigMissing,
-  pushLocalBackupToCloud
+  pushLocalBackupToCloud,
+  getLocalCachedData
 } from './services/firebase';
 
 // Lazy Load Heavy Components
@@ -104,57 +105,69 @@ function App() {
   const [visibleItemsCount, setVisibleItemsCount] = useState(24);
 
   const loadData = async () => {
-    setLoading(true);
-    setLoadingProgress(5); // Start
-    
-    // Simulate initial connection progress while async fetch starts
-    const interval = setInterval(() => {
-        setLoadingProgress(prev => {
-            if (prev >= 85) return prev; // Hold at 85% until real data arrives
-            return prev + Math.random() * 5;
-        });
-    }, 150);
+    // 1. INSTANT LOAD: Intentar cargar desde localStorage inmediatamente
+    // Esto evita que el usuario espere la red si ya visitó la página.
+    const cachedData = getLocalCachedData();
+    let hasCache = false;
 
-    // 1. CHECK LOCAL BACKUP IMMEDIATELY
-    const localBackup = localStorage.getItem("creata_fabrics_offline_backup");
-    let localCount = 0;
-    if (localBackup) {
-        try {
-            const parsed = JSON.parse(localBackup);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                localCount = parsed.length;
-                setLocalBackupCount(localCount);
-                setShowRescueModal(true); 
-            }
-        } catch(e) {}
+    if (cachedData.fabrics.length > 0) {
+        console.log(`⚡ Carga Instantánea: ${cachedData.fabrics.length} telas recuperadas del caché.`);
+        setFabrics(cachedData.fabrics);
+        if (cachedData.furniture.length > 0) {
+             setFurnitureTemplates(cachedData.furniture);
+        }
+        // Quitamos el loader inmediatamente si hay datos, o lo dejamos muy brevemente para efecto visual
+        setLoadingProgress(100);
+        setLoading(false);
+        hasCache = true;
+    } else {
+        // Solo si no hay caché mostramos la barra de carga lenta
+        setLoading(true);
+        setLoadingProgress(5); 
+    }
+
+    // Intervalo solo visual (si no había caché)
+    let interval: any;
+    if (!hasCache) {
+        interval = setInterval(() => {
+            setLoadingProgress(prev => {
+                if (prev >= 85) return prev; 
+                return prev + Math.random() * 5;
+            });
+        }, 150);
     }
 
     try {
-      // Parallel Fetching for speed
+      // 2. BACKGROUND SYNC: Pedir datos frescos a Firebase en segundo plano
       const [dbData, furnitureData] = await Promise.all([
           getFabricsFromFirestore(),
           getFurnitureTemplatesFromFirestore()
       ]);
       
-      clearInterval(interval);
+      if (!hasCache && interval) clearInterval(interval);
       setLoadingProgress(100);
 
       setFurnitureTemplates(furnitureData);
       setOfflineStatus(isOfflineMode());
 
       if (dbData && dbData.length > 0) {
+        // Actualizamos el estado con los datos frescos de la nube
+        // React es inteligente y solo repintará si hay cambios significativos
         setFabrics(dbData);
-      } else if (localCount === 0) {
+      } else if (!hasCache) {
+         // Si nube falla y no había caché, cargar defaults
          setFabrics(INITIAL_FABRICS);
       }
     } catch (e: any) {
-      console.error("Error loading data", e);
-      clearInterval(interval);
+      console.error("Error loading data in background", e);
+      if (!hasCache && interval) clearInterval(interval);
       setLoadingProgress(100);
-      if (localCount === 0) setFabrics(INITIAL_FABRICS);
+      if (!hasCache) setFabrics(INITIAL_FABRICS);
     } finally {
-      // Small delay to let user see 100%
-      setTimeout(() => setLoading(false), 500);
+      // Asegurarse de quitar el loading al final si aún estaba activo
+      if (!hasCache) {
+          setTimeout(() => setLoading(false), 500);
+      }
     }
   };
 

@@ -188,14 +188,24 @@ const saveToLocalBackup = (key: string, data: any) => {
     }
 };
 
+// HELPER EXPORTADO: Obtener datos locales instantáneamente
+export const getLocalCachedData = () => {
+    const localFabrics = localStorage.getItem("creata_fabrics_offline_backup");
+    const localFurniture = localStorage.getItem("creata_furniture_offline");
+    return {
+        fabrics: localFabrics ? JSON.parse(localFabrics) : [],
+        furniture: localFurniture ? JSON.parse(localFurniture) : []
+    };
+};
+
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   await authReadyPromise;
 
   // MODO OFFLINE IMPERATIVO: Si la auth falló, ni siquiera tocamos Firestore
   if (globalOfflineMode) {
       console.log("⚡ Modo Offline activado: Leyendo telas locales.");
-      const localData = localStorage.getItem("creata_fabrics_offline_backup");
-      return localData ? JSON.parse(localData) : [];
+      const { fabrics } = getLocalCachedData();
+      return fabrics;
   }
 
   try {
@@ -205,25 +215,29 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
     querySnapshot.forEach((doc) => {
       fabrics.push(doc.data() as Fabric);
     });
+    
+    // CACHE SYNC: Actualizar backup local con lo nuevo de la nube
+    if (fabrics.length > 0) {
+        saveToLocalBackup("creata_fabrics_offline_backup", fabrics);
+    }
 
     return fabrics;
   } catch (error: any) {
     console.error("❌ Error Firestore:", error.code);
     globalOfflineMode = true; // Fallback inmediato
-    const localData = localStorage.getItem("creata_fabrics_offline_backup");
-    return localData ? JSON.parse(localData) : [];
+    const { fabrics } = getLocalCachedData();
+    return fabrics;
   }
 };
 
 export const saveFabricToFirestore = async (fabric: Fabric) => {
-  // Siempre actualizamos el local storage primero
+  // Siempre actualizamos el local storage primero (Optimistic UI)
   try {
-      const currentLocal = localStorage.getItem("creata_fabrics_offline_backup");
-      const parsed = currentLocal ? JSON.parse(currentLocal) : [];
-      const index = parsed.findIndex((f: Fabric) => f.id === fabric.id);
-      if (index >= 0) parsed[index] = fabric;
-      else parsed.unshift(fabric);
-      saveToLocalBackup("creata_fabrics_offline_backup", parsed);
+      const { fabrics } = getLocalCachedData();
+      const index = fabrics.findIndex((f: Fabric) => f.id === fabric.id);
+      if (index >= 0) fabrics[index] = fabric;
+      else fabrics.unshift(fabric);
+      saveToLocalBackup("creata_fabrics_offline_backup", fabrics);
   } catch(e) {}
 
   if (globalOfflineMode) return; // Si estamos offline, terminamos aquí (ya se guardó en local)
@@ -244,12 +258,9 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
 
 export const deleteFabricFromFirestore = async (fabricId: string) => {
   // Borrar de local
-  const currentLocal = localStorage.getItem("creata_fabrics_offline_backup");
-  if (currentLocal) {
-      const parsed = JSON.parse(currentLocal);
-      const filtered = parsed.filter((f: Fabric) => f.id !== fabricId);
-      saveToLocalBackup("creata_fabrics_offline_backup", filtered);
-  }
+  const { fabrics } = getLocalCachedData();
+  const filtered = fabrics.filter((f: Fabric) => f.id !== fabricId);
+  saveToLocalBackup("creata_fabrics_offline_backup", filtered);
 
   if (globalOfflineMode) return;
 
@@ -265,8 +276,8 @@ export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTem
     
     // Mismo patrón offline para muebles
     if (globalOfflineMode) {
-         const localData = localStorage.getItem("creata_furniture_offline");
-         return localData ? JSON.parse(localData) : DEFAULT_FURNITURE;
+         const { furniture } = getLocalCachedData();
+         return furniture.length > 0 ? furniture : DEFAULT_FURNITURE;
     }
 
     try {
@@ -275,6 +286,12 @@ export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTem
         querySnapshot.forEach((doc) => {
             furniture.push(doc.data() as FurnitureTemplate);
         });
+        
+        // CACHE SYNC
+        if (furniture.length > 0) {
+            saveToLocalBackup("creata_furniture_offline", furniture);
+        }
+
         return furniture.length === 0 ? DEFAULT_FURNITURE : furniture;
     } catch (error) {
         console.error("Error fetching furniture:", error);
@@ -285,12 +302,12 @@ export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTem
 export const saveFurnitureTemplateToFirestore = async (template: FurnitureTemplate) => {
     // Guardar Local
     try {
-        const currentLocal = localStorage.getItem("creata_furniture_offline") || JSON.stringify(DEFAULT_FURNITURE);
-        const parsed = JSON.parse(currentLocal);
-        const index = parsed.findIndex((t: FurnitureTemplate) => t.id === template.id);
-        if (index >= 0) parsed[index] = template;
-        else parsed.unshift(template);
-        saveToLocalBackup("creata_furniture_offline", parsed);
+        const { furniture } = getLocalCachedData();
+        const combined = furniture.length > 0 ? furniture : DEFAULT_FURNITURE;
+        const index = combined.findIndex((t: FurnitureTemplate) => t.id === template.id);
+        if (index >= 0) combined[index] = template;
+        else combined.unshift(template);
+        saveToLocalBackup("creata_furniture_offline", combined);
     } catch(e) {}
 
     if (globalOfflineMode) return template;
@@ -313,12 +330,9 @@ export const saveFurnitureTemplateToFirestore = async (template: FurnitureTempla
 
 export const deleteFurnitureTemplateFromFirestore = async (id: string) => {
     // Borrar Local
-    const currentLocal = localStorage.getItem("creata_furniture_offline");
-    if (currentLocal) {
-        const parsed = JSON.parse(currentLocal);
-        const filtered = parsed.filter((t: FurnitureTemplate) => t.id !== id);
-        saveToLocalBackup("creata_furniture_offline", filtered);
-    }
+    const { furniture } = getLocalCachedData();
+    const filtered = furniture.filter((t: FurnitureTemplate) => t.id !== id);
+    saveToLocalBackup("creata_furniture_offline", filtered);
 
     if (globalOfflineMode) return;
 
@@ -344,29 +358,20 @@ export const clearFirestoreCollection = async () => {
 };
 
 export const pushLocalBackupToCloud = async (): Promise<number> => {
-    // Si la key sigue siendo inválida, esta función fallará, pero el usuario ya sabe que está offline.
-    // Solo intentamos si NO estamos en offline forzado (o el usuario intenta reconectar)
-    const localData = localStorage.getItem("creata_fabrics_offline_backup");
-    if (!localData) throw new Error("No hay datos locales.");
+    const { fabrics } = getLocalCachedData();
+    if (fabrics.length === 0) throw new Error("No hay datos locales.");
     
-    let parsed: Fabric[] = [];
-    try {
-        parsed = JSON.parse(localData);
-    } catch (e) {
-        throw new Error("Datos corruptos.");
-    }
-
     // Force re-auth check before pushing
     await initAuth();
     if (globalOfflineMode) {
         throw new Error("No se pudo conectar a la nube. Verifica tu API Key o conexión.");
     }
 
-    console.log(`🚀 Subiendo ${parsed.length} telas...`);
-    for (const fabric of parsed) {
+    console.log(`🚀 Subiendo ${fabrics.length} telas...`);
+    for (const fabric of fabrics) {
         await saveFabricToFirestore(fabric);
     }
-    return parsed.length;
+    return fabrics.length;
 };
 
 export const isOfflineMode = () => globalOfflineMode;
