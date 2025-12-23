@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Fabric, FurnitureTemplate } from '../types';
 import { visualizeUpholstery } from '../services/geminiService';
@@ -122,32 +123,57 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       return input.split(',')[1];
     }
     
+    // Helper to fetch blob and convert to base64
+    const fetchBlobAsBase64 = async (url: string) => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Status ${response.status}`);
+        const blob = await response.blob();
+        return new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const res = reader.result as string;
+                resolve(res.split(',')[1]);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    };
+
+    // 1. Intento Directo (Funciona para Unsplash y servidores con CORS habilitado)
     try {
-        const response = await fetch(input, { mode: 'cors' });
+        const response = await fetch(input, { credentials: 'omit', mode: 'cors' });
         if (response.ok) {
             const blob = await response.blob();
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
-                reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+                reader.onloadend = () => {
+                    const res = reader.result as string;
+                    resolve(res.split(',')[1]);
+                };
                 reader.onerror = reject;
                 reader.readAsDataURL(blob);
             });
         }
-    } catch (e) {}
+    } catch (e) {
+        console.warn("Fetch directo falló, intentando proxies...", e);
+    }
 
+    // 2. Intento con Proxy 1 (corsproxy.io)
     try {
         const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(input)}`;
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error("No se pudo descargar la imagen.");
-        const blob = await response.blob();
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    } catch (e: any) {
-        throw new Error("Error procesando imagen para la IA.");
+        return await fetchBlobAsBase64(proxyUrl);
+    } catch (e) {
+        console.warn("Proxy 1 falló, intentando Proxy 2...", e);
+    }
+
+    // 3. Intento con Proxy 2 (allorigins.win)
+    try {
+        // allorigins returns JSON by default unless 'raw' is used
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(input)}`;
+        return await fetchBlobAsBase64(proxyUrl);
+    } catch (e) {
+        console.error("All proxies failed:", e);
+        throw new Error("No se pudo descargar la imagen. Intenta usar una imagen local o subida manualmente.");
     }
   };
 
@@ -189,7 +215,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           } else if (isOverloaded) {
               setErrorMessage("El motor de IA está saturado por alta demanda global. Para prioridad inmediata, activa tu propio motor privado.");
           } else {
-              setErrorMessage("No se pudo generar la vista previa. Intenta nuevamente o cambia de mueble/tela.");
+              setErrorMessage("Error procesando imagen para la IA. Verifica tu conexión.");
           }
       } finally {
           setIsGenerating(false);
@@ -442,7 +468,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                             <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-red-600 border border-red-500/20">
                                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                             </div>
-                            <h3 className="font-serif text-xl font-bold text-slate-900 mb-4">¡Motor Ocupado!</h3>
+                            <h3 className="font-serif text-xl font-bold text-slate-900 mb-4">¡Atención!</h3>
                             <p className="text-sm text-slate-600 mb-8 leading-relaxed">
                                 {errorMessage}
                             </p>
@@ -453,7 +479,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                         onClick={handleOpenKeyDialog}
                                         className="bg-blue-600 text-white px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest hover:scale-105 transition-transform shadow-lg shadow-blue-900/50"
                                     >
-                                        Activar Motor Privado (Solución Final)
+                                        Activar Motor Privado
                                     </button>
                                 )}
                                 

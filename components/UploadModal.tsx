@@ -1,8 +1,8 @@
+
 import React, { useState, useRef } from 'react';
-import { extractFabricData } from '../services/geminiService';
+import { extractFabricData, extractColorFromSwatch } from '../services/geminiService';
 import { Fabric, FurnitureTemplate } from '../types';
 import { compressImage } from '../utils/imageCompression';
-import { diagnoseConnection } from '../services/firebase';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -14,466 +14,598 @@ interface UploadModalProps {
   existingFurniture?: FurnitureTemplate[];
   onSaveFurniture?: (template: FurnitureTemplate) => Promise<void> | void;
   onDeleteFurniture?: (id: string) => Promise<void> | void;
-  onClearDatabase?: () => Promise<void> | void;
 }
 
 const UploadModal: React.FC<UploadModalProps> = ({ 
     isOpen, onClose, onSave, onBulkSave, onReset, existingFabrics = [],
-    existingFurniture = [], onSaveFurniture, onDeleteFurniture, onClearDatabase
+    existingFurniture = [], onSaveFurniture, onDeleteFurniture
 }) => {
-  const [activeTab, setActiveTab] = useState<'fabrics' | 'furniture' | 'matcher'>('matcher');
+  const [activeTab, setActiveTab] = useState<'fabrics' | 'furniture'>('fabrics');
+  
+  // States for Fabrics
   const [step, setStep] = useState<'upload' | 'processing' | 'review'>('upload');
   const [files, setFiles] = useState<File[]>([]);
   const [extractedFabrics, setExtractedFabrics] = useState<Partial<Fabric>[]>([]);
   const [currentProgress, setCurrentProgress] = useState<string>('');
+  
+  // States for Furniture
+  const [furnName, setFurnName] = useState('');
+  const [furnCategory, setFurnCategory] = useState('sofa');
+  const [furnSupplier, setFurnSupplier] = useState(''); // Added Supplier State
+  const [furnImage, setFurnImage] = useState<string | null>(null);
+  
   const [isSaving, setIsSaving] = useState(false);
 
-  // Matcher state
-  const [matchFiles, setMatchFiles] = useState<File[]>([]);
-  const matcherInputRef = useRef<HTMLInputElement>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
+  // Upload helpers
+  const [uploadTarget, setUploadTarget] = useState<{
+    fabricIndex: number;
+    type: 'main' | 'color' | 'specsImage' | 'pdfUrl';
+    colorIndex?: number;
+  } | null>(null);
 
-  // Furniture form state
-  const [furnData, setFurnData] = useState<Partial<FurnitureTemplate>>({ name: '', category: 'sofa', imageUrl: '' });
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const mobileInputRef = useRef<HTMLInputElement>(null);
+  const furnitureInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
   const toSentenceCase = (str: string) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
 
-  const handleCheckConnection = async () => {
-      const status = await diagnoseConnection();
-      alert(status);
+  // --- LOGIC FOR FABRICS ---
+  const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const analyzeFileGroup = async (groupFiles: File[], groupName: string): Promise<Partial<Fabric>> => {
+      const pdfFile = groupFiles.find(f => f.type === 'application/pdf');
+      const imgFiles = groupFiles.filter(f => f.type.startsWith('image/'));
+      let rawData: any = { name: groupName, supplier: "CONSULTAR", technicalSummary: "", specs: {} };
+
+      try {
+        if (pdfFile) {
+            const base64Data = await fileToBase64(pdfFile);
+            rawData = await extractFabricData(base64Data.split(',')[1], 'application/pdf');
+        } else if (imgFiles.length > 0) {
+            const aiImg = await compressImage(imgFiles[0], 1024, 0.85);
+            rawData = await extractFabricData(aiImg.split(',')[1], 'image/jpeg');
+        }
+      } catch (e) {}
+
+      if (rawData.name) rawData.name = toSentenceCase(rawData.name);
+      if (rawData.supplier) rawData.supplier = rawData.supplier.toUpperCase();
+
+      const colorImages: Record<string, string> = {};
+      const colors: string[] = [];
+      for (const file of imgFiles) {
+          const base64 = await compressImage(file, 2048, 0.9);
+          const detectedName = await extractColorFromSwatch(base64.split(',')[1]) || file.name.split('.')[0];
+          const formatted = toSentenceCase(detectedName);
+          colorImages[formatted] = base64;
+          colors.push(formatted);
+      }
+
+      return { ...rawData, colors, colorImages, mainImage: imgFiles.length > 0 ? colorImages[colors[0]] : '', category: 'model' };
   };
 
-  /**
-   * Carga individual de Fichas para IA
-   */
-  const handleFabricUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files;
-    if (!fileList) return;
-    const selectedFiles: File[] = Array.from(fileList);
-    if (selectedFiles.length === 0) return;
-    
-    setFiles(selectedFiles);
+  const processFiles = async () => {
+    if (files.length === 0) return;
     setStep('processing');
-    const results: Partial<Fabric>[] = [];
-
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
-      setCurrentProgress(`Analizando ficha ${i + 1} de ${selectedFiles.length}: ${file.name}...`);
-      
-      try {
-        const base64 = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
-
-        const mimeType = file.type;
-        const data = await extractFabricData(base64.split(',')[1], mimeType);
-        
-        results.push({
-          ...data,
-          id: `fab-${Date.now()}-${i}`,
-          category: 'model',
-          mainImage: mimeType.startsWith('image/') ? base64 : '',
-          colors: data.colors || [],
-          colorImages: {}
-        });
-      } catch (err) {
-        console.error("Error procesando archivo:", file.name, err);
-      }
-    }
-
-    setExtractedFabrics(results);
-    setStep('review');
-  };
-
-  const handleSaveAll = async () => {
-    setIsSaving(true);
-    setCurrentProgress('Guardando en la nube...');
     try {
-      if (onBulkSave) {
-        await onBulkSave(extractedFabrics as Fabric[]);
-      } else {
-        for (const f of extractedFabrics) {
-          await onSave(f as Fabric);
-        }
+      const groups: Record<string, File[]> = {};
+      files.forEach(f => {
+          const path = f.webkitRelativePath || f.name;
+          const parts = path.split('/');
+          const groupKey = parts.length > 1 ? parts[parts.length - 2] : 'General';
+          if (!groups[groupKey]) groups[groupKey] = [];
+          groups[groupKey].push(f);
+      });
+
+      const keys = Object.keys(groups);
+      const results: Partial<Fabric>[] = [];
+      for (let i = 0; i < keys.length; i++) {
+          setCurrentProgress(`Analizando ${keys[i]} (${i+1}/${keys.length})...`);
+          results.push(await analyzeFileGroup(groups[keys[i]], keys[i]));
       }
-      onClose();
-      if (onReset) onReset();
+      setExtractedFabrics(results);
+      setStep('review');
     } catch (e) {
-      alert("Error al guardar.");
-    } finally {
-      setIsSaving(false);
+      setStep('upload');
     }
   };
 
-  const handleFurnitureSave = async () => {
-      if (!furnData.name || !furnData.imageUrl) return;
-      setIsSaving(true);
-      try {
-          if (onSaveFurniture) {
-              await onSaveFurniture({
-                  ...furnData,
-                  id: `furn-${Date.now()}`
-              } as FurnitureTemplate);
-              setFurnData({ name: '', category: 'sofa', imageUrl: '' });
-              alert("Mueble guardado correctamente.");
-          }
-      } catch(e) {
-          alert("Error guardando mueble.");
-      } finally {
-          setIsSaving(false);
-      }
+  // --- EDITING LOGIC FOR REVIEW STEP ---
+  const updateExtractedFabric = (index: number, field: keyof Fabric, value: any) => {
+    const updated = [...extractedFabrics];
+    updated[index] = { ...updated[index], [field]: value };
+    setExtractedFabrics(updated);
   };
 
-  /**
-   * MATCHER 1: Archivos Sueltos (Flat)
-   */
-  const handleMatchImages = async () => {
-      if (matchFiles.length === 0) return;
-      setIsSaving(true);
-      let matchCount = 0;
-      for (const file of matchFiles) {
-          const fileName = file.name.split('.')[0].toLowerCase().trim();
-          const targetFabric = existingFabrics.find(f => f.name.toLowerCase().trim() === fileName);
-          if (targetFabric) {
-              try {
-                  const base64 = await compressImage(file, 2048, 0.9);
-                  await onSave({ ...targetFabric, mainImage: base64 });
-                  matchCount++;
-              } catch (e) { console.error(e); }
-          }
-      }
-      setIsSaving(false);
-      alert(`Sincronización terminada. Se actualizaron ${matchCount} fotos.`);
-      onClose();
-  };
-
-  /**
-   * MATCHER 2: CARGA DE CARPETAS (Deep Folder Structure)
-   */
-  const handleFolderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files;
-    if (!fileList || fileList.length === 0) return;
-
-    setIsSaving(true);
-    setCurrentProgress("Analizando estructura de carpetas...");
-
-    const files = Array.from(fileList) as any[];
-    const groups: Record<string, { main?: File, pdf?: File, colors: File[] }> = {};
-    let fabricsProcessed = 0;
-    let newFabricsCreated = 0;
-
-    // 1. Agrupar archivos por carpeta padre (Nombre de la Tela)
-    for (const file of files) {
-        // webkitRelativePath ej: "Coleccion2024/Alanis/header.jpg"
-        const pathParts = (file.webkitRelativePath || "").split('/');
-        if (pathParts.length < 2) continue; // Ignorar archivos en la raiz sin carpeta
-
-        // El nombre de la tela es el nombre de su carpeta contenedora
-        // Si la estructura es Root/Alanis/foto.jpg -> "Alanis" es parts[length-2]
-        const fabricName = pathParts[pathParts.length - 2]; 
-        const fileName = file.name.toLowerCase();
-
-        if (!groups[fabricName]) {
-            groups[fabricName] = { colors: [] };
-        }
-
-        if (fileName.endsWith('.pdf')) {
-            groups[fabricName].pdf = file;
-        } else if (file.type.startsWith('image/')) {
-            // Heurística: Si la imagen se llama igual que la carpeta, o 'main', 'header', 'portada' -> Principal
-            const nameNoExt = fileName.split('.')[0];
-            if (nameNoExt === fabricName.toLowerCase() || nameNoExt === 'main' || nameNoExt === 'portada' || nameNoExt === 'header') {
-                groups[fabricName].main = file;
-            } else {
-                groups[fabricName].colors.push(file);
-            }
-        }
-    }
-
-    // 2. Procesar cada grupo
-    const fabricNames = Object.keys(groups);
-    for (let i = 0; i < fabricNames.length; i++) {
-        const name = fabricNames[i];
-        const group = groups[name];
+  const updateFabricColor = (fabricIndex: number, colorIndex: number, newNameRaw: string) => {
+    const newName = toSentenceCase(newNameRaw);
+    const updated = [...extractedFabrics];
+    const fabric = { ...updated[fabricIndex] };
+    
+    if (fabric.colors && fabric.colorImages) {
+        const oldName = fabric.colors[colorIndex];
+        const newColors = [...fabric.colors];
+        newColors[colorIndex] = newName;
         
-        setCurrentProgress(`Procesando carpeta (${i+1}/${fabricNames.length}): ${name}...`);
-
-        // Buscar si existe la tela
-        let targetFabric = existingFabrics.find(f => f.name.toLowerCase().trim() === name.toLowerCase().trim());
-        let isNew = false;
-
-        // Si no existe, crearla
-        if (!targetFabric) {
-            targetFabric = {
-                id: `bulk-${Date.now()}-${i}`,
-                name: toSentenceCase(name),
-                supplier: 'CARGA MASIVA',
-                technicalSummary: 'Importado automáticamente desde carpeta.',
-                specs: { composition: '', martindale: '', usage: '' },
-                colors: [],
-                colorImages: {},
-                mainImage: '',
-                category: 'model'
-            };
-            isNew = true;
-            newFabricsCreated++;
+        const newImages = { ...fabric.colorImages };
+        // Transfer the image to the new key
+        if (newImages[oldName]) {
+            newImages[newName] = newImages[oldName];
+            delete newImages[oldName];
         }
-
-        // Actualizar datos
-        const updatedFabric = { ...targetFabric };
-
-        // A) Procesar PDF (Ficha técnica)
-        if (group.pdf) {
-            const reader = new FileReader();
-            const pdfBase64 = await new Promise<string>((resolve) => {
-                reader.onload = () => resolve(reader.result as string);
-                reader.readAsDataURL(group.pdf!);
-            });
-            updatedFabric.pdfUrl = pdfBase64;
-            updatedFabric.technicalSummary += " (Ficha técnica PDF adjunta)";
-        }
-
-        // B) Procesar Imagen Principal
-        if (group.main) {
-            try {
-                updatedFabric.mainImage = await compressImage(group.main, 2048, 0.9);
-            } catch(e) {}
-        } else if (group.colors.length > 0 && !updatedFabric.mainImage) {
-            // Si no hay main explicita, usar la primera de color
-            try {
-                updatedFabric.mainImage = await compressImage(group.colors[0], 2048, 0.9);
-            } catch(e) {}
-        }
-
-        // C) Procesar Colores
-        // Solo si hay imágenes de color, actualizamos la lista
-        if (group.colors.length > 0) {
-            const newColorImages = { ...(updatedFabric.colorImages || {}) };
-            const newColorsList = new Set(updatedFabric.colors || []);
-
-            for (const colorFile of group.colors) {
-                try {
-                    // Nombre del archivo = Nombre del color (ej: "Azul Marino.jpg")
-                    const colorName = toSentenceCase(colorFile.name.split('.')[0].replace(/[-_]/g, ' '));
-                    const b64 = await compressImage(colorFile, 2048, 0.9);
-                    
-                    newColorImages[colorName] = b64;
-                    newColorsList.add(colorName);
-                } catch(e) {}
-            }
-            updatedFabric.colorImages = newColorImages;
-            updatedFabric.colors = Array.from(newColorsList).sort();
-        }
-
-        await onSave(updatedFabric);
-        fabricsProcessed++;
+        
+        fabric.colors = newColors;
+        fabric.colorImages = newImages;
+        
+        updated[fabricIndex] = fabric;
+        setExtractedFabrics(updated);
     }
+  };
 
-    setIsSaving(false);
-    alert(`¡Proceso completado!\n\n📁 Carpetas procesadas: ${fabricsProcessed}\n✨ Telas nuevas creadas: ${newFabricsCreated}\n\nLas fotos y PDFs han sido vinculados.`);
-    if (onReset) onReset();
+  const handleEditFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && uploadTarget) {
+        const file = e.target.files[0];
+        const { fabricIndex, type, colorIndex } = uploadTarget;
+        
+        let result: string = "";
+
+        if (type === 'pdfUrl') {
+             if (file.type !== 'application/pdf') {
+                 alert("Solo se permiten archivos PDF para la ficha técnica."); return;
+             }
+             result = await fileToBase64(file);
+        } else {
+             result = await compressImage(file, 2048, 0.9);
+        }
+
+        const updated = [...extractedFabrics];
+        const fabric = { ...updated[fabricIndex] };
+
+        if (type === 'main') {
+            fabric.mainImage = result;
+        } else if (type === 'specsImage') {
+            fabric.specsImage = result;
+        } else if (type === 'pdfUrl') {
+            fabric.pdfUrl = result;
+        } else if (type === 'color' && typeof colorIndex === 'number' && fabric.colors) {
+            const colorName = fabric.colors[colorIndex];
+            fabric.colorImages = { ...fabric.colorImages, [colorName]: result };
+        }
+        
+        updated[fabricIndex] = fabric;
+        setExtractedFabrics(updated);
+        setUploadTarget(null);
+        if (editFileInputRef.current) editFileInputRef.current.value = '';
+    }
+  };
+
+  const triggerEditUpload = (fabricIndex: number, type: 'main' | 'color' | 'specsImage' | 'pdfUrl', colorIndex?: number) => {
+      setUploadTarget({ fabricIndex, type, colorIndex });
+      if (editFileInputRef.current) {
+          editFileInputRef.current.accept = type === 'pdfUrl' ? 'application/pdf' : 'image/*';
+          editFileInputRef.current.click();
+      }
+  };
+
+  const handleAddColor = (fabricIndex: number) => {
+      const updated = [...extractedFabrics];
+      const fabric = updated[fabricIndex];
+      const newColorName = "Nuevo Color";
+      
+      fabric.colors = [...(fabric.colors || []), newColorName];
+      // Init with main image if exists, or empty
+      if (fabric.mainImage) {
+          fabric.colorImages = { ...fabric.colorImages, [newColorName]: fabric.mainImage };
+      }
+      
+      updated[fabricIndex] = fabric;
+      setExtractedFabrics(updated);
+  };
+
+  const handleRemoveColor = (fabricIndex: number, colorIndex: number) => {
+      const updated = [...extractedFabrics];
+      const fabric = updated[fabricIndex];
+      if (!fabric.colors) return;
+      
+      const colorToRemove = fabric.colors[colorIndex];
+      const newColors = fabric.colors.filter((_, i) => i !== colorIndex);
+      
+      const newImages = { ...fabric.colorImages };
+      delete newImages[colorToRemove];
+      
+      fabric.colors = newColors;
+      fabric.colorImages = newImages;
+      updated[fabricIndex] = fabric;
+      setExtractedFabrics(updated);
+  };
+
+  const isDuplicate = (name: string) => {
+      if (!name) return false;
+      return existingFabrics.some(f => f.name.trim().toLowerCase() === name.trim().toLowerCase());
+  };
+
+  const handleFinalSave = async () => {
+    setIsSaving(true);
+    const finalFabrics: Fabric[] = extractedFabrics.map(data => ({
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+        name: toSentenceCase(data.name || 'Sin Nombre'),
+        supplier: (data.supplier || 'Consultar').toUpperCase(),
+        technicalSummary: data.technicalSummary || '',
+        specs: data.specs || { composition: '', martindale: '', usage: '' },
+        colors: data.colors || [],
+        colorImages: data.colorImages || {},
+        mainImage: data.mainImage || '',
+        specsImage: data.specsImage,
+        pdfUrl: data.pdfUrl,
+        category: 'model',
+        customCatalog: data.customCatalog // Include custom catalog if edited
+    }));
+    if (onBulkSave) await onBulkSave(finalFabrics);
     onClose();
+  };
+
+  // --- LOGIC FOR FURNITURE ---
+  const handleFurnitureImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          try {
+              // Comprimir para web (2K es suficiente para visualizador)
+              const base64 = await compressImage(e.target.files[0], 2048, 0.9);
+              setFurnImage(base64);
+          } catch (err) {
+              alert("Error procesando imagen");
+          }
+      }
+  };
+
+  const handleSaveFurnitureInternal = async () => {
+      if (!furnName || !furnImage) {
+          alert("El nombre y la imagen son obligatorios");
+          return;
+      }
+      setIsSaving(true);
+      const newFurniture: FurnitureTemplate = {
+          id: `furn-${Date.now()}`,
+          name: toSentenceCase(furnName),
+          category: furnCategory,
+          imageUrl: furnImage,
+          supplier: furnSupplier ? furnSupplier.toUpperCase() : 'CREATA INTERNAL'
+      };
+      if (onSaveFurniture) await onSaveFurniture(newFurniture);
+      
+      // Reset form
+      setFurnName('');
+      setFurnCategory('sofa');
+      setFurnSupplier('');
+      setFurnImage(null);
+      setIsSaving(false);
+      alert("Mueble guardado exitosamente");
+  };
+
+
+  // Helper to trigger inputs safely
+  const triggerFolderUpload = () => {
+      if (folderInputRef.current) {
+          folderInputRef.current.value = ''; 
+          folderInputRef.current.click();
+      }
+  };
+
+  const triggerMobileUpload = () => {
+      if (mobileInputRef.current) {
+          mobileInputRef.current.value = '';
+          mobileInputRef.current.click();
+      }
   };
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div 
+        className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()} 
+      >
+        {/* HEADER */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-gray-50/50 sticky top-0 z-10">
-            <button onClick={onClose} className="flex items-center gap-3 group text-gray-500 hover:text-black">
-               <div className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center group-hover:border-black transition-colors">
-                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+            <button 
+              type="button"
+              onClick={(e) => { e.preventDefault(); onClose(); }}
+              className="flex items-center gap-3 group p-2 -ml-2 rounded-xl hover:bg-white transition-all cursor-pointer relative z-50 select-none"
+            >
+               <div className="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm group-hover:border-black transition-colors">
+                   <svg className="w-4 h-4 text-gray-500 group-hover:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                   </svg>
                </div>
-               <span className="text-[10px] font-bold uppercase tracking-widest">Cerrar</span>
+               <span className="text-xs font-bold uppercase tracking-widest text-gray-500 group-hover:text-black">Regresar</span>
             </button>
 
+            {/* TAB SWITCHER */}
             <div className="flex bg-gray-200 p-1 rounded-full">
-                <button onClick={() => {setActiveTab('fabrics'); setStep('upload');}} className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase transition-all ${activeTab === 'fabrics' ? 'bg-white shadow-sm text-black' : 'text-gray-500'}`}>Telas (IA)</button>
-                <button onClick={() => setActiveTab('matcher')} className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase transition-all ${activeTab === 'matcher' ? 'bg-blue-600 shadow-sm text-white' : 'text-gray-500'}`}>Carga Masiva</button>
-                <button onClick={() => setActiveTab('furniture')} className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase transition-all ${activeTab === 'furniture' ? 'bg-white shadow-sm text-black' : 'text-gray-500'}`}>Muebles</button>
+                <button 
+                    onClick={() => setActiveTab('fabrics')}
+                    className={`px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'fabrics' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Telas
+                </button>
+                <button 
+                    onClick={() => setActiveTab('furniture')}
+                    className={`px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'furniture' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Muebles
+                </button>
             </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-8">
-            {isSaving || step === 'processing' ? (
-                <div className="flex flex-col items-center justify-center h-64 text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-                    <p className="font-bold text-lg text-slate-800">{currentProgress}</p>
-                    <p className="text-xs text-gray-400 mt-2">No cierres esta ventana. Estamos subiendo tus archivos a la nube.</p>
+            {isSaving ? (
+                <div className="flex flex-col items-center justify-center h-64">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
+                    <p className="font-bold">Guardando en la nube...</p>
                 </div>
-            ) : activeTab === 'fabrics' && step === 'upload' ? (
-                <div className="max-w-xl mx-auto text-center space-y-6 py-10">
-                    <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <svg className="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                    </div>
-                    <h2 className="font-serif text-3xl font-bold">Escaneo por IA</h2>
-                    <p className="text-gray-500 text-sm">Sube fichas técnicas (JPG o PDF) individuales. Gemini extraerá los datos y creará la tela.</p>
-                    <label className="block w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm shadow-xl hover:scale-105 transition-transform cursor-pointer">
-                        Seleccionar Fichas Sueltas
-                        <input type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={handleFabricUpload} />
-                    </label>
-                </div>
-            ) : activeTab === 'fabrics' && step === 'review' ? (
-                <div className="space-y-6">
-                    <h3 className="font-serif text-2xl font-bold border-b pb-4">Revisar Datos Extraídos ({extractedFabrics.length})</h3>
-                    {extractedFabrics.map((fabric, idx) => (
-                        <div key={idx} className="bg-gray-50 p-6 rounded-2xl grid grid-cols-1 md:grid-cols-3 gap-6 border border-gray-100">
-                            <div className="md:col-span-1">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Nombre</label>
-                                <input type="text" value={fabric.name} onChange={(e) => {
-                                    const next = [...extractedFabrics];
-                                    next[idx].name = e.target.value;
-                                    setExtractedFabrics(next);
-                                }} className="w-full bg-white border border-gray-200 p-2 rounded mt-1 font-bold" />
-                            </div>
-                            <div className="md:col-span-1">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Proveedor</label>
-                                <input type="text" value={fabric.supplier} onChange={(e) => {
-                                    const next = [...extractedFabrics];
-                                    next[idx].supplier = e.target.value;
-                                    setExtractedFabrics(next);
-                                }} className="w-full bg-white border border-gray-200 p-2 rounded mt-1 uppercase" />
-                            </div>
-                            <div className="md:col-span-1">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Martindale</label>
-                                <input type="text" value={fabric.specs?.martindale} onChange={(e) => {
-                                    const next = [...extractedFabrics];
-                                    if(next[idx].specs) next[idx].specs!.martindale = e.target.value;
-                                    setExtractedFabrics(next);
-                                }} className="w-full bg-white border border-gray-200 p-2 rounded mt-1" />
-                            </div>
+            ) : activeTab === 'fabrics' ? (
+                /* --- FABRICS UI --- */
+                <>
+                    {step === 'upload' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full items-center">
+                          <div onClick={triggerFolderUpload} className="h-64 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-black hover:bg-gray-50 transition-all text-center group">
+                              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-gray-400 group-hover:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg></div>
+                              <span className="font-serif text-xl font-bold">Carga Masiva (PC)</span>
+                              <p className="text-[10px] text-gray-400 mt-2 uppercase tracking-widest">Sube carpetas completas</p>
+                              
+                              <input 
+                                ref={folderInputRef} 
+                                type="file" 
+                                className="hidden" 
+                                onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                                {...({ webkitdirectory: "", directory: "" } as any)}
+                              />
+                          </div>
+
+                          <div onClick={triggerMobileUpload} className="h-64 border-2 border-dashed border-blue-200 bg-blue-50/20 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all text-center group">
+                              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
+                              <span className="font-serif text-xl font-bold">Carga Masiva (Móvil)</span>
+                              <p className="text-[10px] text-blue-400 mt-2 uppercase tracking-widest">Selecciona múltiples fotos</p>
+                              <input ref={mobileInputRef} type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+                          </div>
+                      </div>
+                    )}
+                    {step === 'processing' && (
+                        <div className="text-center py-20">
+                            <div className="animate-spin h-12 w-12 border-b-2 border-black mx-auto mb-6"></div>
+                            <p className="text-lg font-serif italic">{currentProgress}</p>
+                            <p className="text-xs text-gray-400 mt-2">La IA está analizando las texturas y nombres...</p>
                         </div>
-                    ))}
-                    <button onClick={handleSaveAll} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold uppercase tracking-widest shadow-xl">Guardar Todo en la Nube</button>
-                </div>
-            ) : activeTab === 'matcher' ? (
-                <div className="max-w-xl mx-auto text-center space-y-10 py-6">
-                    <div>
-                        <h2 className="font-serif text-3xl font-bold mb-3">Carga Masiva Inteligente</h2>
-                        <p className="text-gray-500 text-sm">Elige el método que mejor se adapte a tus archivos.</p>
-                    </div>
-
-                    {/* OPCIÓN 1: CARPETA MAESTRA */}
-                    <div className="bg-blue-50 border border-blue-100 rounded-3xl p-8 relative overflow-hidden group hover:border-blue-300 transition-colors">
-                        <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl uppercase tracking-widest">Recomendado</div>
-                        <div className="flex items-center gap-6 mb-4">
-                            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm text-blue-600">
-                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                    )}
+                    {step === 'review' && (
+                        <div className="space-y-6 animate-fade-in pb-10">
+                            <div className="flex items-center justify-between">
+                                <h3 className="font-serif text-xl font-bold">Revisa y edita las telas detectadas ({extractedFabrics.length})</h3>
+                                <p className="text-xs text-gray-400">Puedes modificar los nombres antes de guardar.</p>
                             </div>
-                            <div className="text-left">
-                                <h3 className="font-bold text-lg text-slate-900">Carpeta Maestra</h3>
-                                <p className="text-xs text-gray-500 leading-snug">Selecciona una carpeta que contenga subcarpetas por tela (ej: Colección 2024/{'{'}Alanis, Boon...{'}'}).</p>
-                            </div>
-                        </div>
-                        <ul className="text-left text-xs text-gray-500 list-disc list-inside mb-6 space-y-1 pl-2">
-                             <li>Detecta automáticamente el nombre de la tela por la carpeta.</li>
-                             <li>Importa PDFs como fichas técnicas.</li>
-                             <li>Clasifica fotos como "Principal" o "Colores" automáticamente.</li>
-                        </ul>
-                        <button 
-                            onClick={() => folderInputRef.current?.click()}
-                            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold uppercase tracking-widest shadow-lg hover:bg-blue-700 transition-colors"
-                        >
-                            Seleccionar Carpeta Completa
-                        </button>
-                        {/* Input especial para directorios */}
-                        <input 
-                            ref={folderInputRef} 
-                            type="file" 
-                            {...({ webkitdirectory: "", directory: "" } as any)}
-                            className="hidden" 
-                            onChange={handleFolderUpload} 
-                        />
-                    </div>
+                            
+                            {extractedFabrics.map((f, i) => (
+                                <div key={i} className="p-6 bg-white rounded-3xl border border-gray-200 shadow-sm hover:shadow-md transition-all relative">
+                                    {isDuplicate(f.name || '') && (
+                                        <div className="absolute top-4 right-4 bg-red-100 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-red-200 flex items-center gap-1 shadow-sm z-10">
+                                            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                                            Repetida
+                                        </div>
+                                    )}
 
-                    <div className="relative flex items-center py-2">
-                        <div className="flex-grow border-t border-gray-200"></div>
-                        <span className="flex-shrink-0 mx-4 text-gray-400 text-xs font-bold uppercase">O bien</span>
-                        <div className="flex-grow border-t border-gray-200"></div>
-                    </div>
+                                    <div className="flex flex-col md:flex-row gap-6 items-start">
+                                        {/* Image - Clickable to edit */}
+                                        <div 
+                                            onClick={() => triggerEditUpload(i, 'main')}
+                                            className="w-24 h-24 rounded-2xl overflow-hidden border border-gray-200 shrink-0 bg-gray-50 relative group cursor-pointer"
+                                            title="Cambiar foto principal"
+                                        >
+                                            <img src={f.mainImage} className="w-full h-full object-cover" alt="Fabric" />
+                                            <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center transition-opacity">
+                                                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                            </div>
+                                        </div>
 
-                    {/* OPCIÓN 2: ARCHIVOS SUELTOS */}
-                    <div className="border-2 border-dashed border-gray-200 rounded-3xl p-8 hover:bg-gray-50 transition-colors">
-                        <h3 className="font-bold text-base text-gray-700 mb-2">Archivos Sueltos (Reparación)</h3>
-                        <p className="text-xs text-gray-400 mb-4">Sube fotos sueltas (ej: "Alanis.jpg") para que se vinculen a telas ya creadas.</p>
-                        
-                        <div 
-                            onClick={() => matcherInputRef.current?.click()}
-                            className="cursor-pointer py-4 bg-white border border-gray-200 rounded-xl hover:border-gray-400 transition-all"
-                        >
-                            <span className="text-xs font-bold uppercase text-gray-500">Seleccionar Fotos Sueltas</span>
-                        </div>
-                        <input ref={matcherInputRef} type="file" multiple accept="image/*" className="hidden" onChange={(e) => setMatchFiles(Array.from(e.target.files || []))} />
-                        
-                        {matchFiles.length > 0 && (
-                            <button onClick={handleMatchImages} className="mt-4 w-full bg-slate-800 text-white py-3 rounded-xl font-bold uppercase text-xs">
-                                Vincular {matchFiles.length} Fotos
-                            </button>
-                        )}
-                    </div>
-                    
-                    {/* BUTTONS ZONA DE GESTIÓN */}
-                    <div className="pt-8 mt-8 border-t border-gray-100 flex flex-col items-center gap-4">
-                        <button 
-                            onClick={handleCheckConnection}
-                            className="text-gray-500 hover:text-black border border-gray-300 hover:border-black px-6 py-3 rounded-xl font-bold uppercase text-xs tracking-widest transition-all flex items-center gap-2"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z" /></svg>
-                            Verificar Conexión
-                        </button>
+                                        {/* Inputs */}
+                                        <div className="flex-1 space-y-5 w-full">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Nombre Modelo</label>
+                                                    <input 
+                                                        value={f.name || ''} 
+                                                        onChange={(e) => updateExtractedFabric(i, 'name', toSentenceCase(e.target.value))}
+                                                        className={`w-full p-2.5 bg-gray-50 rounded-lg border focus:ring-1 focus:ring-black outline-none font-serif text-lg text-slate-900 placeholder-gray-300 ${isDuplicate(f.name || '') ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-black'}`}
+                                                        placeholder="Nombre del Modelo"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Proveedor</label>
+                                                    <input 
+                                                        value={f.supplier || ''} 
+                                                        onChange={(e) => updateExtractedFabric(i, 'supplier', e.target.value.toUpperCase())}
+                                                        className="w-full p-2.5 bg-gray-50 rounded-lg border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none font-sans text-sm uppercase font-bold text-slate-700 placeholder-gray-300"
+                                                        placeholder="PROVEEDOR"
+                                                    />
+                                                </div>
+                                            </div>
+                                            
+                                            <div>
+                                                <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Colección / Catálogo</label>
+                                                <input 
+                                                    value={f.customCatalog || ''} 
+                                                    onChange={(e) => updateExtractedFabric(i, 'customCatalog', e.target.value.toUpperCase())}
+                                                    className="w-full p-2.5 bg-blue-50/50 rounded-lg border border-blue-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-sans text-sm uppercase text-blue-700 font-bold placeholder-blue-200"
+                                                    placeholder="EJ: COLECCIÓN VERANO 2024"
+                                                />
+                                            </div>
 
-                        {onClearDatabase && (
-                            <div className="flex flex-col items-center">
-                                <button 
-                                    onClick={onClearDatabase}
-                                    className="text-red-500 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 px-8 py-3 rounded-xl font-bold uppercase text-xs tracking-widest transition-all"
-                                >
-                                    BORRAR TODO
-                                </button>
-                                <p className="text-[10px] text-red-300 mt-2">Eliminará todas las telas del sistema</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            ) : (
-                <div className="max-w-xl mx-auto space-y-6 py-10">
-                    <h2 className="font-serif text-3xl font-bold text-center">Nuevo Mueble</h2>
-                    <div className="space-y-4">
-                        <input type="text" placeholder="Nombre del Mueble" value={furnData.name} onChange={(e)=>setFurnData({...furnData, name: e.target.value})} className="w-full p-4 bg-gray-50 rounded-xl border border-gray-200" />
-                        <select value={furnData.category} onChange={(e)=>setFurnData({...furnData, category: e.target.value})} className="w-full p-4 bg-gray-50 rounded-xl border border-gray-200">
-                            <option value="sofa">Sofá</option>
-                            <option value="chair">Silla</option>
-                            <option value="armchair">Butaca</option>
-                        </select>
-                        <input type="file" accept="image/*" onChange={async (e) => {
-                            if(e.target.files?.[0]) {
-                                const b64 = await compressImage(e.target.files[0], 2048, 0.9);
-                                setFurnData({...furnData, imageUrl: b64});
-                            }
-                        }} className="w-full p-4 bg-gray-50 rounded-xl border border-gray-200" />
-                        <button onClick={handleFurnitureSave} className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest">Añadir Mueble</button>
-                    </div>
-                    
-                    <div className="mt-10 pt-10 border-t">
-                        <h4 className="text-[10px] font-bold uppercase text-gray-400 mb-4">Gestionar Existentes</h4>
-                        <div className="grid grid-cols-3 gap-4">
-                            {existingFurniture.map(f => (
-                                <div key={f.id} className="relative group">
-                                    <img src={f.imageUrl} className="w-full h-24 object-contain bg-gray-100 rounded-xl" />
-                                    <button onClick={()=>onDeleteFurniture?.(f.id)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
-                                    </button>
+                                            {/* Colors expander */}
+                                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                                <div className="flex justify-between items-center mb-3">
+                                                    <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest">Colores Detectados ({f.colors?.length}) - Edita los nombres</label>
+                                                    <button onClick={() => handleAddColor(i)} className="text-[10px] font-bold uppercase text-blue-600 hover:underline">+ Agregar Color</button>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                    {f.colors?.map((color, colorIdx) => (
+                                                        <div key={colorIdx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm focus-within:ring-1 focus-within:ring-black relative group/item">
+                                                            <div 
+                                                                onClick={() => triggerEditUpload(i, 'color', colorIdx)}
+                                                                className="w-8 h-8 rounded-md overflow-hidden shrink-0 border border-gray-100 cursor-pointer relative group/img"
+                                                                title="Cambiar imagen"
+                                                            >
+                                                                <img src={f.colorImages?.[color]} className="w-full h-full object-cover" alt={color} />
+                                                                <div className="absolute inset-0 bg-black/30 hidden group-hover/img:flex items-center justify-center">
+                                                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                                </div>
+                                                            </div>
+                                                            <input 
+                                                                value={color}
+                                                                onChange={(e) => updateFabricColor(i, colorIdx, e.target.value)}
+                                                                className="w-full text-xs font-medium outline-none bg-transparent text-slate-700 min-w-0"
+                                                            />
+                                                            <button 
+                                                                onClick={() => handleRemoveColor(i, colorIdx)}
+                                                                className="text-gray-300 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-opacity px-1"
+                                                                title="Quitar"
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Technical Sheet Uploader */}
+                                            <div className="border-t border-gray-100 pt-4 mt-2">
+                                                <label className="block text-[10px] font-bold uppercase text-gray-400 mb-3 tracking-widest">Agregar Ficha Técnica (Opcional)</label>
+                                                <div className="flex flex-wrap gap-4">
+                                                    <button 
+                                                        onClick={() => triggerEditUpload(i, 'specsImage')}
+                                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${f.specsImage ? 'bg-green-50 border-green-200 text-green-700' : 'bg-white border-gray-200 text-gray-500 hover:border-black hover:text-black'}`}
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                        {f.specsImage ? 'Imagen Cargada' : 'Subir Imagen'}
+                                                    </button>
+                                                    
+                                                    <button 
+                                                        onClick={() => triggerEditUpload(i, 'pdfUrl')}
+                                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${f.pdfUrl ? 'bg-green-50 border-green-200 text-green-700' : 'bg-white border-gray-200 text-gray-500 hover:border-black hover:text-black'}`}
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                                        {f.pdfUrl ? 'PDF Cargado' : 'Subir PDF'}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
                                 </div>
                             ))}
+                        </div>
+                    )}
+                </>
+            ) : (
+                /* --- FURNITURE UI --- */
+                <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
+                    <div className="text-center mb-8">
+                        <h3 className="font-serif text-3xl font-bold mb-2">Nuevo Mueble</h3>
+                        <p className="text-gray-400 text-sm">Sube una foto del mueble con fondo claro preferiblemente.</p>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row gap-8 items-start">
+                        {/* Image Upload */}
+                        <div 
+                            onClick={() => furnitureInputRef.current?.click()}
+                            className="w-full md:w-1/2 aspect-square bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 hover:border-black hover:bg-gray-100 cursor-pointer flex flex-col items-center justify-center relative overflow-hidden group transition-all"
+                        >
+                            {furnImage ? (
+                                <img src={furnImage} className="w-full h-full object-contain p-4" />
+                            ) : (
+                                <>
+                                    <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                    </div>
+                                    <span className="text-xs font-bold uppercase text-gray-400">Subir Foto</span>
+                                </>
+                            )}
+                            {furnImage && (
+                                <div className="absolute inset-0 bg-black/20 hidden group-hover:flex items-center justify-center">
+                                    <span className="text-white text-xs font-bold uppercase tracking-widest border border-white px-4 py-2 rounded-full backdrop-blur-sm">Cambiar</span>
+                                </div>
+                            )}
+                        </div>
+                        <input ref={furnitureInputRef} type="file" accept="image/*" className="hidden" onChange={handleFurnitureImageChange} />
+
+                        {/* Details Form */}
+                        <div className="w-full md:w-1/2 space-y-6">
+                            <div>
+                                <label className="block text-xs font-bold uppercase text-gray-400 mb-2 tracking-widest">Nombre del Modelo</label>
+                                <input 
+                                    type="text" 
+                                    value={furnName} 
+                                    onChange={(e) => setFurnName(e.target.value)}
+                                    placeholder="Ej: Sofá Chesterfield" 
+                                    className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black font-serif text-lg" 
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold uppercase text-gray-400 mb-2 tracking-widest">Categoría</label>
+                                    <input 
+                                        type="text" 
+                                        value={furnCategory} 
+                                        onChange={(e) => setFurnCategory(e.target.value)}
+                                        placeholder="Ej: Sofá" 
+                                        className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black font-serif text-sm" 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase text-gray-400 mb-2 tracking-widest">Proveedor</label>
+                                    <input 
+                                        type="text" 
+                                        value={furnSupplier} 
+                                        onChange={(e) => setFurnSupplier(e.target.value.toUpperCase())}
+                                        placeholder="PROVEEDOR" 
+                                        className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 focus:outline-none focus:ring-1 focus:ring-black font-serif text-sm uppercase" 
+                                    />
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={handleSaveFurnitureInternal}
+                                disabled={!furnImage || !furnName}
+                                className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100"
+                            >
+                                Guardar Mueble
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
         </div>
+        
+        {/* FOOTER ACTIONS FOR FABRICS */}
+        {activeTab === 'fabrics' && step !== 'upload' && !isSaving && (
+            <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end gap-4">
+                <button onClick={() => setStep('upload')} className="text-gray-400 uppercase text-xs font-bold tracking-widest hover:text-black">Atrás</button>
+                <button onClick={handleFinalSave} className="bg-black text-white px-8 py-3 rounded-xl font-bold uppercase text-xs tracking-widest shadow-lg hover:scale-105 transition-transform">Guardar todo en Nube</button>
+            </div>
+        )}
+        {activeTab === 'fabrics' && step === 'upload' && files.length > 0 && (
+            <div className="p-6 bg-gray-50 text-center border-t border-gray-100">
+                <button onClick={processFiles} className="bg-black text-white px-10 py-4 rounded-xl font-bold uppercase tracking-widest shadow-xl hover:scale-105 transition-transform">Procesar {files.length} archivos con IA</button>
+            </div>
+        )}
       </div>
+
+      <input ref={editFileInputRef} type="file" className="hidden" onChange={handleEditFileChange} />
     </div>
   );
 };
