@@ -65,7 +65,9 @@ const initAuth = async () => {
         
         if (errorCode === 'auth/configuration-not-found' || errorCode === 'auth/operation-not-allowed') {
              authConfigMissing = true;
-             console.warn("FALTA ACTIVAR AUTHENTICATION EN CONSOLA");
+             alert("⚠️ ERROR DE CONFIGURACIÓN FIREBASE: Debes habilitar 'Anonymous Auth' (Autenticación Anónima) en la consola de Firebase para que la app pueda leer tus fotos.");
+        } else if (errorCode === 'auth/api-key-not-valid') {
+             alert("⚠️ ERROR API KEY: La API Key de Firebase no es válida. Revisa tu configuración.");
         }
         globalOfflineMode = true;
     } finally {
@@ -77,18 +79,13 @@ const initAuth = async () => {
 initAuth();
 
 // Initialize Firestore
-// Se usa enableIndexedDbPersistence posteriormente para evitar errores de exportación con la API nueva
 const db = initializeFirestore(app, {
   ignoreUndefinedProperties: true
 });
 
-// Habilitar Persistencia Offline (Legacy API compatible)
+// Habilitar Persistencia Offline
 enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code == 'failed-precondition') {
-        console.warn('Persistencia falló: Multiples pestañas abiertas.');
-    } else if (err.code == 'unimplemented') {
-        console.warn('El navegador no soporta persistencia.');
-    }
+    console.warn('Persistencia offline:', err.code);
 });
 
 const storage = getStorage(app);
@@ -119,7 +116,6 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
     if (base64String.startsWith('http')) return base64String;
 
     if (globalOfflineMode) {
-        console.warn("⚠️ Modo Offline: Guardando imagen localmente.");
         return base64String;
     }
 
@@ -128,11 +124,7 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
         const blob = dataURItoBlob(base64String);
         if (blob.size === 0) return base64String;
 
-        // Metadatos para caché del navegador (Cache-Control)
-        const metadata = {
-          cacheControl: 'public,max-age=31536000', // 1 año de caché
-        };
-
+        const metadata = { cacheControl: 'public,max-age=31536000' };
         await uploadBytes(storageRef, blob, metadata);
         return await getDownloadURL(storageRef);
     } catch (error: any) {
@@ -172,19 +164,15 @@ const processFabricImagesForCloud = async (fabric: Fabric): Promise<Fabric> => {
 
 // --- Funciones Exportadas ---
 
-// Permite reintentar la conexión manualmente desde la UI
 export const retryAuth = async () => {
-    console.log("🔄 Reintentando conexión...");
     await initAuth();
     return !authConfigMissing;
 };
 
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
-  // Esperar a que la autenticación termine antes de consultar
   await authReadyPromise;
 
   try {
-    // getDocs usará caché primero si está disponible gracias a enableIndexedDbPersistence
     const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
     const fabrics: Fabric[] = [];
     
@@ -192,12 +180,17 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
       fabrics.push(doc.data() as Fabric);
     });
 
-    console.log(`☁️ Cargadas ${fabrics.length} telas (Sincronizado/Caché).`);
+    console.log(`☁️ Cargadas ${fabrics.length} telas.`);
     globalOfflineMode = false;
     authConfigMissing = false;
     return fabrics;
   } catch (error: any) {
-    console.error("❌ Error conectando a Firestore:", error.message);
+    console.error("❌ Error conectando a Firestore:", error.code, error.message);
+    
+    // Alerta Específica para Permisos
+    if (error.code === 'permission-denied') {
+        alert("⚠️ ACCESO DENEGADO A LA NUBE: Tus reglas de seguridad de Firestore impiden la lectura. Revisa la pestaña 'Rules' en Firestore Console.");
+    }
     
     globalOfflineMode = true;
     const localData = localStorage.getItem("creata_fabrics_offline_backup");
@@ -210,9 +203,6 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
     const cloudFabric = await processFabricImagesForCloud(fabric);
     await setDoc(doc(db, COLLECTION_NAME, cloudFabric.id), cloudFabric, { merge: true });
     
-    console.log("✅ Tela guardada:", cloudFabric.name);
-
-    // Backup local (Legacy)
     try {
         const currentLocal = localStorage.getItem("creata_fabrics_offline_backup");
         const parsed = currentLocal ? JSON.parse(currentLocal) : [];
@@ -224,6 +214,9 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
 
   } catch (error: any) {
     console.error("❌ Error guardando:", error);
+    if (error.code === 'permission-denied') {
+        alert("No se pudo guardar: Permisos denegados en la nube.");
+    }
     throw error;
   }
 };
@@ -244,14 +237,11 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
         const filtered = parsed.filter((f: Fabric) => f.id !== fabricId);
         localStorage.setItem("creata_fabrics_offline_backup", JSON.stringify(filtered));
     }
-
   } catch (error) {
     console.error("Error eliminando doc:", error);
     throw error;
   }
 };
-
-// --- FURNITURE FUNCTIONS ---
 
 export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTemplate[]> => {
     await authReadyPromise;
@@ -261,12 +251,7 @@ export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTem
         querySnapshot.forEach((doc) => {
             furniture.push(doc.data() as FurnitureTemplate);
         });
-
-        if (furniture.length === 0) {
-            return DEFAULT_FURNITURE;
-        }
-
-        return furniture;
+        return furniture.length === 0 ? DEFAULT_FURNITURE : furniture;
     } catch (error) {
         console.error("Error fetching furniture:", error);
         return DEFAULT_FURNITURE;
@@ -281,7 +266,6 @@ export const saveFurnitureTemplateToFirestore = async (template: FurnitureTempla
             const cleanId = template.id.replace(/[^a-zA-Z0-9]/g, '_');
             imageUrl = await uploadImageToStorage(imageUrl, `furniture/${cleanId}_${timestamp}.jpg`);
         }
-        
         const finalTemplate = { ...template, imageUrl };
         await setDoc(doc(db, FURNITURE_COLLECTION, finalTemplate.id), finalTemplate, { merge: true });
         return finalTemplate;
@@ -308,6 +292,33 @@ export const clearFirestoreCollection = async () => {
     });
     await batch.commit();
     localStorage.removeItem("creata_fabrics_offline_backup");
+};
+
+/**
+ * UTILITY: Push Local Storage Backup to Cloud manually.
+ * Used when user transitions from Permission Denied -> Permission Granted.
+ */
+export const pushLocalBackupToCloud = async (): Promise<number> => {
+    const localData = localStorage.getItem("creata_fabrics_offline_backup");
+    if (!localData) throw new Error("No hay datos locales guardados en este navegador.");
+    
+    let parsed: Fabric[] = [];
+    try {
+        parsed = JSON.parse(localData);
+    } catch (e) {
+        throw new Error("El respaldo local está corrupto.");
+    }
+
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("El respaldo local está vacío.");
+
+    console.log(`🚀 Iniciando rescate de ${parsed.length} telas...`);
+    
+    // Upload one by one to ensure images get processed
+    for (const fabric of parsed) {
+        await saveFabricToFirestore(fabric);
+    }
+    
+    return parsed.length;
 };
 
 export const isOfflineMode = () => globalOfflineMode;

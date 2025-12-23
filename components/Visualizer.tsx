@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Fabric, FurnitureTemplate } from '../types';
 import { visualizeUpholstery } from '../services/geminiService';
@@ -16,7 +15,12 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   const [selectedFurniture, setSelectedFurniture] = useState<FurnitureTemplate | null>(null);
   const [selectedModelName, setSelectedModelName] = useState<string>('');
   const [selectedColorName, setSelectedColorName] = useState<string>('');
+  
+  // Generation & Progress State
   const [isGenerating, setIsGenerating] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState('');
+  
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasKey, setHasKey] = useState(false);
@@ -35,6 +39,41 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         setStep(1);
     }
   }, [initialSelection]);
+
+  // PROGRESS BAR SIMULATION LOGIC
+  useEffect(() => {
+      let interval: any;
+      
+      if (isGenerating) {
+          setProgress(0);
+          setProgressMessage('Iniciando motor de renderizado...');
+          
+          interval = setInterval(() => {
+              setProgress((prev) => {
+                  // Simulation curve: Fast at start, slow at end
+                  let increment = 0;
+                  if (prev < 30) increment = Math.random() * 3 + 1; // Fast
+                  else if (prev < 60) increment = Math.random() * 2; // Medium
+                  else if (prev < 85) increment = Math.random() * 0.5; // Slow
+                  else if (prev < 95) increment = 0.1; // Very slow (waiting for API)
+                  
+                  const next = Math.min(prev + increment, 98); // Cap at 98% until real response
+
+                  // Update dynamic messages based on progress
+                  if (next < 30) setProgressMessage('Analizando geometría 3D...');
+                  else if (next < 60) setProgressMessage('Aplicando textura y escala...');
+                  else if (next < 85) setProgressMessage('Proyectando luces y sombras...');
+                  else setProgressMessage('Finalizando detalles de alta resolución...');
+
+                  return next;
+              });
+          }, 200);
+      } else {
+          setProgress(0);
+      }
+
+      return () => clearInterval(interval);
+  }, [isGenerating]);
 
   const checkApiKey = async () => {
     try {
@@ -129,7 +168,14 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           const swatchB64 = await ensureBase64(swatchRaw);
 
           const result = await visualizeUpholstery(furnitureB64, swatchB64);
-          if (result) setResultImage(result);
+          
+          if (result) {
+              // Jump to 100% on success
+              setProgress(100);
+              setProgressMessage('¡Listo!');
+              await new Promise(resolve => setTimeout(resolve, 600)); // Small delay to show 100%
+              setResultImage(result);
+          }
 
       } catch (error: any) {
           console.error("Error visualización Pro:", error);
@@ -367,10 +413,29 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                 {/* Result Area */}
                 <div className="w-full md:w-[65%] relative flex items-center justify-center overflow-hidden min-h-[500px]">
                      {isGenerating ? (
-                        <div className="text-center z-10 p-6 animate-fade-in">
-                            <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-slate-900 mx-auto mb-6"></div>
-                            <h3 className="font-serif text-2xl animate-pulse text-slate-900">Tapizando digitalmente...</h3>
-                            <p className="text-[10px] text-slate-600 mt-3 uppercase tracking-widest font-bold">Respetando sombras y luces originales</p>
+                        <div className="text-center z-10 p-10 w-full max-w-md animate-fade-in flex flex-col items-center">
+                            {/* PROGRESS BAR CONTAINER */}
+                            <div className="relative w-full h-4 bg-gray-200 rounded-full overflow-hidden shadow-inner mb-6">
+                                <div 
+                                    className="absolute top-0 left-0 h-full bg-slate-900 transition-all duration-300 ease-out"
+                                    style={{ width: `${progress}%` }}
+                                ></div>
+                                {/* Shine effect */}
+                                <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_2s_infinite]"></div>
+                            </div>
+                            
+                            <div className="flex justify-between w-full mb-2 px-1">
+                                <span className="text-xs font-bold uppercase text-slate-900 tracking-widest animate-pulse">
+                                    {progressMessage}
+                                </span>
+                                <span className="text-xs font-bold text-slate-500">
+                                    {Math.round(progress)}%
+                                </span>
+                            </div>
+                            
+                            <p className="text-[10px] text-slate-400 mt-4 uppercase tracking-[0.2em] font-medium text-center">
+                                Creando visualización fotorrealista con Gemini 3 Pro
+                            </p>
                         </div>
                      ) : errorMessage ? (
                         <div className="text-center p-10 max-w-md animate-fade-in bg-white/60 backdrop-blur-md rounded-3xl border border-white/50 shadow-xl">

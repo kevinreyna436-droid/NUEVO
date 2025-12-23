@@ -273,8 +273,19 @@ export const IN_STOCK_DB: Record<string, string[]> = {
   "Zenith": ["Aqua", "Black", "Brick", "Buttercup", "Cobalt", "Cocoa", "Coral", "Emerald", "Grape", "Marine", "Mineral", "Natural", "Ocean", "Red", "Snow", "Stone", "Toffe", "Tusk", "Zinc"]
 };
 
-// INITIAL_FABRICS is now empty to ensure a clean slate and "disconnect" from static data.
-export const INITIAL_FABRICS: Fabric[] = [];
+// Generamos la lista inicial automáticamente usando el Stock de Creata
+// Esto asegura que si la app no tiene internet o la DB está vacía, se carguen estas telas.
+export const INITIAL_FABRICS: Fabric[] = Object.entries(IN_STOCK_DB).map(([name, colors], index) => ({
+  id: `stock-${index}-${Date.now()}`,
+  name: name,
+  supplier: 'CREATA STOCK',
+  technicalSummary: 'Colección permanente en stock.',
+  specs: { composition: 'N/A', martindale: 'N/A', usage: 'Tapicería General' },
+  colors: colors,
+  colorImages: {},
+  mainImage: '', // Se mostrará el placeholder "Sin Foto" hasta que se carguen imágenes
+  category: 'model'
+}));
 
 // Templates for the Visualizer
 export const FURNITURE_TEMPLATES: FurnitureTemplate[] = [

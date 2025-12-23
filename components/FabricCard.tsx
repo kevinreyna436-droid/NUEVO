@@ -1,139 +1,123 @@
 
-import React, { memo } from 'react';
+import React, { memo, useState, useRef } from 'react';
 import { Fabric } from '../types';
 import { IN_STOCK_DB } from '../constants';
+import { compressImage } from '../utils/imageCompression';
 
 interface FabricCardProps {
   fabric: Fabric;
-  onClick: () => void; // Main Click (Context dependent)
-  onDetail: () => void; // Go to Detail View
-  onQuickView: (img: string) => void; // Open Lightbox
-  onVisualize: () => void; // Go to Visualizer
+  onClick: () => void;
+  onDetail: () => void;
+  onQuickView: (img: string) => void;
+  onVisualize: () => void;
+  onUpdate?: (updated: Fabric) => void; // Added for direct upload
   mode: 'model' | 'color';
   specificColorName?: string;
   index: number;
 }
 
-const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, onDetail, onQuickView, onVisualize, mode, specificColorName }) => {
-  // Determine which image to show
+const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, onDetail, onQuickView, onVisualize, onUpdate, mode, specificColorName }) => {
+  const [imgError, setImgError] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   let displayImage = fabric.mainImage;
   if (mode === 'color' && specificColorName && fabric.colorImages?.[specificColorName]) {
     displayImage = fabric.colorImages[specificColorName];
   }
 
-  // Safe access to colors
-  const colorList = fabric.colors || [];
+  const toSentenceCase = (str: string) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
 
-  const toSentenceCase = (str: string) => {
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
-  };
-
-  // --- LOGIC FOR STOCK INDICATOR (GREEN DOT) ---
   const isVerifiedStock = (): boolean => {
       const modelKey = Object.keys(IN_STOCK_DB).find(k => k.toLowerCase() === fabric.name.toLowerCase());
       if (!modelKey) return false;
-
-      if (mode === 'model') {
-          return true;
-      } else if (mode === 'color' && specificColorName) {
-          const stockColors = IN_STOCK_DB[modelKey];
-          return stockColors.some(c => c.toLowerCase() === specificColorName.toLowerCase());
+      if (mode === 'model') return true;
+      if (mode === 'color' && specificColorName) {
+          return IN_STOCK_DB[modelKey].some(c => c.toLowerCase() === specificColorName.toLowerCase());
       }
       return false;
   };
 
-  const showGreenDot = isVerifiedStock();
+  const handleUploadClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
 
-  // In Color Mode: Main Click = Lightbox (User Request)
-  // In Model Mode: Main Click = Detail View
-  const handleMainClick = (e: React.MouseEvent) => {
-      if (mode === 'color') {
-          onQuickView(displayImage);
-      } else {
-          onClick();
-      }
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && onUpdate) {
+        setIsUploading(true);
+        try {
+            const base64 = await compressImage(e.target.files[0], 2048, 0.9);
+            const updatedFabric = { ...fabric };
+            
+            if (mode === 'model') {
+                updatedFabric.mainImage = base64;
+            } else if (mode === 'color' && specificColorName) {
+                updatedFabric.colorImages = { ...fabric.colorImages, [specificColorName]: base64 };
+            }
+            
+            onUpdate(updatedFabric);
+            setImgError(false);
+        } catch (err) {
+            console.error("Error uploading image:", err);
+        } finally {
+            setIsUploading(false);
+        }
+    }
   };
 
   return (
     <div 
-      onClick={handleMainClick}
-      className="group relative w-full aspect-[3/4] md:aspect-[4/5] bg-white rounded-3xl shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden cursor-pointer flex flex-col hover:-translate-y-2 hover:scale-[0.97] transform-gpu scale-[0.95]"
+      onClick={mode === 'color' ? () => onQuickView(displayImage) : onClick}
+      className="group relative w-full aspect-[3/4] md:aspect-[4/5] bg-white rounded-3xl shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden cursor-pointer flex flex-col hover:-translate-y-2 transform-gpu"
     >
-      {/* SECTION SUPERIOR (Imagen) - 70% height */}
       <div className="relative h-[70%] w-full bg-gray-100 overflow-hidden">
-        {displayImage ? (
+        {displayImage && !imgError ? (
           <img 
             src={displayImage} 
-            alt={mode === 'model' ? fabric.name : `${fabric.name} - ${specificColorName}`} 
-            loading="lazy"
-            decoding="async"
-            className="w-full h-full object-cover object-center transition-transform duration-700 scale-[1.1] group-hover:scale-[1.15]"
+            alt={fabric.name} 
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-110"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-50 group-hover:bg-gray-100 transition-colors">
-            <div className="text-center">
-              <span className="block font-serif text-3xl md:text-4xl text-gray-200 font-bold opacity-50 mb-2">
-                 {fabric.name.charAt(0)}
-              </span>
-              <span className="text-[10px] uppercase tracking-widest text-gray-300">
-                 Sin Foto
-              </span>
-            </div>
+          <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 group-hover:bg-gray-100 transition-colors">
+            {isUploading ? (
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            ) : (
+                <div 
+                    onClick={handleUploadClick}
+                    className="flex flex-col items-center group/btn"
+                >
+                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm border border-gray-100 group-hover/btn:border-blue-500 group-hover/btn:scale-110 transition-all mb-2">
+                        <svg className="w-6 h-6 text-gray-300 group-hover/btn:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                    </div>
+                    <span className="text-[10px] uppercase tracking-widest text-gray-400 font-bold group-hover/btn:text-blue-500">Subir Foto</span>
+                </div>
+            )}
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
           </div>
         )}
         
-        {/* STOCK INDICATOR - GREEN DOT */}
-        {showGreenDot && (
-            <div 
-                className="absolute bottom-3 right-3 z-30 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm" 
-                title={mode === 'model' ? "Modelo en Stock" : "Color en Stock"}
-            ></div>
+        {isVerifiedStock() && (
+            <div className="absolute bottom-3 right-3 z-30 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
         )}
 
-        {/* Curved Wave Separator (SVG) */}
         <div className="absolute bottom-[-1px] left-0 w-full text-white pointer-events-none z-10">
-             <svg 
-               viewBox="0 0 1440 120" 
-               className="w-full h-auto block fill-current"
-               preserveAspectRatio="none"
-             >
+             <svg viewBox="0 0 1440 120" className="w-full h-auto block fill-current" preserveAspectRatio="none">
                <path d="M0,60 C480,130 960,130 1440,60 L1440,120 L0,120 Z" />
              </svg>
         </div>
       </div>
 
-      {/* SECTION INFERIOR (Información) - 30% height */}
-      <div className="h-[30%] px-4 pb-2 text-center flex flex-col items-center justify-start pt-3 bg-white relative z-20">
-        <div className="w-full flex flex-col justify-center h-full space-y-1">
-          {mode === 'model' ? (
-            /* VISTA MODELOS */
-            <>
-              <h3 className="font-serif text-lg md:text-xl font-medium text-slate-800 leading-tight mb-1 group-hover:text-black transition-colors px-1 line-clamp-1 tracking-tight">
-                {toSentenceCase(fabric.name)}
-              </h3>
-              <p className="text-[10px] md:text-xs font-semibold text-gray-400 uppercase tracking-widest leading-none">
-                {fabric.supplier}
-              </p>
-              <p className="text-[9px] text-gray-300 font-normal leading-snug px-1 tracking-wide line-clamp-1 mt-2">
-                {colorList.map(c => toSentenceCase(c)).join(', ')}
-              </p>
-            </>
-          ) : (
-            /* VISTA COLORES */
-            <>
-              <h3 className="font-serif text-lg md:text-xl font-medium text-slate-800 leading-tight mb-1 group-hover:text-black transition-colors px-1 line-clamp-2 break-words">
-                {toSentenceCase(specificColorName || '')}
-              </h3>
-              <p className="text-[10px] md:text-xs font-semibold text-gray-400 tracking-widest leading-none">
-                {toSentenceCase(fabric.name)}
-              </p>
-               <p className="text-[9px] text-gray-300 font-semibold uppercase tracking-widest leading-none mt-1">
-                {fabric.supplier}
-              </p>
-            </>
-          )}
-        </div>
+      <div className="h-[30%] px-4 pb-2 text-center flex flex-col items-center justify-center bg-white relative z-20">
+          <h3 className="font-serif text-lg md:text-xl font-medium text-slate-800 leading-tight mb-1 line-clamp-1">
+            {toSentenceCase(mode === 'model' ? fabric.name : specificColorName || '')}
+          </h3>
+          <p className="text-[10px] md:text-xs font-semibold text-gray-400 uppercase tracking-widest">
+            {mode === 'model' ? fabric.supplier : toSentenceCase(fabric.name)}
+          </p>
       </div>
     </div>
   );

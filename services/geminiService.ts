@@ -104,7 +104,7 @@ export const visualizeUpholstery = async (
   return retryWithBackoff(async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Prompt actualizado con la instrucción de escalado (Código 6)
+    // Prompt actualizado con instrucciones estrictas para NO MODIFICAR la geometría del mueble.
     const promptText = `
       Act as a high-end photo retoucher specializing in furniture upholstery. 
       Input 1: A piece of furniture image.
@@ -113,10 +113,11 @@ export const visualizeUpholstery = async (
       Task: Create a photorealistic visualization by wrapping the fabric from Input 2 onto the upholstery areas of Input 1.
       
       Requirements:
-      - TEXTURE SCALE (CRITICAL): Reduce the scale of the fabric pattern by 70%. The figures, grains, or weaves must appear 70% smaller and much more dense than the original swatch to ensure a realistic look on the furniture surface.
-      - LIGHTING & SHADOWS: Preserve all original shadows, folds, highlights, and micro-creases to maintain volume and depth.
-      - PERSPECTIVE: The fabric pattern must flow according to the furniture's geometry and 3D perspective.
-      - MASKING: Keep legs, wooden frames, metal bases, and the surrounding environment completely untouched.
+      - STRICT GEOMETRY PRESERVATION: The furniture in the output MUST be identical in shape, size, angle, and position to Input 1. Do NOT rotate, resize, zoom, or distort the furniture object. The outline must match perfectly.
+      - BACKGROUND PRESERVATION: Keep the original background and floor shadows exactly as they are.
+      - TEXTURE SCALE: The provided fabric swatch (Input 2) is a MACRO/CLOSE-UP shot. You MUST significantly reduce the scale of the texture pattern (make it 10x smaller/denser) so it looks realistic on a large furniture piece. Tile the texture seamlessly.
+      - LIGHTING & SHADOWS: Preserve all original shadows, folds, highlights, and micro-creases to maintain volume and depth. The fabric must look like it wraps around the existing foam.
+      - MASKING: Keep legs, wooden frames, metal bases, and the surrounding environment completely untouched. Only change the upholstered fabric parts.
       - QUALITY: The final output must look like a professional, high-resolution catalog photograph.
     `;
 
