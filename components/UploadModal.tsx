@@ -231,6 +231,15 @@ const UploadModal: React.FC<UploadModalProps> = ({
       setExtractedFabrics(updated);
   };
 
+  const clearSpecs = (index: number) => {
+      const updated = [...extractedFabrics];
+      const fabric = { ...updated[index] };
+      delete fabric.specsImage;
+      delete fabric.pdfUrl;
+      updated[index] = fabric;
+      setExtractedFabrics(updated);
+  };
+
   const isDuplicate = (name: string) => {
       if (!name) return false;
       return existingFabrics.some(f => f.name.trim().toLowerCase() === name.trim().toLowerCase());
@@ -582,6 +591,17 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                                                         {f.pdfUrl ? 'PDF Cargado' : 'Subir PDF'}
                                                     </button>
+
+                                                    {(f.specsImage || f.pdfUrl) && (
+                                                        <button 
+                                                            onClick={() => clearSpecs(i)}
+                                                            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 text-xs font-bold uppercase tracking-wider text-red-500 hover:bg-red-50 transition-all ml-auto sm:ml-0"
+                                                            title="Borrar Ficha Técnica"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                            Borrar Ficha
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
 
