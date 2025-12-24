@@ -417,6 +417,11 @@ function App() {
       const authError = getAuthError();
       const currentDomain = window.location.hostname;
       
+      // DIAGNÓSTICO DE DATOS REAL
+      const cloudCount = fabrics.filter(f => f.mainImage?.startsWith('http')).length;
+      const localCount = fabrics.filter(f => f.mainImage?.startsWith('data:')).length;
+      const total = fabrics.length;
+      
       return (
         <div className="fixed inset-0 z-[450] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
           <div className="bg-white max-w-lg w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col p-8 relative">
@@ -424,51 +429,65 @@ function App() {
                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
              </button>
 
-             <h2 className="text-2xl font-serif font-bold text-slate-900 mb-6 flex items-center gap-2">
-                 {offlineStatus ? '🔴 Conexión Offline' : '🟢 Conexión Exitosa'}
+             <h2 className="text-2xl font-serif font-bold text-slate-900 mb-2 flex items-center gap-2">
+                 Estado de la Nube
              </h2>
+             <div className="flex items-center gap-2 mb-6">
+                 <div className={`w-3 h-3 rounded-full ${offlineStatus ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
+                 <span className={`text-sm font-bold uppercase tracking-widest ${offlineStatus ? 'text-red-500' : 'text-green-600'}`}>
+                    {offlineStatus ? 'Desconectado' : 'Conectado'}
+                 </span>
+             </div>
 
              <div className="space-y-4 mb-6">
-                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                     <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Tu Ubicación (Dominio)</p>
-                     <p className="font-mono text-sm text-blue-600 font-bold">{currentDomain}</p>
+                 {/* DATA STATS */}
+                 <div className="grid grid-cols-3 gap-2 text-center mb-4">
+                     <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
+                         <span className="block text-2xl font-bold text-slate-900">{total}</span>
+                         <span className="text-[9px] uppercase font-bold text-gray-400">Total Telas</span>
+                     </div>
+                     <div className="bg-green-50 p-3 rounded-xl border border-green-100">
+                         <span className="block text-2xl font-bold text-green-700">{cloudCount}</span>
+                         <span className="text-[9px] uppercase font-bold text-green-600">En Nube</span>
+                     </div>
+                     <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-100">
+                         <span className="block text-2xl font-bold text-yellow-700">{localCount}</span>
+                         <span className="text-[9px] uppercase font-bold text-yellow-600">Pendientes</span>
+                     </div>
                  </div>
 
                  {offlineStatus ? (
-                     <div className="bg-red-50 p-4 rounded-xl border border-red-100">
-                         <p className="text-[10px] font-bold uppercase text-red-400 tracking-widest mb-1">Diagnóstico de Error</p>
-                         <p className="text-sm text-red-700 font-medium">
-                             {authError || "No se pudo conectar a Firebase. Posible bloqueo de dominio o falta de internet."}
+                     <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-left">
+                         <p className="text-[10px] font-bold uppercase text-red-400 tracking-widest mb-1">Error Detectado</p>
+                         <p className="text-sm text-red-700 font-medium break-words">
+                             {authError || "Sin conexión a internet o bloqueo de firewall."}
                          </p>
-                         {authError && authError.includes("unauthorized-domain") && (
-                             <div className="mt-3 pt-3 border-t border-red-100">
-                                 <p className="text-xs text-red-800">
-                                     <strong>Solución:</strong> Debes ir a la consola de Firebase Authentication {'>'} Settings {'>'} Authorized Domains y agregar: <u>{currentDomain}</u>
-                                 </p>
-                             </div>
-                         )}
+                         <p className="text-[10px] text-gray-500 mt-2">Dominio actual: {currentDomain}</p>
                      </div>
                  ) : (
-                     <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                     <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-left">
                          <p className="text-sm text-green-700 font-medium flex items-center gap-2">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                            Todos los datos se están sincronizando con la nube correctamente.
+                            Sincronización activa.
+                         </p>
+                         <p className="text-xs text-green-600 mt-1">
+                             Tus datos están seguros en Google Cloud.
                          </p>
                      </div>
                  )}
                  
-                 <p className="text-xs text-gray-500 leading-relaxed">
-                     Nota: Si estás en modo Offline, los datos que guardes <strong>SOLO</strong> se verán en este dispositivo. Para verlos en otro lado, debes corregir la conexión y pulsar "Sincronizar".
+                 <p className="text-xs text-gray-500 leading-relaxed italic">
+                    * Verificado: Las telas "En Nube" tienen URL segura. Las "Pendientes" están guardadas solo en este dispositivo.
                  </p>
              </div>
 
              <div className="flex gap-3">
                  <button onClick={() => handleRetryConnection(false)} className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-black transition-colors">
-                     Reintentar Conexión
+                     Forzar Reconexión
                  </button>
-                 {offlineStatus && localBackupCount > 0 && (
+                 {localCount > 0 && (
                      <button onClick={() => {setShowConnectionInfo(false); setShowRescueModal(true);}} className="flex-1 bg-yellow-500 text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-yellow-600 transition-colors shadow-lg animate-pulse">
-                         Forzar Sincronización
+                         Subir Pendientes
                      </button>
                  )}
              </div>
