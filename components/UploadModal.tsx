@@ -37,6 +37,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0); // 0-100%
   const [uploadStatusText, setUploadStatusText] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Upload helpers
   const [uploadTarget, setUploadTarget] = useState<{
@@ -247,9 +248,9 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
   const handleFinalSave = async () => {
     setIsSaving(true);
+    setSaveError(null);
     setUploadProgress(5); // Start with 5%
     
-    // Prepare all fabrics first
     const finalFabrics: Fabric[] = extractedFabrics.map(data => ({
         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
         name: toSentenceCase(data.name || 'Sin Nombre'),
@@ -268,12 +269,9 @@ const UploadModal: React.FC<UploadModalProps> = ({
     const total = finalFabrics.length;
     let completed = 0;
 
-    // Procesamiento SECUENCIAL para asegurar que la UI se actualice
+    // Procesamiento SECUENCIAL
     for (const fabric of finalFabrics) {
         
-        // --- UI UNBLOCKER ---
-        // Forzamos una pausa de 50ms para que el navegador pinte el progreso
-        // Esto evita que la pantalla se congele si la CPU sube al 100%
         await new Promise(resolve => setTimeout(resolve, 50));
 
         const percent = 5 + Math.round((completed / total) * 90);
@@ -282,14 +280,16 @@ const UploadModal: React.FC<UploadModalProps> = ({
         
         try {
             await onSave(fabric);
-        } catch (err) {
-            console.error("Error guardando tela (saltada):", fabric.name, err);
+        } catch (err: any) {
+            console.error("Error guardando tela:", fabric.name, err);
+            setSaveError(`Error: ${err.message || "Fallo de conexión"}`);
+            // Wait a bit to show error then skip
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
         
         completed++;
     }
     
-    // Finish
     setUploadStatusText('¡Guardado en la Nube de Google!');
     setUploadProgress(100);
     setTimeout(() => {
@@ -320,7 +320,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
       setUploadProgress(10);
       setUploadStatusText('Subiendo mueble...');
 
-      // Simulated progress for furniture since it is a single heavy operation
       const interval = setInterval(() => {
           setUploadProgress(prev => {
               if (prev >= 90) return prev;
@@ -336,21 +335,24 @@ const UploadModal: React.FC<UploadModalProps> = ({
           supplier: furnSupplier ? furnSupplier.toUpperCase() : 'CREATA INTERNAL'
       };
       
-      if (onSaveFurniture) await onSaveFurniture(newFurniture);
-      
-      clearInterval(interval);
-      setUploadProgress(100);
-      setUploadStatusText('¡Guardado en Nube!');
-      
-      setTimeout(() => {
-        // Reset form
-        setFurnName('');
-        setFurnCategory('sofa');
-        setFurnSupplier('');
-        setFurnImage(null);
-        setIsSaving(false);
-        alert("Mueble guardado exitosamente");
-      }, 500);
+      try {
+        if (onSaveFurniture) await onSaveFurniture(newFurniture);
+        setUploadProgress(100);
+        setUploadStatusText('¡Guardado en Nube!');
+        setTimeout(() => {
+            setFurnName('');
+            setFurnCategory('sofa');
+            setFurnSupplier('');
+            setFurnImage(null);
+            setIsSaving(false);
+            alert("Mueble guardado exitosamente");
+        }, 500);
+      } catch (err) {
+          setIsSaving(false);
+          alert("Error guardando mueble. Revisa tu conexión.");
+      } finally {
+          clearInterval(interval);
+      }
   };
 
 
@@ -413,12 +415,12 @@ const UploadModal: React.FC<UploadModalProps> = ({
                      {/* PROGRESS BAR UI */}
                      <div className="w-full max-w-md">
                         <div className="flex justify-between items-center mb-2">
-                             <span className="text-xs font-bold uppercase tracking-widest text-slate-900">{uploadStatusText}</span>
+                             <span className={`text-xs font-bold uppercase tracking-widest ${saveError ? 'text-red-500 animate-pulse' : 'text-slate-900'}`}>{saveError || uploadStatusText}</span>
                              <span className="text-xs font-bold text-slate-500">{uploadProgress}%</span>
                         </div>
                         <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
                             <div 
-                                className="h-full bg-black transition-all duration-300 ease-out" 
+                                className={`h-full transition-all duration-300 ease-out ${saveError ? 'bg-red-500' : 'bg-black'}`}
                                 style={{ width: `${uploadProgress}%` }}
                             ></div>
                         </div>

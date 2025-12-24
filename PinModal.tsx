@@ -1,2 +1,2 @@
 
-// Archivo movido a components/PinModal.tsx
+// This file is deprecated. Please use components/PinModal.tsx

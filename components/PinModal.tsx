@@ -6,7 +6,7 @@ interface PinModalProps {
   onClose: () => void;
   onSuccess: () => void;
   requiredPin?: string;
-  isBlocking?: boolean; // If true, hides the close button (for App Lock)
+  isBlocking?: boolean; // Si es true, oculta el botón de cerrar (para el bloqueo inicial de la App)
 }
 
 const PinModal: React.FC<PinModalProps> = ({ 
@@ -115,7 +115,7 @@ const PinModal: React.FC<PinModalProps> = ({
             </button>
 
             <button
-                onClick={handleBackspace}
+                onClick={() => handleBackspace()}
                 className="w-14 h-14 rounded-full text-gray-400 hover:text-black hover:bg-gray-100 flex items-center justify-center transition-all"
             >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z" /></svg>
