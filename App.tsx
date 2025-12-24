@@ -18,7 +18,8 @@ import {
   checkDatabasePermissions,
   pushLocalBackupToCloud,
   getLocalCachedData,
-  retryAuth
+  retryAuth,
+  getAuthError
 } from './services/firebase';
 
 // Lazy Load Heavy Components
@@ -83,6 +84,9 @@ function App() {
   // Setup Guide Modal State
   const [showSetupGuide, setShowSetupGuide] = useState(false);
   const [showRulesError, setShowRulesError] = useState(false);
+  
+  // Connection Diagnostics Modal
+  const [showConnectionInfo, setShowConnectionInfo] = useState(false);
   
   // Rescue Data Modal State
   const [showRescueModal, setShowRescueModal] = useState(false);
@@ -397,9 +401,80 @@ function App() {
           return true;
       } else {
           if (isAuthConfigMissing()) setShowSetupGuide(true);
-          else if(!silent) alert("No se pudo conectar. Verifica tu internet o espera 1 minuto a que Firebase propague los cambios.");
+          // Don't alert if we are showing the diagnostic modal
+          else if(!silent && !showConnectionInfo) alert("No se pudo conectar. Verifica tu internet o espera 1 minuto a que Firebase propague los cambios.");
           return false;
       }
+  };
+
+  const handleStatusClick = () => {
+      setShowConnectionInfo(true);
+      if (offlineStatus) handleRetryConnection(true);
+  };
+
+  // --- CONNECTION DIAGNOSTIC MODAL ---
+  const ConnectionInfoModal = () => {
+      const authError = getAuthError();
+      const currentDomain = window.location.hostname;
+      
+      return (
+        <div className="fixed inset-0 z-[450] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+          <div className="bg-white max-w-lg w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col p-8 relative">
+             <button onClick={() => setShowConnectionInfo(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black">
+                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+             </button>
+
+             <h2 className="text-2xl font-serif font-bold text-slate-900 mb-6 flex items-center gap-2">
+                 {offlineStatus ? '🔴 Conexión Offline' : '🟢 Conexión Exitosa'}
+             </h2>
+
+             <div className="space-y-4 mb-6">
+                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                     <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Tu Ubicación (Dominio)</p>
+                     <p className="font-mono text-sm text-blue-600 font-bold">{currentDomain}</p>
+                 </div>
+
+                 {offlineStatus ? (
+                     <div className="bg-red-50 p-4 rounded-xl border border-red-100">
+                         <p className="text-[10px] font-bold uppercase text-red-400 tracking-widest mb-1">Diagnóstico de Error</p>
+                         <p className="text-sm text-red-700 font-medium">
+                             {authError || "No se pudo conectar a Firebase. Posible bloqueo de dominio o falta de internet."}
+                         </p>
+                         {authError && authError.includes("unauthorized-domain") && (
+                             <div className="mt-3 pt-3 border-t border-red-100">
+                                 <p className="text-xs text-red-800">
+                                     <strong>Solución:</strong> Debes ir a la consola de Firebase Authentication {'>'} Settings {'>'} Authorized Domains y agregar: <u>{currentDomain}</u>
+                                 </p>
+                             </div>
+                         )}
+                     </div>
+                 ) : (
+                     <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                         <p className="text-sm text-green-700 font-medium flex items-center gap-2">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            Todos los datos se están sincronizando con la nube correctamente.
+                         </p>
+                     </div>
+                 )}
+                 
+                 <p className="text-xs text-gray-500 leading-relaxed">
+                     Nota: Si estás en modo Offline, los datos que guardes <strong>SOLO</strong> se verán en este dispositivo. Para verlos en otro lado, debes corregir la conexión y pulsar "Sincronizar".
+                 </p>
+             </div>
+
+             <div className="flex gap-3">
+                 <button onClick={() => handleRetryConnection(false)} className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-black transition-colors">
+                     Reintentar Conexión
+                 </button>
+                 {offlineStatus && localBackupCount > 0 && (
+                     <button onClick={() => {setShowConnectionInfo(false); setShowRescueModal(true);}} className="flex-1 bg-yellow-500 text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-yellow-600 transition-colors shadow-lg animate-pulse">
+                         Forzar Sincronización
+                     </button>
+                 )}
+             </div>
+          </div>
+        </div>
+      );
   };
 
   // --- RULES ERROR MODAL ---
@@ -472,11 +547,11 @@ function App() {
           <div className="bg-white max-w-md w-full rounded-3xl p-8 text-center shadow-2xl">
               <h2 className="text-2xl font-serif font-bold text-slate-900 mb-2">Sincronización</h2>
               <p className="text-gray-600 mb-6 leading-relaxed text-sm">
-                  Tienes <strong>{localBackupCount} telas</strong> sin sincronizar.
+                  Tienes <strong>{localBackupCount} telas</strong> sin sincronizar en este dispositivo.
               </p>
               <button 
                   onClick={handleRestoreLocalData}
-                  className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm shadow-xl"
+                  className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm shadow-xl hover:scale-105 transition-transform"
               >
                   Sincronizar Ahora
               </button>
@@ -610,13 +685,14 @@ function App() {
       {showSetupGuide && <SetupGuide />}
       {showRulesError && <RulesErrorModal />}
       {showRescueModal && <RescueModal />}
+      {showConnectionInfo && <ConnectionInfoModal />}
 
       <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 items-start">
         {/* Rescue/Sync Button */}
         {offlineStatus && !showRescueModal && localBackupCount > 0 && (
              <button 
                 onClick={() => setShowRescueModal(true)}
-                className="bg-yellow-500 text-white px-4 py-2 rounded-full text-[10px] font-bold shadow-lg border border-yellow-400 hover:scale-105 transition-transform flex items-center gap-2 animate-bounce"
+                className="bg-yellow-500 text-white px-4 py-2 rounded-full text-[10px] font-bold shadow-lg border border-yellow-400 hover:scale-105 transition-transform flex items-center gap-2 animate-bounce cursor-pointer"
             >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                 Sincronizar ({localBackupCount})
@@ -716,12 +792,13 @@ function App() {
             {view === 'grid' && (
                 <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative text-center">
                     
-                    {/* CLOUD STATUS HEADER INDICATOR */}
-                    <div className="absolute top-6 left-6 md:left-10 flex items-center gap-2 cursor-pointer" onClick={() => handleRetryConnection()}>
+                    {/* CLOUD STATUS HEADER INDICATOR - CLICKABLE FOR DIAGNOSTICS */}
+                    <div className="absolute top-6 left-6 md:left-10 flex items-center gap-2 cursor-pointer z-[60] group" onClick={handleStatusClick} title="Diagnóstico de Conexión">
                         <div className={`w-2 h-2 rounded-full ${offlineStatus ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-                        <span className={`text-[9px] font-bold uppercase tracking-widest ${offlineStatus ? 'text-red-500' : 'text-green-600'}`}>
+                        <span className={`text-[9px] font-bold uppercase tracking-widest group-hover:underline ${offlineStatus ? 'text-red-500' : 'text-green-600'}`}>
                             {offlineStatus ? 'Modo Offline' : 'Nube Activa'}
                         </span>
+                        {offlineStatus && <svg className="w-3 h-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
                     </div>
 
                     <h1 className="font-serif text-6xl md:text-8xl font-bold tracking-tight text-slate-900 leading-none text-center">Catálogo de Telas</h1>

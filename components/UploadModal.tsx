@@ -248,7 +248,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const handleFinalSave = async () => {
     setIsSaving(true);
     setUploadProgress(5); // Start with 5%
-    setUploadStatusText('Optimizando imágenes para nube...');
     
     // Prepare all fabrics first
     const finalFabrics: Fabric[] = extractedFabrics.map(data => ({
@@ -267,24 +266,27 @@ const UploadModal: React.FC<UploadModalProps> = ({
     }));
 
     const total = finalFabrics.length;
-    // BATCH UPLOAD: Increased to 4 for faster processing with smaller images
-    const batchSize = 4; 
+    let completed = 0;
 
-    for (let i = 0; i < total; i += batchSize) {
-        const chunk = finalFabrics.slice(i, i + batchSize);
+    // Procesamiento SECUENCIAL para asegurar que la UI se actualice
+    for (const fabric of finalFabrics) {
         
-        setUploadStatusText(`Sincronizando lote ${Math.floor(i/batchSize) + 1}... (${Math.min(i + batchSize, total)}/${total})`);
+        // --- UI UNBLOCKER ---
+        // Forzamos una pausa de 50ms para que el navegador pinte el progreso
+        // Esto evita que la pantalla se congele si la CPU sube al 100%
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        const percent = 5 + Math.round((completed / total) * 90);
+        setUploadProgress(percent);
+        setUploadStatusText(`Sincronizando ${fabric.name.substring(0,15)}... (${completed + 1}/${total})`);
         
         try {
-            // Ejecutar las subidas del lote en paralelo
-            await Promise.all(chunk.map(fabric => onSave(fabric)));
+            await onSave(fabric);
         } catch (err) {
-            console.error("Error en lote:", err);
-            // Continue even if error to avoid stuck progress
+            console.error("Error guardando tela (saltada):", fabric.name, err);
         }
-
-        const percent = Math.round((Math.min(i + batchSize, total) / total) * 100);
-        setUploadProgress(percent);
+        
+        completed++;
     }
     
     // Finish

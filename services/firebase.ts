@@ -9,7 +9,10 @@ import {
   deleteDoc, 
   writeBatch,
   initializeFirestore,
-  enableIndexedDbPersistence
+  enableIndexedDbPersistence,
+  QuerySnapshot,
+  DocumentData,
+  CACHE_SIZE_UNLIMITED
 } from "firebase/firestore";
 import { 
   getStorage, 
@@ -19,7 +22,8 @@ import {
 } from "firebase/storage";
 import { 
   getAuth, 
-  signInAnonymously
+  signInAnonymously,
+  onAuthStateChanged
 } from "firebase/auth";
 import { Fabric, FurnitureTemplate } from "../types";
 import { FURNITURE_TEMPLATES as DEFAULT_FURNITURE } from "../constants";
@@ -28,7 +32,6 @@ import { FURNITURE_TEMPLATES as DEFAULT_FURNITURE } from "../constants";
 // CONFIGURACIÓN DE FIREBASE (NUBE)
 // ==========================================
 
-// ACTUALIZADO: Conectado a 'telas-pruebas'
 const firebaseConfig = {
   apiKey: "AIzaSyCEQTcNm4F3E-9qnHTcwqK91XXLyQa6Cws",
   authDomain: "telas-pruebas.firebaseapp.com",
@@ -39,58 +42,23 @@ const firebaseConfig = {
   measurementId: "G-V098WS2ZWM"
 };
 
-// Estado de conexión global
-let globalOfflineMode = false;
+// Variables de Estado
+let isConnected = false; 
 let authConfigMissing = false;
+let lastAuthErrorMessage = ""; 
 
-// Promesa para esperar a que la auth termine (éxito o fallo) antes de pedir datos
-let authResolve: (value: void | PromiseLike<void>) => void;
-const authReadyPromise = new Promise<void>((resolve) => {
-    authResolve = resolve;
-});
-
-// Initialize Firebase
 const app = firebaseApp.initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
-// Función para iniciar sesión
-const initAuth = async () => {
-    try {
-        await signInAnonymously(auth);
-        console.log("✅ Conexión a Nube (Auth) exitosa: telas-pruebas");
-        globalOfflineMode = false;
-        authConfigMissing = false;
-    } catch (error: any) {
-        const errorCode = error.code;
-        console.error("🔥 Error Auth (Entrando en modo Offline):", errorCode);
-        
-        // Si la Key es inválida, no molestamos al usuario con alertas, solo activamos offline
-        if (errorCode === 'auth/api-key-not-valid') {
-             console.warn("⚠️ API Key inválida. Se usará almacenamiento local.");
-        } else if (errorCode === 'auth/configuration-not-found' || errorCode === 'auth/operation-not-allowed') {
-             authConfigMissing = true;
-        }
-        
-        globalOfflineMode = true;
-    } finally {
-        // Solo resolvemos la primera vez para desbloquear la carga inicial
-        if (authResolve) {
-            authResolve();
-            // @ts-ignore
-            authResolve = null; 
-        }
-    }
-};
-
-// Iniciar al cargar
-initAuth();
-
-// Initialize Firestore
+// 1. MEJORA DE ESTABILIDAD: Usar Long Polling en lugar de WebSockets
+// Esto evita desconexiones en redes móviles o corporativas.
 const db = initializeFirestore(app, {
-  ignoreUndefinedProperties: true
+  ignoreUndefinedProperties: true,
+  experimentalForceLongPolling: true, // <--- CLAVE PARA ESTABILIDAD
+  cacheSizeBytes: CACHE_SIZE_UNLIMITED
 });
 
-// CORRECCIÓN CRÍTICA: La persistencia debe activarse INMEDIATAMENTE
+// Habilitar caché offline de Firestore (Diferente al LocalStorage)
 enableIndexedDbPersistence(db).catch((err) => {
     if (err.code === 'failed-precondition') {
         console.warn('Persistencia falló: Multiples pestañas abiertas.');
@@ -103,52 +71,75 @@ const storage = getStorage(app);
 const COLLECTION_NAME = "fabrics";
 const FURNITURE_COLLECTION = "furniture";
 
-// --- Helpers de Errores de Permisos ---
-let permissionAlertShown = false; // Para no spammear alertas
-
-const handlePermissionError = (source: 'Firestore' | 'Storage') => {
-    if (permissionAlertShown) return;
-    // No mostramos alerta aquí si ya estamos mostrando el modal grande en la UI
-    // permissionAlertShown = true; 
-    console.error(`Bloqueo de seguridad en ${source}`);
+// --- HELPER DE TIMEOUT ---
+const withTimeout = <T>(promise: Promise<T>, ms: number, fallbackValue?: T): Promise<T> => {
+    return Promise.race([
+        promise,
+        new Promise<T>((resolve, reject) => {
+            setTimeout(() => {
+                if (fallbackValue !== undefined) {
+                    console.warn(`⏳ Timeout (${ms}ms).`);
+                    resolve(fallbackValue);
+                } else {
+                    reject(new Error("Timeout"));
+                }
+            }, ms);
+        })
+    ]);
 };
 
-// Nueva función para verificar si la DB está bloqueada (ReadOnly) con TIMEOUT de seguridad
-export const checkDatabasePermissions = async (): Promise<boolean> => {
-    if (globalOfflineMode) return true; // Asumimos true en offline para no molestar
-    
-    try {
-        // Creamos una promesa que se rechaza automáticamente después de 3 segundos
-        // Esto evita que la app se cuelgue si la conexión es lenta o Firebase no responde
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Timeout")), 3000)
-        );
-
-        // La operación real de escritura
-        const testRef = doc(db, "_health_check", "permission_test");
-        const writePromise = setDoc(testRef, { 
-            status: "ok", 
-            timestamp: Date.now() 
-        });
-
-        // Hacemos una carrera: quien termine primero gana (escritura o timeout)
-        await Promise.race([writePromise, timeoutPromise]);
-        
-        return true; // Éxito: Las reglas permiten escritura
-    } catch (error: any) {
-        if (error.code === 'permission-denied') {
-            console.error("❌ PERMISO DENEGADO: Las reglas de Firestore están bloqueadas.");
-            return false;
+// 2. SISTEMA DE AUTENTICACIÓN ROBUSTO
+// En lugar de solo iniciar sesión una vez, escuchamos el estado.
+const initAuthListener = () => {
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            console.log("🟢 Usuario Conectado (Listener):", user.uid);
+            isConnected = true;
+        } else {
+            console.log("🔴 Usuario Desconectado. Reintentando...");
+            isConnected = false;
+            signInAnonymously(auth).catch((e) => console.error("Auto-reconnect failed", e));
         }
-        // Si es Timeout u otro error de red, asumimos que está bien para no bloquear la UI innecesariamente
-        // El error real saltará cuando el usuario intente guardar algo
+    });
+};
+
+// Iniciar sesión inicial
+const initAuth = async () => {
+    try {
+        await signInAnonymously(auth);
+        isConnected = true;
+        authConfigMissing = false;
+    } catch (error: any) {
+        console.error("🔥 Error Auth Inicial:", error.code);
+        lastAuthErrorMessage = error.message;
+        isConnected = false;
+        
+        if (error.code === 'auth/configuration-not-found' || error.code === 'auth/operation-not-allowed') {
+             authConfigMissing = true;
+        }
+    }
+    initAuthListener(); // Activar el escucha permanente
+};
+
+initAuth();
+
+// --- Helpers de Errores ---
+const handlePermissionError = () => {
+    console.error("❌ PERMISO DENEGADO: Verifica reglas de Firestore.");
+};
+
+export const checkDatabasePermissions = async (): Promise<boolean> => {
+    try {
+        const testRef = doc(db, "_health_check", "permission_test");
+        await withTimeout(setDoc(testRef, { status: "ok", ts: Date.now() }), 4000);
         return true; 
+    } catch (error: any) {
+        if (error.code === 'permission-denied') return false;
+        return true; // Si es timeout, asumimos que sí tiene permisos pero es lento
     }
 };
 
-
 // --- Helpers de Imágenes ---
-
 const dataURItoBlob = (dataURI: string): Blob => {
   try {
     if (!dataURI || !dataURI.includes(',')) return new Blob([]);
@@ -161,39 +152,29 @@ const dataURItoBlob = (dataURI: string): Blob => {
     }
     return new Blob([ab], { type: mimeString });
   } catch (e) {
-    console.error("Error converting dataURI to blob", e);
     return new Blob([]);
   }
 };
 
 const uploadImageToStorage = async (base64String: string, path: string): Promise<string> => {
-    if (!base64String) return '';
-    if (base64String.startsWith('http')) return base64String;
+    if (!base64String || base64String.startsWith('http')) return base64String;
 
-    // Si estamos en modo offline, devolvemos el base64 tal cual para que funcione localmente
-    if (globalOfflineMode) {
-        // console.warn("⚠️ Modo Offline: Guardando imagen como Base64 (Local Only)");
-        return base64String;
-    }
+    // Si no hay conexión real, devolvemos base64 para que la UI no se rompa
+    if (!auth.currentUser) return base64String;
 
     try {
         const storageRef = ref(storage, path);
         const blob = dataURItoBlob(base64String);
-        if (blob.size === 0) return base64String;
-
-        const metadata = { cacheControl: 'public,max-age=31536000' };
-        await uploadBytes(storageRef, blob, metadata);
-        const url = await getDownloadURL(storageRef);
-        return url;
-    } catch (error: any) {
-        console.warn(`Fallo al subir imagen ${path}:`, error.message);
         
-        // DETECCIÓN DE PERMISOS STORAGE
-        if (error.code === 'storage/unauthorized') {
-            handlePermissionError('Storage');
-        }
+        // Timeout de 15s para subidas (más generoso)
+        const uploadTask = uploadBytes(storageRef, blob);
+        const snapshot = await withTimeout(uploadTask, 15000, 'TIMEOUT');
 
-        // Fallback: Si falla la subida, guardamos el base64 para no perder la foto
+        if (snapshot === 'TIMEOUT') return base64String;
+
+        return await getDownloadURL(storageRef);
+    } catch (error: any) {
+        console.warn(`Fallo subida imagen (Usando local):`, error.code);
         return base64String;
     }
 };
@@ -203,64 +184,34 @@ const processFabricImagesForCloud = async (fabric: Fabric): Promise<Fabric> => {
     const timestamp = Date.now();
     const cleanId = fabric.id.replace(/[^a-zA-Z0-9]/g, '_');
     
-    // Array para almacenar todas las promesas de subida
-    const uploadPromises: Promise<void>[] = [];
-
-    // 1. Main Image
-    if (updatedFabric.mainImage && updatedFabric.mainImage.startsWith('data:')) {
-        uploadPromises.push((async () => {
-            updatedFabric.mainImage = await uploadImageToStorage(updatedFabric.mainImage, `fabrics/${cleanId}/main_${timestamp}.jpg`);
-        })());
+    // Procesamos imágenes en paralelo
+    const promises = [];
+    
+    if (updatedFabric.mainImage?.startsWith('data:')) {
+        promises.push((async () => updatedFabric.mainImage = await uploadImageToStorage(updatedFabric.mainImage, `fabrics/${cleanId}/main_${timestamp}.jpg`))());
     }
-
-    // 2. Specs Image
-    if (updatedFabric.specsImage && updatedFabric.specsImage.startsWith('data:')) {
-        uploadPromises.push((async () => {
-            updatedFabric.specsImage = await uploadImageToStorage(updatedFabric.specsImage, `fabrics/${cleanId}/specs_${timestamp}.jpg`);
-        })());
+    if (updatedFabric.specsImage?.startsWith('data:')) {
+        promises.push((async () => updatedFabric.specsImage = await uploadImageToStorage(updatedFabric.specsImage, `fabrics/${cleanId}/specs_${timestamp}.jpg`))());
     }
-
-    // 3. Color Images (PARALLEL)
     if (updatedFabric.colorImages) {
-        const newColorImages: Record<string, string> = { ...updatedFabric.colorImages };
-        
-        Object.entries(updatedFabric.colorImages).forEach(([colorName, base64]) => {
-            if (base64 && base64.startsWith('data:')) {
-                uploadPromises.push((async () => {
-                    const safeColorName = colorName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-                    newColorImages[colorName] = await uploadImageToStorage(base64, `fabrics/${cleanId}/colors/${safeColorName}_${timestamp}.jpg`);
-                })());
+        const newColors = { ...updatedFabric.colorImages };
+        Object.entries(updatedFabric.colorImages).forEach(([k, v]) => {
+            if (v?.startsWith('data:')) {
+                promises.push((async () => newColors[k] = await uploadImageToStorage(v, `fabrics/${cleanId}/colors/${k}_${timestamp}.jpg`))());
             }
         });
-        
-        // Asignamos la referencia, aunque se llenará cuando las promesas resuelvan
-        updatedFabric.colorImages = newColorImages;
+        updatedFabric.colorImages = newColors;
     }
 
-    // Esperar a que TODAS las imágenes se suban en paralelo
-    await Promise.all(uploadPromises);
-
+    await Promise.all(promises);
     return updatedFabric;
 };
 
-// --- Funciones Exportadas ---
-
-export const retryAuth = async () => {
-    console.log("🔄 Reintentando conexión con la nube...");
-    await initAuth();
-    return !globalOfflineMode;
-};
-
-// HELPER: Guardar en LocalStorage (Backup)
+// --- Helpers Locales ---
 const saveToLocalBackup = (key: string, data: any) => {
-    try {
-        localStorage.setItem(key, JSON.stringify(data));
-    } catch (e) {
-        console.error("Error guardando en LocalStorage (Quota exceeded?)", e);
-    }
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) {}
 };
 
-// HELPER EXPORTADO: Obtener datos locales instantáneamente
 export const getLocalCachedData = () => {
     const localFabrics = localStorage.getItem("creata_fabrics_offline_backup");
     const localFurniture = localStorage.getItem("creata_furniture_offline");
@@ -270,53 +221,37 @@ export const getLocalCachedData = () => {
     };
 };
 
+// --- FUNCIONES PRINCIPALES ---
+
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
-  // Esperar un momento si la auth no ha resuelto, pero no bloquear indefinidamente
-  // NEW: Timeout de 800ms para no bloquear la app si la auth es lenta
-  if (authResolve) {
-      await Promise.race([
-          authReadyPromise,
-          new Promise(resolve => setTimeout(resolve, 800))
-      ]);
-  }
-
-  // MODO OFFLINE IMPERATIVO: Si la auth falló, ni siquiera tocamos Firestore
-  if (globalOfflineMode) {
-      console.log("⚡ Modo Offline activado: Leyendo telas locales.");
-      const { fabrics } = getLocalCachedData();
-      return fabrics;
-  }
-
+  // 1. Intentamos leer de la Nube (o caché inteligente de Firestore)
   try {
-    const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
+    // Timeout de 6s. Si falla, cae al catch y devuelve lo local
+    const querySnapshot = await withTimeout<QuerySnapshot<DocumentData>>(
+        getDocs(collection(db, COLLECTION_NAME)), 
+        6000
+    );
+    
     const fabrics: Fabric[] = [];
+    querySnapshot.forEach((doc) => fabrics.push(doc.data() as Fabric));
     
-    querySnapshot.forEach((doc) => {
-      fabrics.push(doc.data() as Fabric);
-    });
-    
-    // CACHE SYNC: Actualizar backup local con lo nuevo de la nube
     if (fabrics.length > 0) {
+        console.log(`☁️ Nube: ${fabrics.length} telas cargadas.`);
         saveToLocalBackup("creata_fabrics_offline_backup", fabrics);
+        return fabrics;
     }
-
-    return fabrics;
   } catch (error: any) {
-    console.error("❌ Error Firestore:", error.code);
-    
-    // DETECCIÓN DE PERMISOS FIRESTORE (READ)
-    if (error.code === 'permission-denied') {
-        handlePermissionError('Firestore');
-    }
-
-    globalOfflineMode = true; // Fallback inmediato
-    const { fabrics } = getLocalCachedData();
-    return fabrics;
+    console.warn("⚠️ Falló lectura de nube, usando datos locales:", error.message);
+    if (error.code === 'permission-denied') handlePermissionError();
   }
+
+  // 2. Si falla la nube, devolvemos LocalStorage inmediatamente
+  const { fabrics } = getLocalCachedData();
+  return fabrics;
 };
 
 export const saveFabricToFirestore = async (fabric: Fabric) => {
-  // 1. Siempre actualizamos el local storage primero (Optimistic UI)
+  // 1. Guardado Optimista (Local)
   try {
       const { fabrics } = getLocalCachedData();
       const index = fabrics.findIndex((f: Fabric) => f.id === fabric.id);
@@ -325,95 +260,64 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
       saveToLocalBackup("creata_fabrics_offline_backup", fabrics);
   } catch(e) {}
 
-  // 2. INTENTO DE RECONEXIÓN
-  if (globalOfflineMode) {
-      const isOnline = await retryAuth();
-      if (!isOnline) {
-          return; 
-      }
-  }
-
+  // 2. Guardado en Nube (Sin bloquear UI si falla)
   try {
-    // Procesamos imágenes en paralelo ahora
+    // Si no estamos conectados, intentamos reconectar rápido
+    if (!auth.currentUser) await signInAnonymously(auth);
+
     const cloudFabric = await processFabricImagesForCloud(fabric);
     
-    await setDoc(doc(db, COLLECTION_NAME, cloudFabric.id), cloudFabric, { merge: true });
-    // console.log("✅ ¡Guardado en la nube con éxito!");
+    // Timeout de 10s para guardar el documento
+    await withTimeout(
+        setDoc(doc(db, COLLECTION_NAME, cloudFabric.id), cloudFabric, { merge: true }), 
+        10000
+    );
+    
   } catch (error: any) {
-    console.error("❌ Error guardando en nube (se guardó en local):", error);
-    
-    // DETECCIÓN DE PERMISOS FIRESTORE (WRITE)
-    if (error.code === 'permission-denied') {
-        handlePermissionError('Firestore');
-    }
-    
-    if (error.code === 'firestore/invalid-argument' && error.message.includes('exceeds the maximum allowed size')) {
-        alert("⚠️ Error: La imagen es demasiado pesada y no se pudo subir a Storage. Intenta con una imagen más pequeña.");
-    }
+    console.error("❌ Error guardando en nube (Guardado local OK):", error.message);
   }
 };
 
 export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
-  if (globalOfflineMode) await retryAuth();
-  
-  // Usamos Promise.all con un límite de concurrencia simple (lotes de 3)
-  // para no saturar el navegador pero ir más rápido que secuencial.
-  const batchSize = 3;
-  for (let i = 0; i < fabrics.length; i += batchSize) {
-      const chunk = fabrics.slice(i, i + batchSize);
-      await Promise.all(chunk.map(f => saveFabricToFirestore(f)));
+  for (const f of fabrics) {
+      await saveFabricToFirestore(f);
   }
 };
 
 export const deleteFabricFromFirestore = async (fabricId: string) => {
-  // Borrar de local
+  // Local Delete
   const { fabrics } = getLocalCachedData();
   const filtered = fabrics.filter((f: Fabric) => f.id !== fabricId);
   saveToLocalBackup("creata_fabrics_offline_backup", filtered);
 
-  if (globalOfflineMode && !(await retryAuth())) return;
-
+  // Cloud Delete
   try {
     await deleteDoc(doc(db, COLLECTION_NAME, fabricId));
-  } catch (error: any) {
-    console.error("Error eliminando doc de nube:", error);
-    if (error.code === 'permission-denied') handlePermissionError('Firestore');
-  }
+  } catch (error) { console.error("Error delete cloud", error); }
 };
 
 export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTemplate[]> => {
-    if (authResolve) {
-        await Promise.race([
-            authReadyPromise,
-            new Promise(resolve => setTimeout(resolve, 800))
-        ]);
-    }
-    
-    if (globalOfflineMode) {
-         const { furniture } = getLocalCachedData();
-         return furniture.length > 0 ? furniture : DEFAULT_FURNITURE;
-    }
-
     try {
-        const querySnapshot = await getDocs(collection(db, FURNITURE_COLLECTION));
+        const querySnapshot = await withTimeout<QuerySnapshot<DocumentData>>(
+            getDocs(collection(db, FURNITURE_COLLECTION)), 
+            5000
+        );
         const furniture: FurnitureTemplate[] = [];
-        querySnapshot.forEach((doc) => {
-            furniture.push(doc.data() as FurnitureTemplate);
-        });
+        querySnapshot.forEach((doc) => furniture.push(doc.data() as FurnitureTemplate));
         
-        // CACHE SYNC
         if (furniture.length > 0) {
             saveToLocalBackup("creata_furniture_offline", furniture);
+            return furniture;
         }
+    } catch (error) {}
 
-        return furniture.length === 0 ? DEFAULT_FURNITURE : furniture;
-    } catch (error) {
-        return DEFAULT_FURNITURE;
-    }
+    // Fallback Local
+    const { furniture } = getLocalCachedData();
+    return furniture.length > 0 ? furniture : DEFAULT_FURNITURE;
 };
 
 export const saveFurnitureTemplateToFirestore = async (template: FurnitureTemplate) => {
-    // Guardar Local
+    // Local
     try {
         const { furniture } = getLocalCachedData();
         const combined = furniture.length > 0 ? furniture : DEFAULT_FURNITURE;
@@ -423,12 +327,7 @@ export const saveFurnitureTemplateToFirestore = async (template: FurnitureTempla
         saveToLocalBackup("creata_furniture_offline", combined);
     } catch(e) {}
 
-    // Reconexión
-    if (globalOfflineMode) {
-        const isOnline = await retryAuth();
-        if (!isOnline) return template;
-    }
-
+    // Cloud
     try {
         let imageUrl = template.imageUrl;
         if (imageUrl.startsWith('data:')) {
@@ -439,62 +338,49 @@ export const saveFurnitureTemplateToFirestore = async (template: FurnitureTempla
         const finalTemplate = { ...template, imageUrl };
         await setDoc(doc(db, FURNITURE_COLLECTION, finalTemplate.id), finalTemplate, { merge: true });
         return finalTemplate;
-    } catch (error: any) {
-        console.error("Error saving furniture to cloud:", error);
-        if (error.code === 'permission-denied') handlePermissionError('Firestore');
+    } catch (error) {
         return template;
     }
 };
 
 export const deleteFurnitureTemplateFromFirestore = async (id: string) => {
-    // Borrar Local
     const { furniture } = getLocalCachedData();
     const filtered = furniture.filter((t: FurnitureTemplate) => t.id !== id);
     saveToLocalBackup("creata_furniture_offline", filtered);
-
-    if (globalOfflineMode && !(await retryAuth())) return;
-
-    try {
-        await deleteDoc(doc(db, FURNITURE_COLLECTION, id));
-    } catch (error: any) {
-        console.error("Error deleting furniture from cloud:", error);
-        if (error.code === 'permission-denied') handlePermissionError('Firestore');
-    }
+    try { await deleteDoc(doc(db, FURNITURE_COLLECTION, id)); } catch (e) {}
 };
 
 export const clearFirestoreCollection = async () => {
-    if (globalOfflineMode && !(await retryAuth())) {
-        localStorage.removeItem("creata_fabrics_offline_backup");
-        return;
-    }
-    const snapshot = await getDocs(collection(db, COLLECTION_NAME));
-    const batch = writeBatch(db);
-    snapshot.docs.forEach((doc) => {
-        batch.delete(doc.ref);
-    });
-    await batch.commit();
     localStorage.removeItem("creata_fabrics_offline_backup");
+    try {
+        const snapshot = await getDocs(collection(db, COLLECTION_NAME));
+        const batch = writeBatch(db);
+        snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+    } catch(e) {}
 };
 
 export const pushLocalBackupToCloud = async (): Promise<number> => {
     const { fabrics } = getLocalCachedData();
     if (fabrics.length === 0) throw new Error("No hay datos locales.");
     
-    // Force re-auth check before pushing
-    await retryAuth();
-    if (globalOfflineMode) {
-        throw new Error("No se pudo conectar a la nube. Verifica tu API Key o conexión.");
-    }
+    // Forzar reconexión antes de subir
+    if (!auth.currentUser) await signInAnonymously(auth);
 
-    console.log(`🚀 Subiendo ${fabrics.length} telas...`);
-    // Usamos el batching aquí también para acelerar la recuperación
-    const batchSize = 3;
-    for (let i = 0; i < fabrics.length; i += batchSize) {
-        const chunk = fabrics.slice(i, i + batchSize);
-        await Promise.all(chunk.map(f => saveFabricToFirestore(f)));
+    console.log(`🚀 Subiendo backup (${fabrics.length} telas)...`);
+    for (const f of fabrics) {
+        await saveFabricToFirestore(f);
     }
     return fabrics.length;
 };
 
-export const isOfflineMode = () => globalOfflineMode;
+export const retryAuth = async () => {
+    try {
+        await signInAnonymously(auth);
+        return true;
+    } catch (e) { return false; }
+};
+
+export const isOfflineMode = () => !auth.currentUser; // Simplificado: si hay usuario, asumimos online
 export const isAuthConfigMissing = () => authConfigMissing;
+export const getAuthError = () => lastAuthErrorMessage;
