@@ -16,7 +16,8 @@ import {
   isOfflineMode,
   isAuthConfigMissing,
   pushLocalBackupToCloud,
-  getLocalCachedData
+  getLocalCachedData,
+  retryAuth
 } from './services/firebase';
 
 // Lazy Load Heavy Components
@@ -32,23 +33,23 @@ type SortOption = 'color' | 'name' | 'model' | 'supplier';
 
 // --- NEW LOADING SCREEN COMPONENT WITH PROGRESS BAR ---
 const LoadingScreen = ({ progress }: { progress: number }) => (
-  <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-[#f2f2f2] transition-opacity duration-500">
+  <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-[#f2f2f2] transition-opacity duration-300">
     <div className="w-full max-w-md px-10 text-center">
         <h1 className="font-serif text-4xl font-bold text-slate-900 mb-2 tracking-tight">Creata</h1>
         <p className="text-[10px] uppercase tracking-[0.3em] text-gray-400 mb-10">Collection Manager</p>
         
         <div className="relative w-full h-1 bg-gray-200 rounded-full overflow-hidden mb-4">
             <div 
-                className="absolute top-0 left-0 h-full bg-slate-900 transition-all duration-300 ease-out"
+                className="absolute top-0 left-0 h-full bg-slate-900 transition-all duration-200 ease-out"
                 style={{ width: `${progress}%` }}
             ></div>
         </div>
         
         <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-gray-400">
             <span>
-                {progress < 30 ? 'Conectando...' : 
-                 progress < 70 ? 'Cargando Telas...' : 
-                 progress < 100 ? 'Procesando...' : 'Listo'}
+                {progress < 40 ? 'Iniciando...' : 
+                 progress < 80 ? 'Cargando Catálogo...' : 
+                 progress < 100 ? 'Finalizando...' : 'Listo'}
             </span>
             <span className="text-slate-900">{Math.round(progress)}%</span>
         </div>
@@ -116,25 +117,26 @@ function App() {
         if (cachedData.furniture.length > 0) {
              setFurnitureTemplates(cachedData.furniture);
         }
-        // Quitamos el loader inmediatamente si hay datos, o lo dejamos muy brevemente para efecto visual
+        // Quitamos el loader inmediatamente si hay datos
         setLoadingProgress(100);
         setLoading(false);
         hasCache = true;
     } else {
-        // Solo si no hay caché mostramos la barra de carga lenta
+        // Solo si no hay caché mostramos la barra de carga
         setLoading(true);
-        setLoadingProgress(5); 
+        setLoadingProgress(15); // Start aggressive
     }
 
-    // Intervalo solo visual (si no había caché)
+    // Intervalo visual ULTRA RÁPIDO (si no había caché)
     let interval: any;
     if (!hasCache) {
         interval = setInterval(() => {
             setLoadingProgress(prev => {
-                if (prev >= 85) return prev; 
-                return prev + Math.random() * 5;
+                if (prev >= 92) return prev; 
+                // Aceleración: Saltos grandes y aleatorios para sensación de velocidad
+                return prev + Math.random() * 15 + 2; 
             });
-        }, 150);
+        }, 40); // 40ms ticks (muy rápido)
     }
 
     try {
@@ -152,7 +154,6 @@ function App() {
 
       if (dbData && dbData.length > 0) {
         // Actualizamos el estado con los datos frescos de la nube
-        // React es inteligente y solo repintará si hay cambios significativos
         setFabrics(dbData);
       } else if (!hasCache) {
          // Si nube falla y no había caché, cargar defaults
@@ -164,9 +165,9 @@ function App() {
       setLoadingProgress(100);
       if (!hasCache) setFabrics(INITIAL_FABRICS);
     } finally {
-      // Asegurarse de quitar el loading al final si aún estaba activo
+      // Salida casi inmediata para que se sienta "snappy"
       if (!hasCache) {
-          setTimeout(() => setLoading(false), 500);
+          setTimeout(() => setLoading(false), 150);
       }
     }
   };
@@ -367,6 +368,17 @@ function App() {
     setSupplierMenuOpen(false);
   };
 
+  const handleRetryConnection = async () => {
+      const isOnline = await retryAuth();
+      setOfflineStatus(!isOnline);
+      if(isOnline) {
+          alert("¡Conexión restablecida! Ahora las fotos se guardarán en la nube.");
+          loadData();
+      } else {
+          alert("No se pudo conectar. Verifica tu internet o las reglas de Firebase.");
+      }
+  };
+
   // --- SETUP GUIDE COMPONENT (Internal) ---
   const SetupGuide = () => (
       <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -379,6 +391,17 @@ function App() {
               </div>
               <div className="p-8 overflow-y-auto">
                   <p className="mb-6 text-gray-600">Para que la App pueda guardar tus fotos y datos, debes habilitar los permisos en la consola de Firebase.</p>
+                  <p className="mb-2 font-bold text-sm">Copia y pega esto en las Reglas de Firebase Storage:</p>
+                  <pre className="bg-gray-100 p-4 rounded-lg text-xs font-mono mb-6 overflow-x-auto">
+{`rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}`}
+                  </pre>
                   <div className="mt-8 text-center">
                       <button onClick={() => window.location.reload()} className="bg-black text-white px-8 py-3 rounded-full font-bold uppercase tracking-widest text-xs hover:scale-105 transition-transform shadow-lg">Ya lo hice, recargar página</button>
                   </div>
@@ -553,17 +576,22 @@ function App() {
             </button>
         )}
 
-        {/* Cloud Status Indicator */}
+        {/* Cloud Status Indicator - Now Clickable */}
         <div 
             className={`px-4 py-2 rounded-full text-[10px] font-bold shadow-sm border border-gray-200 flex items-center gap-2 transition-all duration-500 cursor-pointer hover:scale-105 ${offlineStatus ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white/80 backdrop-blur text-green-700'}`}
             onClick={() => {
-                if (offlineStatus) setShowSetupGuide(true);
+                if (offlineStatus) {
+                    handleRetryConnection(); // Try to reconnect manually
+                } else {
+                    // Force a setup check even if green, just in case
+                    if(isAuthConfigMissing()) setShowSetupGuide(true);
+                }
             }}
-            title="Clic para ver ayuda"
+            title={offlineStatus ? "Haga clic para reintentar conexión" : "Conectado a la nube"}
         >
             <div className={`w-2 h-2 rounded-full ${offlineStatus ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
             {offlineStatus ? (
-                <span>Sin Conexión / Permisos Denegados</span>
+                <span>Sin Conexión (Clic para reintentar)</span>
             ) : (
                 <span>Nube Conectada</span>
             )}
