@@ -24,6 +24,9 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, onDetail, onQu
     displayImage = fabric.colorImages[specificColorName];
   }
 
+  // Check if image is cloud-hosted
+  const isCloudStored = displayImage && displayImage.startsWith('http');
+
   // Safe access to colors
   const colorList = fabric.colors || [];
 
@@ -103,6 +106,13 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, onDetail, onQu
                 className="absolute bottom-3 right-3 z-30 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm" 
                 title={mode === 'model' ? "Modelo en Stock" : "Color en Stock"}
             ></div>
+        )}
+
+        {/* CLOUD INDICATOR - ANSWER TO USER QUESTION */}
+        {isCloudStored && (
+            <div className="absolute top-3 right-3 z-30 text-white/50 bg-black/10 p-1 rounded-full backdrop-blur-sm" title="Guardado en Nube">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /></svg>
+            </div>
         )}
 
         {/* Curved Wave Separator (SVG) */}

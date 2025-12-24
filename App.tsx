@@ -33,30 +33,36 @@ const EditFurnitureModal = lazy(() => import('./components/EditFurnitureModal'))
 type SortOption = 'color' | 'name' | 'model' | 'supplier';
 
 // --- NEW LOADING SCREEN COMPONENT WITH PROGRESS BAR ---
-const LoadingScreen = ({ progress }: { progress: number }) => (
-  <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-[#f2f2f2] transition-opacity duration-300">
-    <div className="w-full max-w-md px-10 text-center">
-        <h1 className="font-serif text-4xl font-bold text-slate-900 mb-2 tracking-tight">Creata</h1>
-        <p className="text-[10px] uppercase tracking-[0.3em] text-gray-400 mb-10">Collection Manager</p>
-        
-        <div className="relative w-full h-1 bg-gray-200 rounded-full overflow-hidden mb-4">
-            <div 
-                className="absolute top-0 left-0 h-full bg-slate-900 transition-all duration-200 ease-out"
-                style={{ width: `${progress}%` }}
-            ></div>
-        </div>
-        
-        <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-gray-400">
-            <span>
-                {progress < 40 ? 'Iniciando...' : 
-                 progress < 80 ? 'Cargando Catálogo...' : 
-                 progress < 100 ? 'Finalizando...' : 'Entrando...'}
-            </span>
-            <span className="text-slate-900">{Math.round(progress)}%</span>
-        </div>
+const LoadingScreen = ({ progress }: { progress: number }) => {
+  // Ensure progress never visually exceeds 100%
+  const safeProgress = Math.min(100, Math.max(0, Math.round(progress)));
+  
+  return (
+    <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-[#f2f2f2] transition-opacity duration-300">
+      <div className="w-full max-w-md px-10 text-center">
+          <h1 className="font-serif text-4xl font-bold text-slate-900 mb-2 tracking-tight">Creata</h1>
+          <p className="text-[10px] uppercase tracking-[0.3em] text-gray-400 mb-10">Collection Manager</p>
+          
+          <div className="relative w-full h-1 bg-gray-200 rounded-full overflow-hidden mb-4">
+              <div 
+                  className="absolute top-0 left-0 h-full bg-slate-900 transition-all duration-200 ease-out"
+                  style={{ width: `${safeProgress}%` }}
+              ></div>
+          </div>
+          
+          <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              <span>
+                  {safeProgress < 30 ? 'Iniciando...' : 
+                   safeProgress < 60 ? 'Cargando Catálogo...' : 
+                   safeProgress < 90 ? 'Conectando...' : 
+                   safeProgress < 100 ? 'Finalizando...' : 'Bienvenido'}
+              </span>
+              <span className="text-slate-900">{safeProgress}%</span>
+          </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 function App() {
   const [view, setView] = useState<AppView>('grid');
@@ -76,7 +82,7 @@ function App() {
   
   // Setup Guide Modal State
   const [showSetupGuide, setShowSetupGuide] = useState(false);
-  const [showRulesError, setShowRulesError] = useState(false); // NEW: Rules Error State
+  const [showRulesError, setShowRulesError] = useState(false);
   
   // Rescue Data Modal State
   const [showRescueModal, setShowRescueModal] = useState(false);
@@ -111,6 +117,10 @@ function App() {
     const cachedData = getLocalCachedData();
     let hasCache = false;
 
+    // ESTRATEGIA DE CARGA:
+    // Si hay caché, mostramos inmediatamente (0s espera).
+    // Si no hay caché, mostramos loading pero acelerado.
+
     if (cachedData.fabrics.length > 0) {
         console.log(`⚡ Carga Instantánea: ${cachedData.fabrics.length} telas recuperadas del caché.`);
         setFabrics(cachedData.fabrics);
@@ -123,31 +133,32 @@ function App() {
         hasCache = true;
     } else {
         setLoading(true);
-        setLoadingProgress(15); 
+        setLoadingProgress(20); // Arrancamos en 20%
     }
 
     let interval: any;
     if (!hasCache) {
+        // Barra de progreso simulada pero rápida
         interval = setInterval(() => {
             setLoadingProgress(prev => {
-                if (prev >= 92) return prev; 
-                return prev + Math.random() * 15 + 2; 
+                if (prev >= 90) return 90; // Pausa en 90% esperando red
+                return prev + Math.random() * 15 + 5; // Saltos grandes
             });
-        }, 40); 
+        }, 100); 
     }
 
     try {
-      // 1. CARGA DE DATOS (PARALELA)
+      // 1. CARGA DE DATOS
       const [dbData, furnitureData] = await Promise.all([
           getFabricsFromFirestore(),
           getFurnitureTemplatesFromFirestore()
       ]);
       
-      // 2. PARAR BARRA DE CARGA
+      // 2. FINALIZAR CARGA
       if (!hasCache && interval) clearInterval(interval);
       setLoadingProgress(100);
 
-      // 3. ACTUALIZAR ESTADO (MOSTRAR DATOS)
+      // 3. ACTUALIZAR ESTADO
       setFurnitureTemplates(furnitureData);
       setOfflineStatus(isOfflineMode());
       if (dbData && dbData.length > 0) {
@@ -157,31 +168,27 @@ function App() {
       }
 
       // 4. QUITAR PANTALLA DE CARGA (INMEDIATAMENTE)
-      // No esperamos a las verificaciones de permisos para no bloquear al usuario
       if (!hasCache) {
-          await new Promise(r => setTimeout(r, 200)); // Pequeña pausa visual al 100%
           setLoading(false);
       }
 
-      // 5. VERIFICACIONES EN SEGUNDO PLANO
+      // 5. CHEQUEOS NO BLOQUEANTES
       setTimeout(async () => {
           if (isAuthConfigMissing()) {
               setShowSetupGuide(true);
           } else {
-              // Esta verificación podía bloquear la carga, ahora corre "encima" de la app cargada
               const hasWritePermission = await checkDatabasePermissions();
               if (!hasWritePermission) {
                  setShowRulesError(true);
               }
           }
-      }, 800);
+      }, 500);
 
     } catch (e: any) {
       console.error("Error loading data", e);
       if (!hasCache && interval) clearInterval(interval);
       setLoadingProgress(100);
       if (!hasCache) setFabrics(INITIAL_FABRICS);
-      // En caso de error, aseguramos quitar el loader
       setLoading(false);
     }
   };
@@ -315,7 +322,7 @@ function App() {
         const count = await pushLocalBackupToCloud();
         clearInterval(interval);
         setLoadingProgress(100);
-        alert(`¡ÉXITO TOTAL! 🎉\n\nSe han recuperado ${count} telas que tenías guardadas. Se recargará la página para mostrarlas.`);
+        alert(`¡ÉXITO TOTAL! 🎉\n\nSe han sincronizado ${count} telas con la nube. Ahora están seguras en Google.`);
         window.location.reload();
     } catch(e: any) {
         clearInterval(interval);
@@ -382,7 +389,6 @@ function App() {
       setOfflineStatus(!isOnline);
       if(isOnline) {
           setShowSetupGuide(false);
-          // NEW: Re-check rules after connection success
           const hasWrite = await checkDatabasePermissions();
           if(!hasWrite) setShowRulesError(true);
           
@@ -396,7 +402,7 @@ function App() {
       }
   };
 
-  // --- RULES ERROR MODAL (NUEVO) ---
+  // --- RULES ERROR MODAL ---
   const RulesErrorModal = () => (
       <div className="fixed inset-0 z-[350] bg-red-900/90 flex items-center justify-center p-4 backdrop-blur-md">
           <div className="bg-white max-w-lg w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col">
@@ -409,32 +415,10 @@ function App() {
                       <p className="text-xs text-red-700 uppercase tracking-wide font-bold">Falta Permiso de Escritura</p>
                   </div>
               </div>
-              
               <div className="p-8 space-y-6">
                   <p className="text-gray-600 text-sm">
-                      Tu App se conectó a "telas-pruebas", pero <strong>no puede guardar datos</strong> porque las Reglas de Seguridad de Firebase están en "Modo Bloqueado" (<code>if false</code>).
+                      Tu App se conectó a "telas-pruebas", pero <strong>no puede guardar datos</strong>.
                   </p>
-
-                  <div className="bg-gray-100 p-4 rounded-lg border border-gray-200 text-sm font-mono text-gray-700">
-                      <p className="mb-2 text-gray-500">// Regla Incorrecta (Actual):</p>
-                      <p className="text-red-500">allow read, write: if false;</p>
-                      
-                      <div className="h-px bg-gray-300 my-3"></div>
-                      
-                      <p className="mb-2 text-gray-500">// Regla Correcta (Debes poner):</p>
-                      <p className="text-green-600 font-bold">allow read, write: if true;</p>
-                  </div>
-
-                  <div className="space-y-2">
-                      <h4 className="font-bold text-sm text-black uppercase tracking-wider">Instrucciones:</h4>
-                      <ol className="list-decimal pl-5 text-sm text-gray-600 space-y-1">
-                          <li>Ve a la Consola de Firebase -> <strong>Firestore Database</strong>.</li>
-                          <li>Pestaña <strong>Reglas</strong>.</li>
-                          <li>Cambia <code>false</code> por <code>true</code>.</li>
-                          <li>Haz lo mismo en <strong>Storage</strong> (para las fotos).</li>
-                      </ol>
-                  </div>
-
                   <button 
                       onClick={() => { setShowRulesError(false); window.location.reload(); }}
                       className="w-full bg-red-600 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-red-700 transition-colors shadow-lg"
@@ -446,19 +430,17 @@ function App() {
       </div>
   );
 
-  // --- SETUP GUIDE COMPONENT (ESPAÑOL) ---
+  // --- SETUP GUIDE COMPONENT ---
   const SetupGuide = () => {
       const [verifying, setVerifying] = useState(false);
-
       const handleCheck = async () => {
           setVerifying(true);
           const success = await handleRetryConnection(true);
           setVerifying(false);
           if(!success) {
-              alert("Aún no detectamos el permiso 'Anónimo'. Puede tardar unos segundos.");
+              alert("Aún no detectamos el permiso.");
           }
       };
-
       return (
       <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white max-w-2xl w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -469,37 +451,13 @@ function App() {
                   </button>
               </div>
               <div className="p-8 overflow-y-auto space-y-6">
-                  <div className="bg-red-50 p-4 rounded-xl border border-red-100">
-                      <p className="text-red-800 text-sm font-bold">La App está en "Modo Local".</p>
-                      <p className="text-red-600 text-xs mt-1">Para sincronizar tus telas entre celular, tablet y PC, debes activar la "Autenticación Anónima" en Firebase.</p>
-                  </div>
-
-                  <div className="space-y-4">
-                      <h4 className="font-bold text-slate-900 border-b border-gray-100 pb-2">SOLUCIÓN RÁPIDA (Solo el dueño):</h4>
-                      
-                      <ol className="list-decimal pl-5 space-y-3 text-sm text-gray-700">
-                          <li>Ve a <strong>console.firebase.google.com</strong> y entra a tu proyecto.</li>
-                          <li>Menú izquierdo: <strong>Authentication (Autenticación)</strong>.</li>
-                          <li>Pestaña: <strong>Sign-in method</strong>.</li>
-                          <li>Busca <strong>Anonymous (Anónimo)</strong>.</li>
-                          <li>Activa el interruptor a <strong>Habilitar (Enable)</strong> y guarda.</li>
-                      </ol>
-                  </div>
-
                   <div className="mt-6 text-center pt-4 border-t border-gray-100">
                       <button 
                         onClick={handleCheck} 
                         disabled={verifying}
-                        className="bg-green-600 text-white px-8 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-green-200 disabled:opacity-70 disabled:scale-100 flex items-center justify-center gap-2 mx-auto"
+                        className="bg-green-600 text-white px-8 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-green-200 disabled:opacity-70"
                       >
-                          {verifying ? (
-                              <>
-                                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                                Verificando...
-                              </>
-                          ) : (
-                              '¡Ya lo habilité! Validar y Conectar'
-                          )}
+                          {verifying ? 'Verificando...' : 'Reintentar Conexión'}
                       </button>
                   </div>
               </div>
@@ -508,30 +466,21 @@ function App() {
       );
   };
 
-  // --- RESCUE DATA MODAL ---
+  // --- RESCUE MODAL ---
   const RescueModal = () => (
       <div className="fixed inset-0 z-[400] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-          <div className="bg-white max-w-md w-full rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 to-green-500"></div>
-              
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              </div>
-
-              <h2 className="text-2xl font-serif font-bold text-slate-900 mb-2">¡Datos Encontrados!</h2>
+          <div className="bg-white max-w-md w-full rounded-3xl p-8 text-center shadow-2xl">
+              <h2 className="text-2xl font-serif font-bold text-slate-900 mb-2">Sincronización</h2>
               <p className="text-gray-600 mb-6 leading-relaxed text-sm">
-                  Tienes <strong className="text-black">{localBackupCount} telas</strong> guardadas en tu dispositivo. ¿Quieres subirlas a la nube ahora?
+                  Tienes <strong>{localBackupCount} telas</strong> sin sincronizar.
               </p>
-
               <button 
                   onClick={handleRestoreLocalData}
-                  className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm shadow-xl hover:scale-105 transition-transform mb-3 flex items-center justify-center gap-2"
+                  className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm shadow-xl"
               >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4 4m0 0L8 8m4-4v12" /></svg>
-                  Recuperar Mis Telas
+                  Sincronizar Ahora
               </button>
-              
-              <button onClick={() => setShowRescueModal(false)} className="text-gray-400 text-xs font-bold uppercase hover:text-gray-600">Cancelar</button>
+              <button onClick={() => setShowRescueModal(false)} className="text-gray-400 text-xs font-bold uppercase hover:text-gray-600 mt-4">Cancelar</button>
           </div>
       </div>
   );
@@ -613,7 +562,6 @@ function App() {
 
   const renderGridContent = () => {
     if (activeTab === 'model') {
-        // VIRTUALIZATION LITE: Only render visible items
         const visibleItems = sortedModelCards.slice(0, visibleItemsCount);
         return visibleItems.map((fabric, idx) => (
             <FabricCard 
@@ -664,37 +612,16 @@ function App() {
       {showRescueModal && <RescueModal />}
 
       <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 items-start">
-        {/* Rescue Button */}
-        {!showRescueModal && localBackupCount > 0 && (
+        {/* Rescue/Sync Button */}
+        {offlineStatus && !showRescueModal && localBackupCount > 0 && (
              <button 
                 onClick={() => setShowRescueModal(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-full text-[10px] font-bold shadow-lg border border-blue-500 hover:scale-105 transition-transform flex items-center gap-2 animate-bounce"
+                className="bg-yellow-500 text-white px-4 py-2 rounded-full text-[10px] font-bold shadow-lg border border-yellow-400 hover:scale-105 transition-transform flex items-center gap-2 animate-bounce"
             >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                ¡Datos Recuperables! ({localBackupCount})
+                Sincronizar ({localBackupCount})
             </button>
         )}
-
-        {/* Cloud Status Indicator - Now Clickable */}
-        <div 
-            className={`px-4 py-2 rounded-full text-[10px] font-bold shadow-sm border border-gray-200 flex items-center gap-2 transition-all duration-500 cursor-pointer hover:scale-105 ${offlineStatus ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white/80 backdrop-blur text-green-700'}`}
-            onClick={() => {
-                if (offlineStatus) {
-                    handleRetryConnection(); // Try to reconnect manually
-                } else {
-                    // Force a setup check even if green, just in case
-                    if(isAuthConfigMissing()) setShowSetupGuide(true);
-                }
-            }}
-            title={offlineStatus ? "Haga clic para reintentar conexión" : "Conectado a la nube"}
-        >
-            <div className={`w-2 h-2 rounded-full ${offlineStatus ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-            {offlineStatus ? (
-                <span>Sin Conexión (Clic para reintentar)</span>
-            ) : (
-                <span>Nube Conectada</span>
-            )}
-        </div>
       </div>
       
       {/* Lightbox para Vista Colores */}
@@ -788,6 +715,15 @@ function App() {
 
             {view === 'grid' && (
                 <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative text-center">
+                    
+                    {/* CLOUD STATUS HEADER INDICATOR */}
+                    <div className="absolute top-6 left-6 md:left-10 flex items-center gap-2 cursor-pointer" onClick={() => handleRetryConnection()}>
+                        <div className={`w-2 h-2 rounded-full ${offlineStatus ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
+                        <span className={`text-[9px] font-bold uppercase tracking-widest ${offlineStatus ? 'text-red-500' : 'text-green-600'}`}>
+                            {offlineStatus ? 'Modo Offline' : 'Nube Activa'}
+                        </span>
+                    </div>
+
                     <h1 className="font-serif text-6xl md:text-8xl font-bold tracking-tight text-slate-900 leading-none text-center">Catálogo de Telas</h1>
                     
                     <div className="flex space-x-8 md:space-x-12">

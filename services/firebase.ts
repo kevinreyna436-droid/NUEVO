@@ -272,7 +272,13 @@ export const getLocalCachedData = () => {
 
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   // Esperar un momento si la auth no ha resuelto, pero no bloquear indefinidamente
-  if (authResolve) await authReadyPromise;
+  // NEW: Timeout de 800ms para no bloquear la app si la auth es lenta
+  if (authResolve) {
+      await Promise.race([
+          authReadyPromise,
+          new Promise(resolve => setTimeout(resolve, 800))
+      ]);
+  }
 
   // MODO OFFLINE IMPERATIVO: Si la auth falló, ni siquiera tocamos Firestore
   if (globalOfflineMode) {
@@ -376,7 +382,12 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
 };
 
 export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTemplate[]> => {
-    if (authResolve) await authReadyPromise;
+    if (authResolve) {
+        await Promise.race([
+            authReadyPromise,
+            new Promise(resolve => setTimeout(resolve, 800))
+        ]);
+    }
     
     if (globalOfflineMode) {
          const { furniture } = getLocalCachedData();
