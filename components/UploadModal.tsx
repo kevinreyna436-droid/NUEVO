@@ -72,7 +72,9 @@ const UploadModal: React.FC<UploadModalProps> = ({
             const base64Data = await fileToBase64(pdfFile);
             rawData = await extractFabricData(base64Data.split(',')[1], 'application/pdf');
         } else if (imgFiles.length > 0) {
-            const aiImg = await compressImage(imgFiles[0], 1024, 0.85);
+            // Compress less aggressively for analysis to ensure AI can read it well, 
+            // but still compress for speed. 1200px is enough for OCR/Pattern.
+            const aiImg = await compressImage(imgFiles[0], 1200, 0.85);
             rawData = await extractFabricData(aiImg.split(',')[1], 'image/jpeg');
         }
       } catch (e) {}
@@ -83,7 +85,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
       const colorImages: Record<string, string> = {};
       const colors: string[] = [];
       for (const file of imgFiles) {
-          const base64 = await compressImage(file, 2048, 0.9);
+          // Standard compression for storage
+          const base64 = await compressImage(file);
           const detectedName = await extractColorFromSwatch(base64.split(',')[1]) || file.name.split('.')[0];
           const formatted = toSentenceCase(detectedName);
           colorImages[formatted] = base64;
@@ -164,7 +167,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
              }
              result = await fileToBase64(file);
         } else {
-             result = await compressImage(file, 2048, 0.9);
+             result = await compressImage(file);
         }
 
         const updated = [...extractedFabrics];
@@ -236,6 +239,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const handleFinalSave = async () => {
     setIsSaving(true);
     setUploadProgress(0);
+    setUploadStatusText('Iniciando carga acelerada...');
     
     // Prepare all fabrics first
     const finalFabrics: Fabric[] = extractedFabrics.map(data => ({
@@ -254,17 +258,19 @@ const UploadModal: React.FC<UploadModalProps> = ({
     }));
 
     const total = finalFabrics.length;
-    
-    // Iterate and save one by one to show true progress
-    for (let i = 0; i < total; i++) {
-        const fabric = finalFabrics[i];
-        const percent = Math.round(((i + 1) / total) * 100);
+    // BATCH UPLOAD: Subimos de 3 en 3 para aprovechar el ancho de banda
+    const batchSize = 3; 
+
+    for (let i = 0; i < total; i += batchSize) {
+        const chunk = finalFabrics.slice(i, i + batchSize);
         
-        setUploadStatusText(`Subiendo tela ${i + 1} de ${total}: ${fabric.name}`);
+        setUploadStatusText(`Subiendo lote ${Math.floor(i/batchSize) + 1}... (${Math.min(i + batchSize, total)}/${total})`);
+        
+        // Ejecutar las subidas del lote en paralelo
+        await Promise.all(chunk.map(fabric => onSave(fabric)));
+
+        const percent = Math.round((Math.min(i + batchSize, total) / total) * 100);
         setUploadProgress(percent);
-        
-        // Wait for cloud save
-        await onSave(fabric);
     }
     
     // Finish
@@ -280,8 +286,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const handleFurnitureImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
           try {
-              // Comprimir para web (2K es suficiente para visualizador)
-              const base64 = await compressImage(e.target.files[0], 2048, 0.9);
+              // Comprimir para web (1600 es suficiente para visualizador)
+              const base64 = await compressImage(e.target.files[0], 1600, 0.85);
               setFurnImage(base64);
           } catch (err) {
               alert("Error procesando imagen");

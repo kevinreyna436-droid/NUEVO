@@ -128,7 +128,7 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
 
     // Si estamos en modo offline, devolvemos el base64 tal cual para que funcione localmente
     if (globalOfflineMode) {
-        console.warn("⚠️ Modo Offline: Guardando imagen como Base64 (Local Only)");
+        // console.warn("⚠️ Modo Offline: Guardando imagen como Base64 (Local Only)");
         return base64String;
     }
 
@@ -140,7 +140,6 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
         const metadata = { cacheControl: 'public,max-age=31536000' };
         await uploadBytes(storageRef, blob, metadata);
         const url = await getDownloadURL(storageRef);
-        console.log("☁️ Imagen subida a Storage:", url);
         return url;
     } catch (error: any) {
         console.warn(`Fallo al subir imagen ${path} (Reglas de Storage?):`, error.message);
@@ -151,33 +150,45 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
 
 const processFabricImagesForCloud = async (fabric: Fabric): Promise<Fabric> => {
     const updatedFabric = { ...fabric };
-    
-    // NOTA: Intentamos subir aunque hayamos estado offline antes, 
-    // la función de arriba chequea el estado actual.
-
     const timestamp = Date.now();
     const cleanId = fabric.id.replace(/[^a-zA-Z0-9]/g, '_');
+    
+    // Array para almacenar todas las promesas de subida
+    const uploadPromises: Promise<void>[] = [];
 
+    // 1. Main Image
     if (updatedFabric.mainImage && updatedFabric.mainImage.startsWith('data:')) {
-        updatedFabric.mainImage = await uploadImageToStorage(updatedFabric.mainImage, `fabrics/${cleanId}/main_${timestamp}.jpg`);
+        uploadPromises.push((async () => {
+            updatedFabric.mainImage = await uploadImageToStorage(updatedFabric.mainImage, `fabrics/${cleanId}/main_${timestamp}.jpg`);
+        })());
     }
 
+    // 2. Specs Image
     if (updatedFabric.specsImage && updatedFabric.specsImage.startsWith('data:')) {
-        updatedFabric.specsImage = await uploadImageToStorage(updatedFabric.specsImage, `fabrics/${cleanId}/specs_${timestamp}.jpg`);
+        uploadPromises.push((async () => {
+            updatedFabric.specsImage = await uploadImageToStorage(updatedFabric.specsImage, `fabrics/${cleanId}/specs_${timestamp}.jpg`);
+        })());
     }
 
+    // 3. Color Images (PARALLEL)
     if (updatedFabric.colorImages) {
-        const newColorImages: Record<string, string> = {};
-        for (const [colorName, base64] of Object.entries(updatedFabric.colorImages)) {
+        const newColorImages: Record<string, string> = { ...updatedFabric.colorImages };
+        
+        Object.entries(updatedFabric.colorImages).forEach(([colorName, base64]) => {
             if (base64 && base64.startsWith('data:')) {
-                const safeColorName = colorName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-                newColorImages[colorName] = await uploadImageToStorage(base64, `fabrics/${cleanId}/colors/${safeColorName}_${timestamp}.jpg`);
-            } else {
-                newColorImages[colorName] = base64;
+                uploadPromises.push((async () => {
+                    const safeColorName = colorName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                    newColorImages[colorName] = await uploadImageToStorage(base64, `fabrics/${cleanId}/colors/${safeColorName}_${timestamp}.jpg`);
+                })());
             }
-        }
+        });
+        
+        // Asignamos la referencia, aunque se llenará cuando las promesas resuelvan
         updatedFabric.colorImages = newColorImages;
     }
+
+    // Esperar a que TODAS las imágenes se suban en paralelo
+    await Promise.all(uploadPromises);
 
     return updatedFabric;
 };
@@ -252,27 +263,22 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
       saveToLocalBackup("creata_fabrics_offline_backup", fabrics);
   } catch(e) {}
 
-  // 2. INTENTO DE RECONEXIÓN: Si estábamos offline, probamos reconectar antes de rendirnos
+  // 2. INTENTO DE RECONEXIÓN
   if (globalOfflineMode) {
       const isOnline = await retryAuth();
       if (!isOnline) {
-          console.warn("⚠️ Seguimos sin conexión. Datos guardados SOLO en este dispositivo.");
           return; 
       }
   }
 
   try {
-    console.log("☁️ Iniciando subida a la nube...");
+    // Procesamos imágenes en paralelo ahora
     const cloudFabric = await processFabricImagesForCloud(fabric);
     
-    // Si la imagen sigue siendo base64 gigante y estamos online, Firestore podría rechazarla (Límite 1MB).
-    // Pero processFabricImagesForCloud intenta subirla. Si falló, devuelve base64.
-    
     await setDoc(doc(db, COLLECTION_NAME, cloudFabric.id), cloudFabric, { merge: true });
-    console.log("✅ ¡Guardado en la nube con éxito!");
+    // console.log("✅ ¡Guardado en la nube con éxito!");
   } catch (error: any) {
     console.error("❌ Error guardando en nube (se guardó en local):", error);
-    // Si el error es de tamaño (oversized), advertimos
     if (error.code === 'firestore/invalid-argument' && error.message.includes('exceeds the maximum allowed size')) {
         alert("⚠️ Error: La imagen es demasiado pesada y no se pudo subir a Storage. Intenta con una imagen más pequeña.");
     }
@@ -280,11 +286,14 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
 };
 
 export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
-  // Reconectar una sola vez para el lote
   if (globalOfflineMode) await retryAuth();
   
-  for (const fabric of fabrics) {
-      await saveFabricToFirestore(fabric);
+  // Usamos Promise.all con un límite de concurrencia simple (lotes de 3)
+  // para no saturar el navegador pero ir más rápido que secuencial.
+  const batchSize = 3;
+  for (let i = 0; i < fabrics.length; i += batchSize) {
+      const chunk = fabrics.slice(i, i + batchSize);
+      await Promise.all(chunk.map(f => saveFabricToFirestore(f)));
   }
 };
 
@@ -402,8 +411,11 @@ export const pushLocalBackupToCloud = async (): Promise<number> => {
     }
 
     console.log(`🚀 Subiendo ${fabrics.length} telas...`);
-    for (const fabric of fabrics) {
-        await saveFabricToFirestore(fabric);
+    // Usamos el batching aquí también para acelerar la recuperación
+    const batchSize = 3;
+    for (let i = 0; i < fabrics.length; i += batchSize) {
+        const chunk = fabrics.slice(i, i + batchSize);
+        await Promise.all(chunk.map(f => saveFabricToFirestore(f)));
     }
     return fabrics.length;
 };

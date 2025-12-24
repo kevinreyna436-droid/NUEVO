@@ -1,5 +1,5 @@
 
-export const compressImage = (file: File, maxWidth = 2048, quality = 0.85): Promise<string> => {
+export const compressImage = (file: File, maxWidth = 1600, quality = 0.80): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -11,7 +11,7 @@ export const compressImage = (file: File, maxWidth = 2048, quality = 0.85): Prom
         let width = img.width;
         let height = img.height;
 
-        // Cap at 2048px (2K) - Excellent balance for web and speed
+        // Cap at 1600px (Balanced for speed/quality)
         if (width > maxWidth) {
           height = (height * maxWidth) / width;
           width = maxWidth;
