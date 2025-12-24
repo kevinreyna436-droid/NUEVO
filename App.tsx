@@ -15,6 +15,7 @@ import {
   deleteFurnitureTemplateFromFirestore,
   isOfflineMode,
   isAuthConfigMissing,
+  checkDatabasePermissions,
   pushLocalBackupToCloud,
   getLocalCachedData,
   retryAuth
@@ -75,6 +76,7 @@ function App() {
   
   // Setup Guide Modal State
   const [showSetupGuide, setShowSetupGuide] = useState(false);
+  const [showRulesError, setShowRulesError] = useState(false); // NEW: Rules Error State
   
   // Rescue Data Modal State
   const [showRescueModal, setShowRescueModal] = useState(false);
@@ -146,9 +148,15 @@ function App() {
       setFurnitureTemplates(furnitureData);
       setOfflineStatus(isOfflineMode());
 
-      // CRITICAL CHECK: If permissions are missing, show guide immediately
+      // 1. Check Auth
       if (isAuthConfigMissing()) {
           setShowSetupGuide(true);
+      } else {
+          // 2. If Auth is OK, Check Rules (Permissions)
+          const hasWritePermission = await checkDatabasePermissions();
+          if (!hasWritePermission) {
+             setShowRulesError(true);
+          }
       }
 
       if (dbData && dbData.length > 0) {
@@ -364,16 +372,69 @@ function App() {
       setOfflineStatus(!isOnline);
       if(isOnline) {
           setShowSetupGuide(false);
-          if(!silent) alert("¡Conectado! La nube está activa y sincronizando.");
+          // NEW: Re-check rules after connection success
+          const hasWrite = await checkDatabasePermissions();
+          if(!hasWrite) setShowRulesError(true);
+          
+          if(!silent) alert("¡Conectado! La nube está activa.");
           loadData();
           return true;
       } else {
-          // If still offline after retry, it's likely permissions
           if (isAuthConfigMissing()) setShowSetupGuide(true);
           else if(!silent) alert("No se pudo conectar. Verifica tu internet o espera 1 minuto a que Firebase propague los cambios.");
           return false;
       }
   };
+
+  // --- RULES ERROR MODAL (NUEVO) ---
+  const RulesErrorModal = () => (
+      <div className="fixed inset-0 z-[350] bg-red-900/90 flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="bg-white max-w-lg w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+              <div className="p-6 bg-red-50 border-b border-red-100 flex items-center gap-4">
+                  <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center shrink-0">
+                      <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                  </div>
+                  <div>
+                      <h3 className="text-xl font-bold text-red-900">Base de Datos Bloqueada</h3>
+                      <p className="text-xs text-red-700 uppercase tracking-wide font-bold">Falta Permiso de Escritura</p>
+                  </div>
+              </div>
+              
+              <div className="p-8 space-y-6">
+                  <p className="text-gray-600 text-sm">
+                      Tu App se conectó a "telas-pruebas", pero <strong>no puede guardar datos</strong> porque las Reglas de Seguridad de Firebase están en "Modo Bloqueado" (<code>if false</code>).
+                  </p>
+
+                  <div className="bg-gray-100 p-4 rounded-lg border border-gray-200 text-sm font-mono text-gray-700">
+                      <p className="mb-2 text-gray-500">// Regla Incorrecta (Actual):</p>
+                      <p className="text-red-500">allow read, write: if false;</p>
+                      
+                      <div className="h-px bg-gray-300 my-3"></div>
+                      
+                      <p className="mb-2 text-gray-500">// Regla Correcta (Debes poner):</p>
+                      <p className="text-green-600 font-bold">allow read, write: if true;</p>
+                  </div>
+
+                  <div className="space-y-2">
+                      <h4 className="font-bold text-sm text-black uppercase tracking-wider">Instrucciones:</h4>
+                      <ol className="list-decimal pl-5 text-sm text-gray-600 space-y-1">
+                          <li>Ve a la Consola de Firebase -> <strong>Firestore Database</strong>.</li>
+                          <li>Pestaña <strong>Reglas</strong>.</li>
+                          <li>Cambia <code>false</code> por <code>true</code>.</li>
+                          <li>Haz lo mismo en <strong>Storage</strong> (para las fotos).</li>
+                      </ol>
+                  </div>
+
+                  <button 
+                      onClick={() => { setShowRulesError(false); window.location.reload(); }}
+                      className="w-full bg-red-600 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-red-700 transition-colors shadow-lg"
+                  >
+                      Ya lo corregí, Reintentar
+                  </button>
+              </div>
+          </div>
+      </div>
+  );
 
   // --- SETUP GUIDE COMPONENT (ESPAÑOL) ---
   const SetupGuide = () => {
@@ -383,10 +444,8 @@ function App() {
           setVerifying(true);
           const success = await handleRetryConnection(true);
           setVerifying(false);
-          if(success) {
-              // Success handled in handleRetryConnection
-          } else {
-              alert("Aún no detectamos el permiso. Puede tardar unos segundos en propagarse. Espera un momento y vuelve a intentarlo.");
+          if(!success) {
+              alert("Aún no detectamos el permiso 'Anónimo'. Puede tardar unos segundos.");
           }
       };
 
@@ -591,6 +650,7 @@ function App() {
       {loading && <LoadingScreen progress={loadingProgress} />}
 
       {showSetupGuide && <SetupGuide />}
+      {showRulesError && <RulesErrorModal />}
       {showRescueModal && <RescueModal />}
 
       <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 items-start">

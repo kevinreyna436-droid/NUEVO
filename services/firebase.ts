@@ -103,6 +103,37 @@ const storage = getStorage(app);
 const COLLECTION_NAME = "fabrics";
 const FURNITURE_COLLECTION = "furniture";
 
+// --- Helpers de Errores de Permisos ---
+let permissionAlertShown = false; // Para no spammear alertas
+
+const handlePermissionError = (source: 'Firestore' | 'Storage') => {
+    if (permissionAlertShown) return;
+    // No mostramos alerta aquí si ya estamos mostrando el modal grande en la UI
+    // permissionAlertShown = true; 
+    console.error(`Bloqueo de seguridad en ${source}`);
+};
+
+// Nueva función para verificar si la DB está bloqueada (ReadOnly)
+export const checkDatabasePermissions = async (): Promise<boolean> => {
+    if (globalOfflineMode) return true; // Asumimos true en offline para no molestar
+    try {
+        // Intentamos escribir en una colección de prueba
+        const testRef = doc(db, "_health_check", "permission_test");
+        await setDoc(testRef, { 
+            status: "ok", 
+            timestamp: Date.now() 
+        });
+        return true; // Éxito: Las reglas permiten escritura
+    } catch (error: any) {
+        if (error.code === 'permission-denied') {
+            console.error("❌ PERMISO DENEGADO: Las reglas de Firestore están bloqueadas.");
+            return false;
+        }
+        return true; // Otros errores (network) no son culpa de las reglas
+    }
+};
+
+
 // --- Helpers de Imágenes ---
 
 const dataURItoBlob = (dataURI: string): Blob => {
@@ -142,7 +173,13 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
         const url = await getDownloadURL(storageRef);
         return url;
     } catch (error: any) {
-        console.warn(`Fallo al subir imagen ${path} (Reglas de Storage?):`, error.message);
+        console.warn(`Fallo al subir imagen ${path}:`, error.message);
+        
+        // DETECCIÓN DE PERMISOS STORAGE
+        if (error.code === 'storage/unauthorized') {
+            handlePermissionError('Storage');
+        }
+
         // Fallback: Si falla la subida, guardamos el base64 para no perder la foto
         return base64String;
     }
@@ -247,6 +284,12 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
     return fabrics;
   } catch (error: any) {
     console.error("❌ Error Firestore:", error.code);
+    
+    // DETECCIÓN DE PERMISOS FIRESTORE (READ)
+    if (error.code === 'permission-denied') {
+        handlePermissionError('Firestore');
+    }
+
     globalOfflineMode = true; // Fallback inmediato
     const { fabrics } = getLocalCachedData();
     return fabrics;
@@ -279,6 +322,12 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
     // console.log("✅ ¡Guardado en la nube con éxito!");
   } catch (error: any) {
     console.error("❌ Error guardando en nube (se guardó en local):", error);
+    
+    // DETECCIÓN DE PERMISOS FIRESTORE (WRITE)
+    if (error.code === 'permission-denied') {
+        handlePermissionError('Firestore');
+    }
+    
     if (error.code === 'firestore/invalid-argument' && error.message.includes('exceeds the maximum allowed size')) {
         alert("⚠️ Error: La imagen es demasiado pesada y no se pudo subir a Storage. Intenta con una imagen más pequeña.");
     }
@@ -307,8 +356,9 @@ export const deleteFabricFromFirestore = async (fabricId: string) => {
 
   try {
     await deleteDoc(doc(db, COLLECTION_NAME, fabricId));
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error eliminando doc de nube:", error);
+    if (error.code === 'permission-denied') handlePermissionError('Firestore');
   }
 };
 
@@ -365,8 +415,9 @@ export const saveFurnitureTemplateToFirestore = async (template: FurnitureTempla
         const finalTemplate = { ...template, imageUrl };
         await setDoc(doc(db, FURNITURE_COLLECTION, finalTemplate.id), finalTemplate, { merge: true });
         return finalTemplate;
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error saving furniture to cloud:", error);
+        if (error.code === 'permission-denied') handlePermissionError('Firestore');
         return template;
     }
 };
@@ -381,8 +432,9 @@ export const deleteFurnitureTemplateFromFirestore = async (id: string) => {
 
     try {
         await deleteDoc(doc(db, FURNITURE_COLLECTION, id));
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error deleting furniture from cloud:", error);
+        if (error.code === 'permission-denied') handlePermissionError('Firestore');
     }
 };
 
