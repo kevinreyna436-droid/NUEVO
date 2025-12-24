@@ -106,8 +106,6 @@ function App() {
   const [visibleItemsCount, setVisibleItemsCount] = useState(24);
 
   const loadData = async () => {
-    // 1. INSTANT LOAD: Intentar cargar desde localStorage inmediatamente
-    // Esto evita que el usuario espere la red si ya visitó la página.
     const cachedData = getLocalCachedData();
     let hasCache = false;
 
@@ -117,30 +115,26 @@ function App() {
         if (cachedData.furniture.length > 0) {
              setFurnitureTemplates(cachedData.furniture);
         }
-        // Quitamos el loader inmediatamente si hay datos
+        setLocalBackupCount(cachedData.fabrics.length);
         setLoadingProgress(100);
         setLoading(false);
         hasCache = true;
     } else {
-        // Solo si no hay caché mostramos la barra de carga
         setLoading(true);
-        setLoadingProgress(15); // Start aggressive
+        setLoadingProgress(15); 
     }
 
-    // Intervalo visual ULTRA RÁPIDO (si no había caché)
     let interval: any;
     if (!hasCache) {
         interval = setInterval(() => {
             setLoadingProgress(prev => {
                 if (prev >= 92) return prev; 
-                // Aceleración: Saltos grandes y aleatorios para sensación de velocidad
                 return prev + Math.random() * 15 + 2; 
             });
-        }, 40); // 40ms ticks (muy rápido)
+        }, 40); 
     }
 
     try {
-      // 2. BACKGROUND SYNC: Pedir datos frescos a Firebase en segundo plano
       const [dbData, furnitureData] = await Promise.all([
           getFabricsFromFirestore(),
           getFurnitureTemplatesFromFirestore()
@@ -152,11 +146,14 @@ function App() {
       setFurnitureTemplates(furnitureData);
       setOfflineStatus(isOfflineMode());
 
+      // CRITICAL CHECK: If permissions are missing, show guide immediately
+      if (isAuthConfigMissing()) {
+          setShowSetupGuide(true);
+      }
+
       if (dbData && dbData.length > 0) {
-        // Actualizamos el estado con los datos frescos de la nube
         setFabrics(dbData);
       } else if (!hasCache) {
-         // Si nube falla y no había caché, cargar defaults
          setFabrics(INITIAL_FABRICS);
       }
     } catch (e: any) {
@@ -165,7 +162,6 @@ function App() {
       setLoadingProgress(100);
       if (!hasCache) setFabrics(INITIAL_FABRICS);
     } finally {
-      // Salida casi inmediata para que se sienta "snappy"
       if (!hasCache) {
           setTimeout(() => setLoading(false), 150);
       }
@@ -184,7 +180,6 @@ function App() {
     const windowHeight = window.innerHeight;
     const docHeight = document.documentElement.scrollHeight;
 
-    // Load more when user is 300px from bottom
     if (windowHeight + scrollTop >= docHeight - 300) {
       setVisibleItemsCount(prev => prev + 12);
     }
@@ -248,11 +243,8 @@ function App() {
     }
   };
 
-  // NOTE: Bulk save logic moved mostly to UploadModal for better progress tracking UI.
-  // This function now just updates state and saves to cloud (called in loop by Modal).
   const handleBulkSaveFabrics = async (newFabrics: Fabric[]) => {
     try {
-      // Optimistic update for UI
       setFabrics(prev => [...newFabrics, ...prev]);
       await saveBatchFabricsToFirestore(newFabrics);
       setView('grid');
@@ -297,7 +289,6 @@ function App() {
     setLoadingProgress(10);
     setShowRescueModal(false);
     
-    // Simulate progress while pushing
     const interval = setInterval(() => {
         setLoadingProgress(p => p < 90 ? p + 5 : p);
     }, 200);
@@ -368,47 +359,85 @@ function App() {
     setSupplierMenuOpen(false);
   };
 
-  const handleRetryConnection = async () => {
+  const handleRetryConnection = async (silent = false) => {
       const isOnline = await retryAuth();
       setOfflineStatus(!isOnline);
       if(isOnline) {
-          alert("¡Conexión restablecida! Ahora las fotos se guardarán en la nube.");
+          setShowSetupGuide(false);
+          if(!silent) alert("¡Conectado! La nube está activa y sincronizando.");
           loadData();
+          return true;
       } else {
-          alert("No se pudo conectar. Verifica tu internet o las reglas de Firebase.");
+          // If still offline after retry, it's likely permissions
+          if (isAuthConfigMissing()) setShowSetupGuide(true);
+          else if(!silent) alert("No se pudo conectar. Verifica tu internet o espera 1 minuto a que Firebase propague los cambios.");
+          return false;
       }
   };
 
-  // --- SETUP GUIDE COMPONENT (Internal) ---
-  const SetupGuide = () => (
+  // --- SETUP GUIDE COMPONENT (ESPAÑOL) ---
+  const SetupGuide = () => {
+      const [verifying, setVerifying] = useState(false);
+
+      const handleCheck = async () => {
+          setVerifying(true);
+          const success = await handleRetryConnection(true);
+          setVerifying(false);
+          if(success) {
+              // Success handled in handleRetryConnection
+          } else {
+              alert("Aún no detectamos el permiso. Puede tardar unos segundos en propagarse. Espera un momento y vuelve a intentarlo.");
+          }
+      };
+
+      return (
       <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white max-w-2xl w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
               <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                  <h3 className="font-serif text-2xl font-bold text-red-600 flex items-center gap-2">Configuración Requerida</h3>
+                  <h3 className="font-serif text-2xl font-bold text-red-600 flex items-center gap-2">⚠️ Conexión Bloqueada</h3>
                   <button onClick={() => setShowSetupGuide(false)} className="text-gray-400 hover:text-black">
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
               </div>
-              <div className="p-8 overflow-y-auto">
-                  <p className="mb-6 text-gray-600">Para que la App pueda guardar tus fotos y datos, debes habilitar los permisos en la consola de Firebase.</p>
-                  <p className="mb-2 font-bold text-sm">Copia y pega esto en las Reglas de Firebase Storage:</p>
-                  <pre className="bg-gray-100 p-4 rounded-lg text-xs font-mono mb-6 overflow-x-auto">
-{`rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read, write: if true;
-    }
-  }
-}`}
-                  </pre>
-                  <div className="mt-8 text-center">
-                      <button onClick={() => window.location.reload()} className="bg-black text-white px-8 py-3 rounded-full font-bold uppercase tracking-widest text-xs hover:scale-105 transition-transform shadow-lg">Ya lo hice, recargar página</button>
+              <div className="p-8 overflow-y-auto space-y-6">
+                  <div className="bg-red-50 p-4 rounded-xl border border-red-100">
+                      <p className="text-red-800 text-sm font-bold">La App está en "Modo Local".</p>
+                      <p className="text-red-600 text-xs mt-1">Para sincronizar tus telas entre celular, tablet y PC, debes activar la "Autenticación Anónima" en Firebase.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                      <h4 className="font-bold text-slate-900 border-b border-gray-100 pb-2">SOLUCIÓN RÁPIDA (Solo el dueño):</h4>
+                      
+                      <ol className="list-decimal pl-5 space-y-3 text-sm text-gray-700">
+                          <li>Ve a <strong>console.firebase.google.com</strong> y entra a tu proyecto.</li>
+                          <li>Menú izquierdo: <strong>Authentication (Autenticación)</strong>.</li>
+                          <li>Pestaña: <strong>Sign-in method</strong>.</li>
+                          <li>Busca <strong>Anonymous (Anónimo)</strong>.</li>
+                          <li>Activa el interruptor a <strong>Habilitar (Enable)</strong> y guarda.</li>
+                      </ol>
+                  </div>
+
+                  <div className="mt-6 text-center pt-4 border-t border-gray-100">
+                      <button 
+                        onClick={handleCheck} 
+                        disabled={verifying}
+                        className="bg-green-600 text-white px-8 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-green-200 disabled:opacity-70 disabled:scale-100 flex items-center justify-center gap-2 mx-auto"
+                      >
+                          {verifying ? (
+                              <>
+                                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                                Verificando...
+                              </>
+                          ) : (
+                              '¡Ya lo habilité! Validar y Conectar'
+                          )}
+                      </button>
                   </div>
               </div>
           </div>
       </div>
-  );
+      );
+  };
 
   // --- RESCUE DATA MODAL ---
   const RescueModal = () => (
