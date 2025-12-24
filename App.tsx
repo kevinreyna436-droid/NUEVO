@@ -50,7 +50,7 @@ const LoadingScreen = ({ progress }: { progress: number }) => (
             <span>
                 {progress < 40 ? 'Iniciando...' : 
                  progress < 80 ? 'Cargando Catálogo...' : 
-                 progress < 100 ? 'Finalizando...' : 'Listo'}
+                 progress < 100 ? 'Finalizando...' : 'Entrando...'}
             </span>
             <span className="text-slate-900">{Math.round(progress)}%</span>
         </div>
@@ -137,42 +137,52 @@ function App() {
     }
 
     try {
+      // 1. CARGA DE DATOS (PARALELA)
       const [dbData, furnitureData] = await Promise.all([
           getFabricsFromFirestore(),
           getFurnitureTemplatesFromFirestore()
       ]);
       
+      // 2. PARAR BARRA DE CARGA
       if (!hasCache && interval) clearInterval(interval);
       setLoadingProgress(100);
 
+      // 3. ACTUALIZAR ESTADO (MOSTRAR DATOS)
       setFurnitureTemplates(furnitureData);
       setOfflineStatus(isOfflineMode());
-
-      // 1. Check Auth
-      if (isAuthConfigMissing()) {
-          setShowSetupGuide(true);
-      } else {
-          // 2. If Auth is OK, Check Rules (Permissions)
-          const hasWritePermission = await checkDatabasePermissions();
-          if (!hasWritePermission) {
-             setShowRulesError(true);
-          }
-      }
-
       if (dbData && dbData.length > 0) {
         setFabrics(dbData);
       } else if (!hasCache) {
          setFabrics(INITIAL_FABRICS);
       }
+
+      // 4. QUITAR PANTALLA DE CARGA (INMEDIATAMENTE)
+      // No esperamos a las verificaciones de permisos para no bloquear al usuario
+      if (!hasCache) {
+          await new Promise(r => setTimeout(r, 200)); // Pequeña pausa visual al 100%
+          setLoading(false);
+      }
+
+      // 5. VERIFICACIONES EN SEGUNDO PLANO
+      setTimeout(async () => {
+          if (isAuthConfigMissing()) {
+              setShowSetupGuide(true);
+          } else {
+              // Esta verificación podía bloquear la carga, ahora corre "encima" de la app cargada
+              const hasWritePermission = await checkDatabasePermissions();
+              if (!hasWritePermission) {
+                 setShowRulesError(true);
+              }
+          }
+      }, 800);
+
     } catch (e: any) {
-      console.error("Error loading data in background", e);
+      console.error("Error loading data", e);
       if (!hasCache && interval) clearInterval(interval);
       setLoadingProgress(100);
       if (!hasCache) setFabrics(INITIAL_FABRICS);
-    } finally {
-      if (!hasCache) {
-          setTimeout(() => setLoading(false), 150);
-      }
+      // En caso de error, aseguramos quitar el loader
+      setLoading(false);
     }
   };
 

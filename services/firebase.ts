@@ -113,23 +113,36 @@ const handlePermissionError = (source: 'Firestore' | 'Storage') => {
     console.error(`Bloqueo de seguridad en ${source}`);
 };
 
-// Nueva función para verificar si la DB está bloqueada (ReadOnly)
+// Nueva función para verificar si la DB está bloqueada (ReadOnly) con TIMEOUT de seguridad
 export const checkDatabasePermissions = async (): Promise<boolean> => {
     if (globalOfflineMode) return true; // Asumimos true en offline para no molestar
+    
     try {
-        // Intentamos escribir en una colección de prueba
+        // Creamos una promesa que se rechaza automáticamente después de 3 segundos
+        // Esto evita que la app se cuelgue si la conexión es lenta o Firebase no responde
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Timeout")), 3000)
+        );
+
+        // La operación real de escritura
         const testRef = doc(db, "_health_check", "permission_test");
-        await setDoc(testRef, { 
+        const writePromise = setDoc(testRef, { 
             status: "ok", 
             timestamp: Date.now() 
         });
+
+        // Hacemos una carrera: quien termine primero gana (escritura o timeout)
+        await Promise.race([writePromise, timeoutPromise]);
+        
         return true; // Éxito: Las reglas permiten escritura
     } catch (error: any) {
         if (error.code === 'permission-denied') {
             console.error("❌ PERMISO DENEGADO: Las reglas de Firestore están bloqueadas.");
             return false;
         }
-        return true; // Otros errores (network) no son culpa de las reglas
+        // Si es Timeout u otro error de red, asumimos que está bien para no bloquear la UI innecesariamente
+        // El error real saltará cuando el usuario intente guardar algo
+        return true; 
     }
 };
 
