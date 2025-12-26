@@ -14,7 +14,9 @@ interface VisualizerProps {
 const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSelection, onEditFurniture }) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedFurniture, setSelectedFurniture] = useState<FurnitureTemplate | null>(null);
-  const [selectedModelName, setSelectedModelName] = useState<string>('');
+  
+  // CAMBIO CLAVE: Usamos ID en lugar de Nombre para evitar conflictos de duplicados
+  const [selectedFabricId, setSelectedFabricId] = useState<string>('');
   const [selectedColorName, setSelectedColorName] = useState<string>('');
   
   // Generation & Progress State
@@ -34,12 +36,21 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
   useEffect(() => {
     checkApiKey();
+    // Si viene una selección desde el Grid (Probar), buscamos la tela correcta
     if (initialSelection) {
-        setSelectedModelName(initialSelection.model);
-        setSelectedColorName(initialSelection.color);
-        setStep(1);
+        // Buscamos la tela que coincida con el nombre Y que tenga imagen (prioridad a la subida por el usuario)
+        const foundFabric = fabrics.find(f => 
+            f.name.toLowerCase() === initialSelection.model.toLowerCase() && 
+            (f.mainImage || (f.colors && f.colors.length > 0))
+        );
+        
+        if (foundFabric) {
+            setSelectedFabricId(foundFabric.id);
+            setSelectedColorName(initialSelection.color);
+            setStep(1); // Mantenemos el paso 1 para que elija mueble primero, o 2 si prefieres saltar
+        }
     }
-  }, [initialSelection]);
+  }, [initialSelection, fabrics]);
 
   // PROGRESS BAR SIMULATION LOGIC
   useEffect(() => {
@@ -51,16 +62,14 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           
           interval = setInterval(() => {
               setProgress((prev) => {
-                  // Simulation curve: Fast at start, slow at end
                   let increment = 0;
-                  if (prev < 30) increment = Math.random() * 3 + 1; // Fast
-                  else if (prev < 60) increment = Math.random() * 2; // Medium
-                  else if (prev < 85) increment = Math.random() * 0.5; // Slow
-                  else if (prev < 95) increment = 0.1; // Very slow (waiting for API)
+                  if (prev < 30) increment = Math.random() * 3 + 1;
+                  else if (prev < 60) increment = Math.random() * 2;
+                  else if (prev < 85) increment = Math.random() * 0.5;
+                  else if (prev < 95) increment = 0.1;
                   
-                  const next = Math.min(prev + increment, 98); // Cap at 98% until real response
+                  const next = Math.min(prev + increment, 98);
 
-                  // Update dynamic messages based on progress
                   if (next < 30) setProgressMessage('Analizando geometría 3D...');
                   else if (next < 60) setProgressMessage('Aplicando textura y escala...');
                   else if (next < 85) setProgressMessage('Proyectando luces y sombras...');
@@ -102,18 +111,14 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
   const getCategoryLabel = (cat: string) => {
     if (!cat) return 'Mueble';
-    // Dictionary for translation/formatting of known keys
     const map: Record<string, string> = {
         'sofa': 'Sofá',
         'chair': 'Silla',
         'armchair': 'Butaca',
         'bed': 'Cama'
     };
-    
     const lower = cat.toLowerCase();
     if (map[lower]) return map[lower];
-
-    // For custom categories, format nicely
     return cat.charAt(0).toUpperCase() + cat.slice(1).toLowerCase();
   };
 
@@ -123,7 +128,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       return input.split(',')[1];
     }
     
-    // Helper to fetch blob and convert to base64
     const fetchBlobAsBase64 = async (url: string) => {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`Status ${response.status}`);
@@ -139,7 +143,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         });
     };
 
-    // 1. Intento Directo (Funciona para Unsplash y servidores con CORS habilitado)
     try {
         const response = await fetch(input, { credentials: 'omit', mode: 'cors' });
         if (response.ok) {
@@ -154,25 +157,17 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                 reader.readAsDataURL(blob);
             });
         }
-    } catch (e) {
-        console.warn("Fetch directo falló, intentando proxies...", e);
-    }
+    } catch (e) {}
 
-    // 2. Intento con Proxy 1 (corsproxy.io)
     try {
         const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(input)}`;
         return await fetchBlobAsBase64(proxyUrl);
-    } catch (e) {
-        console.warn("Proxy 1 falló, intentando Proxy 2...", e);
-    }
+    } catch (e) {}
 
-    // 3. Intento con Proxy 2 (allorigins.win)
     try {
-        // allorigins returns JSON by default unless 'raw' is used
         const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(input)}`;
         return await fetchBlobAsBase64(proxyUrl);
     } catch (e) {
-        console.error("All proxies failed:", e);
         throw new Error("No se pudo descargar la imagen. Intenta usar una imagen local o subida manualmente.");
     }
   };
@@ -185,21 +180,23 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
       try {
           const furnitureB64 = await ensureBase64(selectedFurniture!.imageUrl);
-          const fabric = fabrics.find(f => f.name === selectedModelName);
+          
+          // CAMBIO: Buscar por ID
+          const fabric = fabrics.find(f => f.id === selectedFabricId);
+          
           const swatchRaw = (selectedColorName && fabric?.colorImages?.[selectedColorName]) 
             ? fabric.colorImages[selectedColorName] 
             : fabric?.mainImage;
           
-          if (!swatchRaw) throw new Error("No se encontró la muestra de tela.");
+          if (!swatchRaw) throw new Error("No se encontró la imagen de la tela. Asegúrate de que la tela seleccionada tenga foto.");
           const swatchB64 = await ensureBase64(swatchRaw);
 
           const result = await visualizeUpholstery(furnitureB64, swatchB64);
           
           if (result) {
-              // Jump to 100% on success
               setProgress(100);
               setProgressMessage('¡Listo!');
-              await new Promise(resolve => setTimeout(resolve, 600)); // Small delay to show 100%
+              await new Promise(resolve => setTimeout(resolve, 600));
               setResultImage(result);
           }
 
@@ -215,7 +212,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           } else if (isOverloaded) {
               setErrorMessage("El motor de IA está saturado por alta demanda global. Para prioridad inmediata, activa tu propio motor privado.");
           } else {
-              setErrorMessage("Error procesando imagen para la IA. Verifica tu conexión.");
+              setErrorMessage("Error procesando imagen para la IA: " + errorText);
           }
       } finally {
           setIsGenerating(false);
@@ -226,7 +223,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
     if (resultImage) {
         const a = document.createElement('a');
         a.href = resultImage;
-        a.download = `Creata_Visualizer_${selectedModelName}.png`;
+        const fabricName = fabrics.find(f => f.id === selectedFabricId)?.name || 'Tela';
+        a.download = `Creata_Visualizer_${fabricName}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -248,7 +246,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       }
   };
 
-  const activeFabric = fabrics.find(f => f.name === selectedModelName);
+  // CAMBIO: Buscar por ID
+  const activeFabric = fabrics.find(f => f.id === selectedFabricId);
   const selectedSwatchUrl = (selectedColorName && activeFabric?.colorImages?.[selectedColorName]) 
     ? activeFabric.colorImages[selectedColorName] 
     : activeFabric?.mainImage;
@@ -256,7 +255,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   return (
     <div className="container mx-auto px-4 md:px-6 pb-20 max-w-7xl animate-fade-in-up relative">
       
-      {/* PIN Modal for Edit Mode */}
       <PinModal 
         isOpen={showPinModal} 
         onClose={() => setShowPinModal(false)} 
@@ -264,7 +262,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         requiredPin="3942"
       />
 
-      {/* Lightbox para textura original */}
       {showOriginalTexture && (previewImage || selectedSwatchUrl) && (
         <div 
           className="fixed inset-0 z-[250] bg-black/90 flex items-center justify-center p-4 cursor-pointer"
@@ -334,7 +331,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 <img src={selectedFurniture?.imageUrl} className="w-full h-full object-contain drop-shadow-lg" />
                             </div>
                             
-                            {/* BOTÓN "CAMBIAR MUEBLE" */}
                             <button 
                                 onClick={() => setStep(1)} 
                                 className="w-full py-4 px-6 bg-white/40 hover:bg-white/60 rounded-full text-sm font-bold uppercase tracking-widest text-slate-900 transition-all flex items-center justify-center gap-3 backdrop-blur-md shadow-sm hover:shadow-lg border border-white/50"
@@ -351,16 +347,28 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 <p className="text-sm text-slate-600 font-medium">Selecciona una tela para ver cómo quedaría.</p>
                             </div>
                             
-                            {/* Model Selector */}
+                            {/* Model Selector (BY ID NOW) */}
                             <div className="relative">
                                 <select 
-                                    value={selectedModelName} 
-                                    onChange={(e) => { setSelectedModelName(e.target.value); setSelectedColorName(''); }} 
+                                    value={selectedFabricId} 
+                                    onChange={(e) => { setSelectedFabricId(e.target.value); setSelectedColorName(''); }} 
                                     className="w-full p-4 pl-6 bg-white/50 backdrop-blur-sm rounded-2xl border border-white/20 focus:ring-2 focus:ring-black/20 font-serif text-xl text-slate-900 outline-none appearance-none cursor-pointer hover:bg-white/70 transition-colors"
                                 >
                                     <option value="" className="text-slate-900">Selecciona el Modelo...</option>
-                                    {fabrics.filter(f => f.category !== 'wood').sort((a,b)=>a.name.localeCompare(b.name)).map(f => (
-                                        <option key={f.id} value={f.name} className="text-slate-900">{f.name}</option>
+                                    {fabrics
+                                        .filter(f => f.category !== 'wood')
+                                        // Priorizar visualmente las que tienen imágenes
+                                        .sort((a,b) => {
+                                            const aHasImg = !!a.mainImage;
+                                            const bHasImg = !!b.mainImage;
+                                            if (aHasImg && !bHasImg) return -1;
+                                            if (!aHasImg && bHasImg) return 1;
+                                            return a.name.localeCompare(b.name);
+                                        })
+                                        .map(f => (
+                                            <option key={f.id} value={f.id} className="text-slate-900">
+                                                {f.name} {!f.mainImage ? '(Sin Foto)' : ''}
+                                            </option>
                                     ))}
                                 </select>
                                 <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-slate-600">
@@ -368,7 +376,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 </div>
                             </div>
 
-                            {selectedModelName ? (
+                            {selectedFabricId ? (
                                 <div className="space-y-4 animate-fade-in flex-1">
                                     <div className="flex justify-between items-end border-b border-black/10 pb-2">
                                         <p className="text-xs uppercase font-bold text-slate-500 tracking-[0.2em]">Variantes Disponibles</p>
@@ -389,21 +397,24 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                                         onClick={() => setSelectedColorName(color)} 
                                                         className={`relative w-28 h-28 md:w-32 md:h-32 rounded-[2rem] cursor-pointer transition-all duration-300 shadow-lg overflow-hidden ${isSelected ? 'ring-4 ring-offset-2 ring-offset-transparent ring-slate-900 scale-105 z-10' : 'hover:scale-105 hover:ring-2 hover:ring-slate-900/50'}`}
                                                     >
-                                                        <img src={imgUrl} className="w-full h-full object-cover" alt={color} />
+                                                        {imgUrl ? (
+                                                            <img src={imgUrl} className="w-full h-full object-cover" alt={color} />
+                                                        ) : (
+                                                            <div className="w-full h-full bg-gray-200 flex items-center justify-center text-xs text-gray-400 font-bold">Sin Foto</div>
+                                                        )}
                                                         
-                                                        {/* Gradient Overlay for Name visibility */}
                                                         <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/60 to-transparent"></div>
                                                         
-                                                        {/* Hover / Select Actions */}
                                                         <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isSelected ? 'bg-black/20' : 'bg-black/0 group-hover:bg-black/20'}`}>
-                                                            {/* View Original Icon */}
-                                                            <button 
-                                                                onClick={(e) => handleViewOriginal(imgUrl, e)}
-                                                                className={`p-2 bg-white/90 backdrop-blur-md rounded-full text-black hover:scale-110 transition-all transform ${isSelected ? 'scale-100 opacity-100' : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100'}`}
-                                                                title="Ver textura original"
-                                                            >
-                                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
-                                                            </button>
+                                                            {imgUrl && (
+                                                                <button 
+                                                                    onClick={(e) => handleViewOriginal(imgUrl, e)}
+                                                                    className={`p-2 bg-white/90 backdrop-blur-md rounded-full text-black hover:scale-110 transition-all transform ${isSelected ? 'scale-100 opacity-100' : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100'}`}
+                                                                    title="Ver textura original"
+                                                                >
+                                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <span className={`text-xs font-bold uppercase tracking-wider text-slate-900 transition-opacity ${isSelected ? 'opacity-100 font-extrabold' : 'opacity-70 group-hover:opacity-100'}`}>
@@ -420,13 +431,12 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 </div>
                             )}
 
-                            {/* BOTÓN VER RESULTADO PRO */}
                             <button 
-                                disabled={!selectedColorName} 
+                                disabled={!selectedColorName || !selectedSwatchUrl} 
                                 onClick={handleGenerate} 
                                 className="w-full bg-slate-900 text-white py-6 rounded-2xl font-bold uppercase tracking-[0.2em] text-sm shadow-xl disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] hover:shadow-2xl hover:bg-black transition-all mt-auto"
                             >
-                                Ver Resultado Pro
+                                {!selectedSwatchUrl ? 'Esta tela no tiene foto' : 'Ver Resultado Pro'}
                             </button>
                         </div>
                     </div>
@@ -440,13 +450,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                 <div className="w-full md:w-[65%] relative flex items-center justify-center overflow-hidden min-h-[500px]">
                      {isGenerating ? (
                         <div className="text-center z-10 p-10 w-full max-w-md animate-fade-in flex flex-col items-center">
-                            {/* PROGRESS BAR CONTAINER */}
                             <div className="relative w-full h-4 bg-gray-200 rounded-full overflow-hidden shadow-inner mb-6">
                                 <div 
                                     className="absolute top-0 left-0 h-full bg-slate-900 transition-all duration-300 ease-out"
                                     style={{ width: `${progress}%` }}
                                 ></div>
-                                {/* Shine effect */}
                                 <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_2s_infinite]"></div>
                             </div>
                             
@@ -517,7 +525,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                         <div className="w-full relative">
                              <div className="w-12 h-px bg-black/10 mx-auto mb-8"></div>
                              
-                             {/* FOTO DEL COLOR DE LA TELA (MINIATURA INTERACTIVA) */}
                              <div className="mb-6 relative group inline-block">
                                 <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-4">Tapizado con</p>
                                 <div 
@@ -534,7 +541,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                              <div className="mb-4">
                                 <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-1">Modelo</p>
                                 <h2 className="font-serif text-3xl text-slate-900 leading-tight">
-                                    {toSentenceCase(selectedModelName)}
+                                    {toSentenceCase(activeFabric?.name || 'Tela')}
                                 </h2>
                              </div>
                              
@@ -566,7 +573,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
             </>
           )}
 
-           {/* ADMIN TRIGGER DOT */}
            {!isEditMode && step === 1 && (
               <button 
                 onClick={(e) => { e.stopPropagation(); setShowPinModal(true); }}
@@ -577,7 +583,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
               </button>
           )}
 
-           {/* EXIT ADMIN MODE */}
            {isEditMode && step === 1 && (
                <button
                   onClick={() => setIsEditMode(false)}

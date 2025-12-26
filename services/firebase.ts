@@ -46,22 +46,16 @@ const defaultConfig = {
 };
 
 // LIMPIEZA AUTOMÁTICA DE CONFIGURACIÓN ANTIGUA
-// Si detectamos que la configuración por defecto es la "buena" (telas-pruebas),
-// borramos cualquier override manual antiguo para asegurar que se conecte a esta.
 try {
     const savedConfig = localStorage.getItem('creata_firebase_config');
     if (savedConfig) {
         const parsed = JSON.parse(savedConfig);
-        // Si el usuario tenía guardada una config antigua o diferente, pero ahora hardcodeamos la correcta,
-        // priorizamos la hardcodeada limpiando el localStorage si hay conflicto o si es un entorno limpio.
         if (defaultConfig.projectId === "telas-pruebas") {
-            console.log("🔄 Forzando configuración de producción: telas-pruebas");
             localStorage.removeItem('creata_firebase_config');
         }
     }
 } catch(e) {}
 
-// Intentar cargar configuración personalizada del usuario (si existe en localStorage y es diferente)
 let firebaseConfig = defaultConfig;
 let isCustomConfig = false;
 
@@ -72,7 +66,6 @@ try {
     if (parsed.apiKey && parsed.projectId) {
       firebaseConfig = parsed;
       isCustomConfig = true;
-      console.log("🚀 Usando configuración personalizada de Firebase desde LocalStorage");
     }
   }
 } catch (e) {
@@ -106,9 +99,7 @@ try {
     storage = getStorage(app);
 } catch (error: any) {
     console.error("Firebase Init Error:", error);
-    // Fallback crítico
     if (isCustomConfig) {
-        alert("Tu configuración de Firebase es inválida. Se restaurará la por defecto.");
         localStorage.removeItem('creata_firebase_config');
         window.location.reload();
     }
@@ -117,7 +108,7 @@ try {
 const COLLECTION_NAME = "fabrics";
 const FURNITURE_COLLECTION = "furniture";
 
-// --- HELPER DE TIMEOUT ---
+// --- HELPER DE TIMEOUT (AUMENTADO A 15s para redes lentas) ---
 const withTimeout = <T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> => {
     return Promise.race([
         promise,
@@ -156,8 +147,8 @@ const waitForAuth = (): Promise<User | null> => {
         });
     });
 
-    // Timeout reducido a 3s para que falle rápido si no hay conexión
-    return withTimeout(authPromise, 3000, "AUTH_TIMEOUT").catch(() => null);
+    // Timeout aumentado a 8s para dar tiempo a la conexión inicial
+    return withTimeout(authPromise, 8000, "AUTH_TIMEOUT").catch(() => null);
 };
 
 if (auth) {
@@ -171,11 +162,13 @@ export const checkDatabasePermissions = async (): Promise<boolean> => {
     try {
         await waitForAuth();
         const testRef = doc(db, "_health_check", "permission_test");
-        await withTimeout(setDoc(testRef, { status: "ok", ts: Date.now() }), 3000, "DB_TIMEOUT");
+        // Timeout generoso para el check de salud
+        await withTimeout(setDoc(testRef, { status: "ok", ts: Date.now() }), 8000, "DB_TIMEOUT");
         return true; 
     } catch (error: any) {
         console.warn("Health Check Failed:", error.message);
         if (error.code === 'permission-denied') return false;
+        // Si es timeout, asumimos que puede ser red lenta, no necesariamente bloqueo
         return true; 
     }
 };
@@ -208,7 +201,7 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
         
         await withTimeout(
             uploadBytes(storageRef, blob), 
-            45000, // Timeout extendido para subidas grandes
+            60000, // 60s timeout para subidas de imágenes
             "UPLOAD_TIMEOUT"
         );
 
@@ -278,18 +271,26 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   try {
     const querySnapshot = await withTimeout<QuerySnapshot<DocumentData>>(
         getDocs(collection(db, COLLECTION_NAME)), 
-        3000, // Timeout rápido para lectura inicial
+        10000, // Timeout AUMENTADO A 10 SEGUNDOS para lectura inicial
         "READ_TIMEOUT"
     );
     const fabrics: Fabric[] = [];
     querySnapshot.forEach((doc) => fabrics.push(doc.data() as Fabric));
+    
+    // Solo actualizamos caché si la nube nos dio algo válido
     if (fabrics.length > 0) {
         saveToLocalBackup("creata_fabrics_offline_backup", fabrics);
         return fabrics;
+    } else {
+        // Si la nube devuelve 0 items (colección vacía), devolvemos array vacío pero NO fallback a caché antiguo
+        // (Asumimos que es una DB nueva)
+        return [];
     }
   } catch (error: any) {
-    console.warn("⚠️ Nube no disponible:", error.message);
+    console.warn("⚠️ Nube no disponible, usando caché local:", error.message);
   }
+  
+  // Fallback si hay error de conexión
   const { fabrics } = getLocalCachedData();
   return fabrics;
 };
@@ -313,7 +314,7 @@ export const saveFabricToFirestore = async (fabric: Fabric) => {
     
     await withTimeout(
         setDoc(doc(db, COLLECTION_NAME, cloudFabric.id), cloudFabric, { merge: true }),
-        8000,
+        20000, // Timeout escritura aumentado
         "DB_WRITE_TIMEOUT"
     );
     return true;
@@ -342,7 +343,7 @@ export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTem
         await waitForAuth();
         const querySnapshot = await withTimeout<QuerySnapshot<DocumentData>>(
             getDocs(collection(db, FURNITURE_COLLECTION)),
-            3000,
+            8000, // Timeout aumentado
             "READ_TIMEOUT"
         );
         const furniture: FurnitureTemplate[] = [];
@@ -359,7 +360,7 @@ export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTem
 export const saveFurnitureTemplateToFirestore = async (template: FurnitureTemplate) => {
     try {
         const { furniture } = getLocalCachedData();
-        const combined = furniture.length > 0 ? furniture : DEFAULT_FURNITURE;
+        const combined = furniture.length > 0 ? furniture : [...DEFAULT_FURNITURE];
         const index = combined.findIndex((t: FurnitureTemplate) => t.id === template.id);
         if (index >= 0) combined[index] = template;
         else combined.unshift(template);
@@ -381,10 +382,17 @@ export const saveFurnitureTemplateToFirestore = async (template: FurnitureTempla
 };
 
 export const deleteFurnitureTemplateFromFirestore = async (id: string) => {
-    const { furniture } = getLocalCachedData();
-    const filtered = furniture.filter((t: FurnitureTemplate) => t.id !== id);
-    saveToLocalBackup("creata_furniture_offline", filtered);
-    try { await deleteDoc(doc(db, FURNITURE_COLLECTION, id)); } catch (e) {}
+    try {
+        const { furniture } = getLocalCachedData();
+        const currentList = furniture.length > 0 ? furniture : [...DEFAULT_FURNITURE];
+        const updated = currentList.filter((t: FurnitureTemplate) => t.id !== id);
+        saveToLocalBackup("creata_furniture_offline", updated);
+    } catch(e) {}
+
+    try {
+        await waitForAuth();
+        await deleteDoc(doc(db, FURNITURE_COLLECTION, id));
+    } catch (error) { console.error("Error deleting furniture:", error); }
 };
 
 export const clearFirestoreCollection = async () => {

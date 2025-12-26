@@ -30,7 +30,6 @@ const PinModal = lazy(() => import('./components/PinModal'));
 const ImageGenModal = lazy(() => import('./components/ImageGenModal'));
 const Visualizer = lazy(() => import('./components/Visualizer'));
 const EditFurnitureModal = lazy(() => import('./components/EditFurnitureModal'));
-const ConfigModal = lazy(() => import('./components/ConfigModal'));
 
 // Type for Sorting
 type SortOption = 'color' | 'name' | 'model' | 'supplier';
@@ -64,7 +63,6 @@ function App() {
   const [isPinModalOpen, setPinModalOpen] = useState(false); 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'visualizer'>('model');
-  const [isConfigModalOpen, setConfigModalOpen] = useState(false);
   
   // Loading & Progress State
   const [loading, setLoading] = useState(true);
@@ -85,6 +83,9 @@ function App() {
   const [visualizerPreSelection, setVisualizerPreSelection] = useState<{model: string, color: string} | null>(null);
   const [colorLightbox, setColorLightbox] = useState<{ isOpen: boolean; image: string; fabricId: string; colorName: string; } | null>(null);
   const [visibleItemsCount, setVisibleItemsCount] = useState(24);
+
+  // Variable para forzar actualización de UI si la carga manual ocurre
+  const [lastSyncTime, setLastSyncTime] = useState<number>(Date.now());
 
   const loadData = async (forceCloud = false) => {
     const cachedData = getLocalCachedData();
@@ -122,6 +123,7 @@ function App() {
       setOfflineStatus(isOfflineMode());
       if (dbData && dbData.length > 0) {
         setFabrics(dbData);
+        setLastSyncTime(Date.now());
       } else if (!hasCache) {
          setFabrics(INITIAL_FABRICS);
       }
@@ -296,7 +298,7 @@ function App() {
           else setShowRulesError(false);
           
           if(!silent) alert("¡Conectado! La nube está activa.");
-          loadData();
+          loadData(true); // Forzar recarga completa
           return true;
       } else {
           const authError = getAuthError();
@@ -531,20 +533,6 @@ function App() {
       {showRescueModal && <RescueModal />}
       {showConnectionInfo && <ConnectionInfoModal />}
       
-      {/* Botón de Configuración (Siempre Visible) */}
-      <button 
-        onClick={() => setConfigModalOpen(true)}
-        className="fixed top-6 left-6 z-[80] text-gray-300 hover:text-black transition-colors p-2"
-        title="Configurar Conexión Nube"
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-      </button>
-
-      {/* Modal de Configuración */}
-      <Suspense fallback={null}>
-        <ConfigModal isOpen={isConfigModalOpen} onClose={() => setConfigModalOpen(false)} />
-      </Suspense>
-
       <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 items-start">
         {offlineStatus && !showRescueModal && localBackupCount > 0 && (
              <button onClick={() => setShowRescueModal(true)} className="bg-yellow-500 text-white px-4 py-2 rounded-full text-[10px] font-bold shadow-lg border border-yellow-400 hover:scale-105 transition-transform flex items-center gap-2 animate-bounce cursor-pointer">
@@ -581,10 +569,21 @@ function App() {
 
             {view === 'grid' && (
                 <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative text-center">
-                    <div className="absolute top-6 left-12 md:left-20 flex items-center gap-2 cursor-pointer z-[60] group" onClick={handleStatusClick} title="Diagnóstico de Conexión">
-                        <div className={`w-2 h-2 rounded-full ${offlineStatus ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-                        <span className={`text-[9px] font-bold uppercase tracking-widest group-hover:underline ${offlineStatus ? 'text-red-500' : 'text-green-600'}`}>{offlineStatus ? 'Modo Offline' : 'Nube Activa'}</span>
+                    
+                    {/* BOTÓN DE SINCRONIZACIÓN MANUAL DISCRETO */}
+                    <div className="absolute top-4 left-6 z-40">
+                       <button 
+                         onClick={() => handleRetryConnection(false)} 
+                         className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-300 hover:text-black transition-colors"
+                         title="Recargar datos desde la nube"
+                       >
+                         <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                         </svg>
+                         {offlineStatus ? 'Desconectado' : 'Actualizar'}
+                       </button>
                     </div>
+
                     <h1 className="font-serif text-6xl md:text-8xl font-bold tracking-tight text-slate-900 leading-none text-center">Catálogo de Telas</h1>
                     <div className="flex space-x-8 md:space-x-12">
                         <button onClick={() => { setActiveTab('model'); }} className={`pb-2 text-sm font-medium uppercase tracking-wide transition-colors ${activeTab === 'model' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'}`}>Ver modelos</button>

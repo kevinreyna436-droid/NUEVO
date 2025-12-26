@@ -24,10 +24,6 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, onDetail, onQu
     displayImage = fabric.colorImages[specificColorName];
   }
 
-  // Check if image is cloud-hosted (starts with http) or local only (starts with data:)
-  const isCloudStored = displayImage && displayImage.startsWith('http');
-  const isLocalOnly = displayImage && displayImage.startsWith('data:');
-
   // Safe access to colors
   const colorList = fabric.colors || [];
 
@@ -108,18 +104,6 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, onDetail, onQu
                 title={mode === 'model' ? "Modelo en Stock" : "Color en Stock"}
             ></div>
         )}
-
-        {/* CLOUD SYNC STATUS INDICATOR */}
-        {isLocalOnly ? (
-            <div className="absolute top-3 right-3 z-30 text-yellow-600 bg-yellow-100 p-1.5 rounded-full shadow-sm animate-pulse" title="Pendiente de subir a la nube">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-            </div>
-        ) : isCloudStored ? (
-            // Icono sutil de nube solo para confirmar (opcional, o se puede quitar para limpieza)
-            <div className="absolute top-3 right-3 z-30 text-white/40 bg-black/20 p-1 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity" title="Seguro en la Nube">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            </div>
-        ) : null}
 
         {/* Curved Wave Separator (SVG) */}
         <div className="absolute bottom-[-1px] left-0 w-full text-white pointer-events-none z-10">
