@@ -19,7 +19,8 @@ import {
   pushLocalBackupToCloud,
   getLocalCachedData,
   retryAuth,
-  getAuthError
+  getAuthError,
+  isUsingCustomConfig
 } from './services/firebase';
 
 // Lazy Load Heavy Components
@@ -29,6 +30,7 @@ const PinModal = lazy(() => import('./components/PinModal'));
 const ImageGenModal = lazy(() => import('./components/ImageGenModal'));
 const Visualizer = lazy(() => import('./components/Visualizer'));
 const EditFurnitureModal = lazy(() => import('./components/EditFurnitureModal'));
+const ConfigModal = lazy(() => import('./components/ConfigModal'));
 
 // Type for Sorting
 type SortOption = 'color' | 'name' | 'model' | 'supplier';
@@ -62,6 +64,7 @@ function App() {
   const [isPinModalOpen, setPinModalOpen] = useState(false); 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'visualizer'>('model');
+  const [isConfigModalOpen, setConfigModalOpen] = useState(false);
   
   // Loading & Progress State
   const [loading, setLoading] = useState(true);
@@ -131,10 +134,12 @@ function App() {
               const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
               
               if (error === 'DOMAIN_ERROR' && !isLocalhost) {
-                   // Si estamos en un dominio real (no localhost) y hay error de dominio, mostramos la ayuda
                    setShowConnectionInfo(true);
               } else if (error && (error.includes('operation-not-allowed') || error.includes('configuration'))) {
                    setShowSetupGuide(true);
+              } else if (!isUsingCustomConfig()) {
+                  // Prompt user to configure their own DB if using dummy
+                  // setShowConnectionInfo(true); 
               }
           } else {
               const hasWritePermission = await checkDatabasePermissions();
@@ -525,6 +530,20 @@ function App() {
       {showRulesError && <RulesErrorModal />}
       {showRescueModal && <RescueModal />}
       {showConnectionInfo && <ConnectionInfoModal />}
+      
+      {/* Botón de Configuración (Siempre Visible) */}
+      <button 
+        onClick={() => setConfigModalOpen(true)}
+        className="fixed top-6 left-6 z-[80] text-gray-300 hover:text-black transition-colors p-2"
+        title="Configurar Conexión Nube"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+      </button>
+
+      {/* Modal de Configuración */}
+      <Suspense fallback={null}>
+        <ConfigModal isOpen={isConfigModalOpen} onClose={() => setConfigModalOpen(false)} />
+      </Suspense>
 
       <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 items-start">
         {offlineStatus && !showRescueModal && localBackupCount > 0 && (
@@ -562,7 +581,7 @@ function App() {
 
             {view === 'grid' && (
                 <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative text-center">
-                    <div className="absolute top-6 left-6 md:left-10 flex items-center gap-2 cursor-pointer z-[60] group" onClick={handleStatusClick} title="Diagnóstico de Conexión">
+                    <div className="absolute top-6 left-12 md:left-20 flex items-center gap-2 cursor-pointer z-[60] group" onClick={handleStatusClick} title="Diagnóstico de Conexión">
                         <div className={`w-2 h-2 rounded-full ${offlineStatus ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
                         <span className={`text-[9px] font-bold uppercase tracking-widest group-hover:underline ${offlineStatus ? 'text-red-500' : 'text-green-600'}`}>{offlineStatus ? 'Modo Offline' : 'Nube Activa'}</span>
                     </div>
