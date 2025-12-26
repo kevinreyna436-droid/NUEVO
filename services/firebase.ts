@@ -9,8 +9,6 @@ import {
   deleteDoc, 
   writeBatch,
   initializeFirestore,
-  persistentLocalCache,
-  CACHE_SIZE_UNLIMITED,
   QuerySnapshot,
   DocumentData
 } from "firebase/firestore";
@@ -45,25 +43,25 @@ const defaultConfig = {
   measurementId: "G-V098WS2ZWM"
 };
 
+let firebaseConfig = defaultConfig;
+let isCustomConfig = false;
+
 // LIMPIEZA AUTOMÁTICA DE CONFIGURACIÓN ANTIGUA
 try {
     const savedConfig = localStorage.getItem('creata_firebase_config');
     if (savedConfig) {
         const parsed = JSON.parse(savedConfig);
-        if (defaultConfig.projectId === "telas-pruebas") {
+        if (parsed.type === 'service_account' || parsed.private_key) {
             localStorage.removeItem('creata_firebase_config');
-        }
+        } 
     }
 } catch(e) {}
-
-let firebaseConfig = defaultConfig;
-let isCustomConfig = false;
 
 try {
   const localConfig = localStorage.getItem('creata_firebase_config');
   if (localConfig) {
     const parsed = JSON.parse(localConfig);
-    if (parsed.apiKey && parsed.projectId) {
+    if (parsed.apiKey && parsed.projectId && !parsed.private_key) {
       firebaseConfig = parsed;
       isCustomConfig = true;
     }
@@ -87,12 +85,9 @@ try {
     app = firebaseApp.getApps().length === 0 ? firebaseApp.initializeApp(firebaseConfig) : firebaseApp.getApps()[0];
     auth = getAuth(app);
     
-    // 1. ESTABILIDAD Y PERSISTENCIA
+    // Configuración estándar de Firestore SIN PERSISTENCIA
+    // Se elimina persistentLocalCache para obligar a la app a trabajar siempre contra la nube.
     db = initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: undefined, 
-        cacheSizeBytes: CACHE_SIZE_UNLIMITED
-      }),
       ignoreUndefinedProperties: true
     });
 
@@ -108,7 +103,7 @@ try {
 const COLLECTION_NAME = "fabrics";
 const FURNITURE_COLLECTION = "furniture";
 
-// --- HELPER DE TIMEOUT (AUMENTADO A 15s para redes lentas) ---
+// --- HELPER DE TIMEOUT ---
 const withTimeout = <T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> => {
     return Promise.race([
         promise,
@@ -147,8 +142,8 @@ const waitForAuth = (): Promise<User | null> => {
         });
     });
 
-    // Timeout aumentado a 8s para dar tiempo a la conexión inicial
-    return withTimeout(authPromise, 8000, "AUTH_TIMEOUT").catch(() => null);
+    // Aumentado a 30s para dar tiempo a la autenticación anónima en redes muy lentas
+    return withTimeout(authPromise, 30000, "AUTH_TIMEOUT").catch(() => null);
 };
 
 if (auth) {
@@ -162,13 +157,12 @@ export const checkDatabasePermissions = async (): Promise<boolean> => {
     try {
         await waitForAuth();
         const testRef = doc(db, "_health_check", "permission_test");
-        // Timeout generoso para el check de salud
-        await withTimeout(setDoc(testRef, { status: "ok", ts: Date.now() }), 8000, "DB_TIMEOUT");
+        // Aumentado a 30s para verificación inicial robusta
+        await withTimeout(setDoc(testRef, { status: "ok", ts: Date.now() }), 30000, "DB_TIMEOUT");
         return true; 
     } catch (error: any) {
         console.warn("Health Check Failed:", error.message);
         if (error.code === 'permission-denied') return false;
-        // Si es timeout, asumimos que puede ser red lenta, no necesariamente bloqueo
         return true; 
     }
 };
@@ -201,14 +195,14 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
         
         await withTimeout(
             uploadBytes(storageRef, blob), 
-            60000, // 60s timeout para subidas de imágenes
+            300000, // 5 minutos para subidas (imágenes pesadas)
             "UPLOAD_TIMEOUT"
         );
 
         return await getDownloadURL(storageRef);
     } catch (error: any) {
-        console.warn(`⚠️ Upload failed (${path}). Using local base64.`, error.message);
-        return base64String;
+        console.error(`Upload failed (${path}):`, error.message);
+        throw error; // Propagate error, no local fallback
     }
 };
 
@@ -240,87 +234,46 @@ const processFabricImagesForCloud = async (fabric: Fabric): Promise<Fabric> => {
     return updatedFabric;
 };
 
-// --- Helpers Locales (SMART BACKUP) ---
-const saveToLocalBackup = (key: string, data: any) => {
-    try { 
-        localStorage.setItem(key, JSON.stringify(data)); 
-    } catch (e: any) {
-        if (e.name === 'QuotaExceededError' || e.code === 22) {
-            console.warn("⚠️ LocalStorage lleno. Guardando versión ligera.");
-            const lightData = Array.isArray(data) ? data.map((item: any) => {
-                const clean = { ...item };
-                if (clean.mainImage?.startsWith('data:')) clean.mainImage = ''; 
-                return clean;
-            }) : data;
-            try { localStorage.setItem(key, JSON.stringify(lightData)); } catch (err) {}
-        }
-    }
-};
-
-export const getLocalCachedData = () => {
-    const localFabrics = localStorage.getItem("creata_fabrics_offline_backup");
-    const localFurniture = localStorage.getItem("creata_furniture_offline");
-    return {
-        fabrics: localFabrics ? JSON.parse(localFabrics) : [],
-        furniture: localFurniture ? JSON.parse(localFurniture) : []
-    };
-};
+// --- API MÉTODOS 100% ONLINE ---
 
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   await waitForAuth();
   try {
     const querySnapshot = await withTimeout<QuerySnapshot<DocumentData>>(
         getDocs(collection(db, COLLECTION_NAME)), 
-        10000, // Timeout AUMENTADO A 10 SEGUNDOS para lectura inicial
+        120000, // 2 minutos para lectura inicial
         "READ_TIMEOUT"
     );
     const fabrics: Fabric[] = [];
     querySnapshot.forEach((doc) => fabrics.push(doc.data() as Fabric));
-    
-    // Solo actualizamos caché si la nube nos dio algo válido
-    if (fabrics.length > 0) {
-        saveToLocalBackup("creata_fabrics_offline_backup", fabrics);
-        return fabrics;
-    } else {
-        // Si la nube devuelve 0 items (colección vacía), devolvemos array vacío pero NO fallback a caché antiguo
-        // (Asumimos que es una DB nueva)
-        return [];
-    }
+    return fabrics;
   } catch (error: any) {
-    console.warn("⚠️ Nube no disponible, usando caché local:", error.message);
+    console.error("Error fetching from cloud:", error);
+    throw error; 
   }
-  
-  // Fallback si hay error de conexión
-  const { fabrics } = getLocalCachedData();
-  return fabrics;
 };
 
 export const saveFabricToFirestore = async (fabric: Fabric) => {
   try {
-      const { fabrics } = getLocalCachedData();
-      const index = fabrics.findIndex((f: Fabric) => f.id === fabric.id);
-      if (index >= 0) fabrics[index] = fabric;
-      else fabrics.unshift(fabric);
-      saveToLocalBackup("creata_fabrics_offline_backup", fabrics);
-  } catch(e) { console.error("Local save failed", e); }
-
-  try {
     const user = await waitForAuth();
-    if (!user && !isOfflineMode()) {
-        throw new Error("No hay usuario autenticado.");
-    }
+    if (!user) throw new Error("No hay conexión con el servidor de autenticación.");
     
+    // Subir imágenes primero
     const cloudFabric = await processFabricImagesForCloud(fabric);
     
     await withTimeout(
         setDoc(doc(db, COLLECTION_NAME, cloudFabric.id), cloudFabric, { merge: true }),
-        20000, // Timeout escritura aumentado
+        180000, // Aumentado a 180s (3 minutos) para garantizar escritura en DB
         "DB_WRITE_TIMEOUT"
     );
     return true;
   } catch (error: any) {
-    console.warn("⚠️ Guardado solo en Local:", error.message);
-    return false;
+    console.error("Error guardando en nube:", error);
+    // Propagar errores de permisos específicamente para que la UI los maneje
+    if (error.code === 'permission-denied' || error.message.includes('permission-denied')) {
+        throw new Error('permission-denied');
+    }
+    throw error;
   }
 };
 
@@ -329,13 +282,13 @@ export const saveBatchFabricsToFirestore = async (fabrics: Fabric[]) => {
 };
 
 export const deleteFabricFromFirestore = async (fabricId: string) => {
-  const { fabrics } = getLocalCachedData();
-  const filtered = fabrics.filter((f: Fabric) => f.id !== fabricId);
-  saveToLocalBackup("creata_fabrics_offline_backup", filtered);
   try {
     await waitForAuth();
     await deleteDoc(doc(db, COLLECTION_NAME, fabricId));
-  } catch (error) { console.error("Error delete cloud", error); }
+  } catch (error) { 
+      console.error("Error delete cloud", error);
+      throw error;
+  }
 };
 
 export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTemplate[]> => {
@@ -343,30 +296,18 @@ export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTem
         await waitForAuth();
         const querySnapshot = await withTimeout<QuerySnapshot<DocumentData>>(
             getDocs(collection(db, FURNITURE_COLLECTION)),
-            8000, // Timeout aumentado
+            60000, // 60s
             "READ_TIMEOUT"
         );
         const furniture: FurnitureTemplate[] = [];
         querySnapshot.forEach((doc) => furniture.push(doc.data() as FurnitureTemplate));
-        if (furniture.length > 0) {
-            saveToLocalBackup("creata_furniture_offline", furniture);
-            return furniture;
-        }
-    } catch (error) {}
-    const { furniture } = getLocalCachedData();
-    return furniture.length > 0 ? furniture : DEFAULT_FURNITURE;
+        return furniture.length > 0 ? furniture : DEFAULT_FURNITURE;
+    } catch (error) {
+        return DEFAULT_FURNITURE; 
+    }
 };
 
 export const saveFurnitureTemplateToFirestore = async (template: FurnitureTemplate) => {
-    try {
-        const { furniture } = getLocalCachedData();
-        const combined = furniture.length > 0 ? furniture : [...DEFAULT_FURNITURE];
-        const index = combined.findIndex((t: FurnitureTemplate) => t.id === template.id);
-        if (index >= 0) combined[index] = template;
-        else combined.unshift(template);
-        saveToLocalBackup("creata_furniture_offline", combined);
-    } catch(e) {}
-
     try {
         await waitForAuth();
         let imageUrl = template.imageUrl;
@@ -376,42 +317,56 @@ export const saveFurnitureTemplateToFirestore = async (template: FurnitureTempla
             imageUrl = await uploadImageToStorage(imageUrl, `furniture/${cleanId}_${timestamp}.jpg`);
         }
         const finalTemplate = { ...template, imageUrl };
-        await setDoc(doc(db, FURNITURE_COLLECTION, finalTemplate.id), finalTemplate, { merge: true });
+        
+        await withTimeout(
+            setDoc(doc(db, FURNITURE_COLLECTION, finalTemplate.id), finalTemplate, { merge: true }),
+            180000, // Aumentado a 180s (3 minutos)
+            "DB_WRITE_TIMEOUT"
+        );
         return finalTemplate;
-    } catch (error) { return template; }
+    } catch (error) { 
+        console.error("Error saving furniture cloud", error);
+        throw error; 
+    }
 };
 
 export const deleteFurnitureTemplateFromFirestore = async (id: string) => {
     try {
-        const { furniture } = getLocalCachedData();
-        const currentList = furniture.length > 0 ? furniture : [...DEFAULT_FURNITURE];
-        const updated = currentList.filter((t: FurnitureTemplate) => t.id !== id);
-        saveToLocalBackup("creata_furniture_offline", updated);
-    } catch(e) {}
-
-    try {
         await waitForAuth();
         await deleteDoc(doc(db, FURNITURE_COLLECTION, id));
-    } catch (error) { console.error("Error deleting furniture:", error); }
+    } catch (error) { console.error("Error deleting furniture:", error); throw error; }
 };
 
 export const clearFirestoreCollection = async () => {
-    localStorage.removeItem("creata_fabrics_offline_backup");
     try {
         await waitForAuth();
         const snapshot = await getDocs(collection(db, COLLECTION_NAME));
-        const batch = writeBatch(db);
-        snapshot.docs.forEach((doc) => batch.delete(doc.ref));
-        await batch.commit();
-    } catch(e) {}
-};
+        
+        const totalDocs = snapshot.docs.length;
+        if (totalDocs === 0) return;
 
-export const pushLocalBackupToCloud = async (): Promise<number> => {
-    const { fabrics } = getLocalCachedData();
-    if (fabrics.length === 0) throw new Error("No hay datos locales.");
-    await waitForAuth();
-    for (const f of fabrics) { await saveFabricToFirestore(f); }
-    return fabrics.length;
+        let batch = writeBatch(db);
+        let count = 0;
+        let batches = [];
+
+        for (const doc of snapshot.docs) {
+            batch.delete(doc.ref);
+            count++;
+            if (count >= 400) {
+                batches.push(batch.commit());
+                batch = writeBatch(db);
+                count = 0;
+            }
+        }
+        if (count > 0) {
+            batches.push(batch.commit());
+        }
+        
+        await Promise.all(batches);
+    } catch(e) {
+        console.error("Error crítico limpiando BD:", e);
+        throw e;
+    }
 };
 
 export const retryAuth = async () => {

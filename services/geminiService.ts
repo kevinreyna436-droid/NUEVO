@@ -115,7 +115,7 @@ export const visualizeUpholstery = async (
       Requirements:
       - STRICT GEOMETRY PRESERVATION: The furniture in the output MUST be identical in shape, size, angle, and position to Input 1. Do NOT rotate, resize, zoom, or distort the furniture object. The outline must match perfectly.
       - BACKGROUND PRESERVATION: Keep the original background and floor shadows exactly as they are.
-      - TEXTURE SCALE: The provided fabric swatch (Input 2) is a MACRO/CLOSE-UP shot. You MUST significantly reduce the scale of the texture pattern (make it 10x smaller/denser) so it looks realistic on a large furniture piece. Tile the texture seamlessly.
+      - TEXTURE SCALE (CRITICAL): The provided fabric swatch is a macro shot. You MUST reduce the scale of the texture pattern by approximately 70% (make it significantly denser) to look realistic on the large furniture surface.
       - LIGHTING & SHADOWS: Preserve all original shadows, folds, highlights, and micro-creases to maintain volume and depth. The fabric must look like it wraps around the existing foam.
       - MASKING: Keep legs, wooden frames, metal bases, and the surrounding environment completely untouched. Only change the upholstered fabric parts.
       - QUALITY: The final output must look like a professional, high-resolution catalog photograph.

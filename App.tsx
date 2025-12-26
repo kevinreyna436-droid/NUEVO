@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import FabricCard from './components/FabricCard';
 import FabricDetail from './components/FabricDetail';
-import { IN_STOCK_DB, INITIAL_FABRICS } from './constants';
+import { IN_STOCK_DB } from './constants';
 import { Fabric, AppView, FurnitureTemplate } from './types';
 import { 
   getFabricsFromFirestore, 
@@ -16,8 +16,6 @@ import {
   isOfflineMode,
   isAuthConfigMissing,
   checkDatabasePermissions,
-  pushLocalBackupToCloud,
-  getLocalCachedData,
   retryAuth,
   getAuthError,
   isUsingCustomConfig
@@ -30,23 +28,24 @@ const PinModal = lazy(() => import('./components/PinModal'));
 const ImageGenModal = lazy(() => import('./components/ImageGenModal'));
 const Visualizer = lazy(() => import('./components/Visualizer'));
 const EditFurnitureModal = lazy(() => import('./components/EditFurnitureModal'));
+const ConfigModal = lazy(() => import('./components/ConfigModal'));
 
 // Type for Sorting
 type SortOption = 'color' | 'name' | 'model' | 'supplier';
 
-// --- NEW LOADING SCREEN COMPONENT WITH PROGRESS BAR ---
+// --- LOADING SCREEN ---
 const LoadingScreen = ({ progress }: { progress: number }) => {
   const safeProgress = Math.min(100, Math.max(0, Math.round(progress)));
   return (
     <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-[#f2f2f2] transition-opacity duration-300">
       <div className="w-full max-w-md px-10 text-center">
           <h1 className="font-serif text-4xl font-bold text-slate-900 mb-2 tracking-tight">Creata</h1>
-          <p className="text-[10px] uppercase tracking-[0.3em] text-gray-400 mb-10">Collection Manager</p>
+          <p className="text-[10px] uppercase tracking-[0.3em] text-gray-400 mb-10">Cloud Collection Manager</p>
           <div className="relative w-full h-1 bg-gray-200 rounded-full overflow-hidden mb-4">
               <div className="absolute top-0 left-0 h-full bg-slate-900 transition-all duration-200 ease-out" style={{ width: `${safeProgress}%` }}></div>
           </div>
           <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              <span>{safeProgress < 30 ? 'Iniciando...' : safeProgress < 60 ? 'Cargando Catálogo...' : safeProgress < 90 ? 'Conectando...' : 'Finalizando...'}</span>
+              <span>{safeProgress < 30 ? 'Conectando...' : safeProgress < 60 ? 'Cargando Datos...' : safeProgress < 90 ? 'Sincronizando...' : 'Finalizando...'}</span>
               <span className="text-slate-900">{safeProgress}%</span>
           </div>
       </div>
@@ -59,8 +58,12 @@ function App() {
   const [fabrics, setFabrics] = useState<Fabric[]>([]);
   const [furnitureTemplates, setFurnitureTemplates] = useState<FurnitureTemplate[]>([]);
   const [selectedFabricId, setSelectedFabricId] = useState<string | null>(null);
+  
+  // Modals State
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
   const [isPinModalOpen, setPinModalOpen] = useState(false); 
+  const [isConfigModalOpen, setConfigModalOpen] = useState(false);
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'visualizer'>('model');
   
@@ -72,8 +75,6 @@ function App() {
   const [showSetupGuide, setShowSetupGuide] = useState(false);
   const [showRulesError, setShowRulesError] = useState(false); 
   const [showConnectionInfo, setShowConnectionInfo] = useState(false);
-  const [showRescueModal, setShowRescueModal] = useState(false);
-  const [localBackupCount, setLocalBackupCount] = useState(0);
 
   const [isAppLocked, setIsAppLocked] = useState(true);
   const [isRecentOnly, setIsRecentOnly] = useState(false);
@@ -84,32 +85,13 @@ function App() {
   const [colorLightbox, setColorLightbox] = useState<{ isOpen: boolean; image: string; fabricId: string; colorName: string; } | null>(null);
   const [visibleItemsCount, setVisibleItemsCount] = useState(24);
 
-  // Variable para forzar actualización de UI si la carga manual ocurre
-  const [lastSyncTime, setLastSyncTime] = useState<number>(Date.now());
+  const loadData = async (forceRefresh = false) => {
+    setLoading(true);
+    setLoadingProgress(10);
 
-  const loadData = async (forceCloud = false) => {
-    const cachedData = getLocalCachedData();
-    let hasCache = false;
-
-    if (cachedData.fabrics.length > 0 && !forceCloud) {
-        console.log(`⚡ Carga Instantánea: ${cachedData.fabrics.length} telas recuperadas del caché.`);
-        setFabrics(cachedData.fabrics);
-        if (cachedData.furniture.length > 0) setFurnitureTemplates(cachedData.furniture);
-        setLocalBackupCount(cachedData.fabrics.length);
-        setLoadingProgress(100);
-        setLoading(false);
-        hasCache = true;
-    } else {
-        setLoading(true);
-        setLoadingProgress(20); 
-    }
-
-    let interval: any;
-    if (!hasCache || forceCloud) {
-        interval = setInterval(() => {
-            setLoadingProgress(prev => { if (prev >= 90) return 90; return prev + Math.random() * 15 + 5; });
-        }, 100); 
-    }
+    let interval = setInterval(() => {
+        setLoadingProgress(prev => { if (prev >= 90) return 90; return prev + Math.random() * 15 + 5; });
+    }, 150); 
 
     try {
       const [dbData, furnitureData] = await Promise.all([
@@ -117,16 +99,13 @@ function App() {
           getFurnitureTemplatesFromFirestore()
       ]);
       
-      if (interval) clearInterval(interval);
+      clearInterval(interval);
       setLoadingProgress(100);
       setFurnitureTemplates(furnitureData);
-      setOfflineStatus(isOfflineMode());
-      if (dbData && dbData.length > 0) {
-        setFabrics(dbData);
-        setLastSyncTime(Date.now());
-      } else if (!hasCache) {
-         setFabrics(INITIAL_FABRICS);
-      }
+      setOfflineStatus(false);
+      
+      // 100% ONLINE: Si dbData está vacío, la app está vacía.
+      setFabrics(dbData || []);
       setLoading(false);
 
       // --- DIAGNÓSTICO DE PERMISOS ---
@@ -139,9 +118,6 @@ function App() {
                    setShowConnectionInfo(true);
               } else if (error && (error.includes('operation-not-allowed') || error.includes('configuration'))) {
                    setShowSetupGuide(true);
-              } else if (!isUsingCustomConfig()) {
-                  // Prompt user to configure their own DB if using dummy
-                  // setShowConnectionInfo(true); 
               }
           } else {
               const hasWritePermission = await checkDatabasePermissions();
@@ -152,10 +128,11 @@ function App() {
       }, 1500);
 
     } catch (e: any) {
-      console.error("Error loading data", e);
-      if (interval) clearInterval(interval);
+      console.error("Error crítico cargando datos de nube:", e);
+      clearInterval(interval);
       setLoadingProgress(100);
-      if (!hasCache) setFabrics(INITIAL_FABRICS);
+      setFabrics([]); // Fallback a vacío si falla la nube
+      setOfflineStatus(true); // Indicar error de conexión
       setLoading(false);
     }
   };
@@ -200,28 +177,53 @@ function App() {
 
   const handleSaveFabric = async (newFabric: Fabric) => {
     try {
-      setFabrics(prev => [newFabric, ...prev.filter(f => f.id !== newFabric.id)]);
+      // Optimistic update for UI speed
+      setFabrics(prev => {
+          const filtered = prev.filter(f => f.id !== newFabric.id);
+          return [newFabric, ...filtered];
+      });
       await saveFabricToFirestore(newFabric);
       setView('grid');
-    } catch (e) {
+    } catch (e: any) {
       console.error("Error saving fabric:", e);
-      throw e; 
+      if (e.message && e.message.includes("permission-denied")) {
+          alert("⛔ ERROR DE PERMISOS: No se pudo guardar en la nube.\n\nEs probable que no tengas permisos de escritura en este proyecto. Haz clic en el engranaje ⚙️ y conecta tu propio Firebase.");
+          setShowRulesError(true);
+      } else {
+          alert("Error al guardar en la nube. Verifica tu conexión.");
+      }
+      loadData(); // Revert optimistic update on error
     }
   };
 
   const handleBulkSaveFabrics = async (newFabrics: Fabric[]) => {
     try {
-      setFabrics(prev => [...newFabrics, ...prev]);
+      setFabrics(prev => {
+          const newNames = new Set(newFabrics.map(f => f.name.toLowerCase()));
+          const filtered = prev.filter(f => !newNames.has(f.name.toLowerCase()));
+          return [...newFabrics, ...filtered];
+      });
       await saveBatchFabricsToFirestore(newFabrics);
       setView('grid');
-    } catch (e) { console.error("Error bulk saving:", e); throw e; }
+    } catch (e: any) { 
+        console.error("Error bulk saving:", e);
+        if (e.message && e.message.includes("permission-denied")) {
+             setShowRulesError(true);
+        }
+        alert("Error en carga masiva. Verifica conexión y permisos.");
+        loadData();
+    }
   };
 
   const handleUpdateFabric = async (updatedFabric: Fabric) => {
     try {
       setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
       await saveFabricToFirestore(updatedFabric);
-    } catch (e) { console.error("Error updating fabric:", e); throw e; }
+    } catch (e) { 
+        console.error("Error updating fabric:", e);
+        alert("Error actualizando. Verifica conexión.");
+        loadData();
+    }
   };
 
   const handleDeleteFabric = async (fabricId: string) => {
@@ -229,29 +231,28 @@ function App() {
           setFabrics(prev => prev.filter(f => f.id !== fabricId));
           setView('grid');
           await deleteFabricFromFirestore(fabricId);
-      } catch (e) { console.error("Error deleting fabric:", e); }
+      } catch (e) { 
+          console.error("Error deleting fabric:", e);
+          alert("Error eliminando. Verifica conexión.");
+          loadData();
+      }
   };
 
   const handleReset = async () => {
-    if (window.confirm("¿Estás seguro de que quieres borrar todo el catálogo de la nube? Se restaurará la lista por defecto.")) {
+    if (window.confirm("¡ATENCIÓN! 🗑️\n\n¿Estás seguro de que quieres BORRAR TODO el catálogo de la nube?\n\nEsta acción es irreversible.")) {
       try {
+        setLoading(true);
+        setLoadingProgress(50);
         await clearFirestoreCollection();
-        setFabrics(INITIAL_FABRICS); 
-        alert("Catálogo borrado. Se ha restaurado la lista de stock por defecto.");
-      } catch (e) { console.error("Error clearing catalog:", e); }
-    }
-  };
-
-  const handleRestoreLocalData = async () => {
-    setLoading(true); setLoadingProgress(10); setShowRescueModal(false);
-    const interval = setInterval(() => { setLoadingProgress(p => p < 90 ? p + 5 : p); }, 200);
-    try {
-        const count = await pushLocalBackupToCloud();
-        clearInterval(interval); setLoadingProgress(100);
-        alert(`¡ÉXITO TOTAL! 🎉\n\nSe han sincronizado ${count} telas con la nube. Ahora están seguras en Google.`);
-        window.location.reload();
-    } catch(e: any) {
-        clearInterval(interval); alert("Error al restaurar: " + e.message); setLoading(false);
+        setFabrics([]); // Vaciamos estado local
+        setLoadingProgress(100);
+        alert("Catálogo borrado exitosamente.");
+        setLoading(false);
+      } catch (e) { 
+          console.error("Error clearing catalog:", e);
+          alert("Error al borrar. Verifica tu conexión.");
+          setLoading(false);
+      }
     }
   };
 
@@ -298,7 +299,7 @@ function App() {
           else setShowRulesError(false);
           
           if(!silent) alert("¡Conectado! La nube está activa.");
-          loadData(true); // Forzar recarga completa
+          loadData(true); 
           return true;
       } else {
           const authError = getAuthError();
@@ -311,13 +312,9 @@ function App() {
       }
   };
 
-  const handleStatusClick = () => { setShowConnectionInfo(true); if (offlineStatus) handleRetryConnection(true); };
-
   // --- MODALES DE DIAGNÓSTICO ---
   const ConnectionInfoModal = () => {
       const authError = getAuthError();
-      const cloudCount = fabrics.filter(f => f.mainImage?.startsWith('http')).length;
-      const localCount = fabrics.filter(f => f.mainImage?.startsWith('data:')).length;
       const total = fabrics.length;
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       
@@ -325,17 +322,13 @@ function App() {
         <div className="fixed inset-0 z-[450] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
           <div className="bg-white max-w-lg w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col p-8 relative">
              <button onClick={() => setShowConnectionInfo(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
-             <h2 className="text-2xl font-serif font-bold text-slate-900 mb-2 flex items-center gap-2">Estado de la Nube</h2>
+             <h2 className="text-2xl font-serif font-bold text-slate-900 mb-2 flex items-center gap-2">Estado de Conexión</h2>
              <div className="flex items-center gap-2 mb-6">
                  <div className={`w-3 h-3 rounded-full ${offlineStatus ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-                 <span className={`text-sm font-bold uppercase tracking-widest ${offlineStatus ? 'text-red-500' : 'text-green-600'}`}>{offlineStatus ? 'Desconectado' : 'Conectado'}</span>
+                 <span className={`text-sm font-bold uppercase tracking-widest ${offlineStatus ? 'text-red-500' : 'text-green-600'}`}>{offlineStatus ? 'Sin Conexión' : 'Conectado a Nube'}</span>
              </div>
              <div className="space-y-4 mb-6">
-                 <div className="grid grid-cols-3 gap-2 text-center mb-4">
-                     <div className="bg-gray-50 p-3 rounded-xl border border-gray-100"><span className="block text-2xl font-bold text-slate-900">{total}</span><span className="text-[9px] uppercase font-bold text-gray-400">Total Telas</span></div>
-                     <div className="bg-green-50 p-3 rounded-xl border border-green-100"><span className="block text-2xl font-bold text-green-700">{cloudCount}</span><span className="text-[9px] uppercase font-bold text-green-600">En Nube</span></div>
-                     <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-100"><span className="block text-2xl font-bold text-yellow-700">{localCount}</span><span className="text-[9px] uppercase font-bold text-yellow-600">Pendientes</span></div>
-                 </div>
+                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-center"><span className="block text-3xl font-bold text-slate-900">{total}</span><span className="text-[10px] uppercase font-bold text-gray-400">Telas en Nube</span></div>
                  
                  {/* DETECTOR DE ERROR DE DOMINIO - AYUDA DE DEPLOY */}
                  {!isLocalhost && offlineStatus && authError === 'DOMAIN_ERROR' && (
@@ -364,9 +357,9 @@ function App() {
                     </div>
                  )}
                  
-                 {!offlineStatus && <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-left"><p className="text-sm text-green-700 font-medium flex items-center gap-2">Sincronización activa.</p></div>}
+                 {!offlineStatus && <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-left"><p className="text-sm text-green-700 font-medium flex items-center gap-2">Sincronización activa con Google Cloud.</p></div>}
              </div>
-             <div className="flex gap-3"><button onClick={() => handleRetryConnection(false)} className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-black transition-colors">Forzar Reconexión</button>{localCount > 0 && (<button onClick={() => {setShowConnectionInfo(false); setShowRescueModal(true);}} className="flex-1 bg-yellow-500 text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-yellow-600 transition-colors shadow-lg animate-pulse">Subir Pendientes</button>)}</div>
+             <div className="flex gap-3"><button onClick={() => handleRetryConnection(false)} className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-black transition-colors">Reconectar</button></div>
           </div>
         </div>
       );
@@ -375,7 +368,8 @@ function App() {
   const RulesErrorModal = () => {
     const firestoreRules = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
     const storageRules = `rules_version = '2';\nservice firebase.storage {\n  match /b/{bucket}/o {\n    match /{allPaths=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
-    
+    const isCustom = isUsingCustomConfig();
+
     return (
       <div className="fixed inset-0 z-[350] bg-red-900/90 flex items-center justify-center p-4 backdrop-blur-md">
           <div className="bg-white max-w-xl w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -384,52 +378,48 @@ function App() {
                       <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                   </div>
                   <div>
-                      <h3 className="text-xl font-bold text-red-900">¡Abre las Puertas!</h3>
-                      <p className="text-xs text-red-700 uppercase tracking-wide font-bold">Firebase está bloqueando tus datos</p>
+                      <h3 className="text-xl font-bold text-red-900">Problema de Escritura</h3>
+                      <p className="text-xs text-red-700 uppercase tracking-wide font-bold">No se puede guardar en la nube</p>
                   </div>
               </div>
               <div className="p-8 space-y-4 overflow-y-auto">
-                  <p className="text-gray-700 text-sm font-medium">
-                      Para que la App pueda guardar telas y fotos, debes cambiar las reglas en la consola de Firebase. Copia y pega estos códigos:
-                  </p>
-                  
-                  <div className="space-y-4">
-                    <div>
-                        <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] font-bold uppercase text-gray-500">1. Firestore Database &gt; Rules</span>
-                            <button onClick={() => navigator.clipboard.writeText(firestoreRules)} className="text-[10px] text-blue-600 font-bold hover:underline">COPIAR</button>
+                  {!isCustom ? (
+                      <div className="mb-4">
+                          <p className="text-slate-900 font-bold mb-2">Estás usando la Base de Datos de Demostración.</p>
+                          <p className="text-sm text-gray-600">
+                              Esta base de datos es pública y suele estar bloqueada para escritura. Para que tus datos se guarden de verdad, 
+                              debes conectar tu propio proyecto.
+                          </p>
+                          <button 
+                             onClick={() => { setShowRulesError(false); setConfigModalOpen(true); }}
+                             className="mt-4 w-full bg-black text-white py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:scale-105 transition-transform"
+                          >
+                             Conectar mi propia Nube
+                          </button>
+                      </div>
+                  ) : (
+                      <>
+                        <p className="text-gray-700 text-sm font-medium">
+                            Firebase está bloqueando tus datos. Debes cambiar las "Reglas de Seguridad" en tu consola para permitir escritura pública (solo para desarrollo) o autenticarte.
+                        </p>
+                        <p className="text-xs text-gray-500">Copia esto en la pestaña "Rules" de Firestore y Storage:</p>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <div className="bg-gray-800 p-3 rounded-lg text-xs font-mono text-green-400 overflow-x-auto border border-gray-700">
+                                    <pre>{firestoreRules}</pre>
+                                </div>
+                            </div>
                         </div>
-                        <div className="bg-gray-800 p-3 rounded-lg text-xs font-mono text-green-400 overflow-x-auto border border-gray-700">
-                            <pre>{firestoreRules}</pre>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] font-bold uppercase text-gray-500">2. Storage &gt; Rules</span>
-                            <button onClick={() => navigator.clipboard.writeText(storageRules)} className="text-[10px] text-blue-600 font-bold hover:underline">COPIAR</button>
-                        </div>
-                        <div className="bg-gray-800 p-3 rounded-lg text-xs font-mono text-green-400 overflow-x-auto border border-gray-700">
-                            <pre>{storageRules}</pre>
-                        </div>
-                    </div>
-                  </div>
+                      </>
+                  )}
 
                   <div className="pt-4 flex flex-col gap-3">
-                      <a 
-                          href="https://console.firebase.google.com/" 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-black transition-colors shadow-lg text-center"
-                      >
-                          Ir a Firebase Console
-                      </a>
-
                       <button 
                           onClick={() => { setShowRulesError(false); window.location.reload(); }}
                           className="w-full bg-white text-red-600 border border-red-200 py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-red-50 transition-colors"
                       >
-                          Ya lo hice, Reintentar
+                          Cerrar y Reintentar
                       </button>
                   </div>
               </div>
@@ -464,8 +454,6 @@ function App() {
         </div>
       );
   };
-
-  const RescueModal = () => (<div className="fixed inset-0 z-[400] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in"><div className="bg-white max-w-md w-full rounded-3xl p-8 text-center shadow-2xl"><h2 className="text-2xl font-serif font-bold text-slate-900 mb-2">Sincronización</h2><p className="text-gray-600 mb-6 leading-relaxed text-sm">Tienes <strong>{localBackupCount} telas</strong> sin sincronizar.</p><button onClick={handleRestoreLocalData} className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm shadow-xl hover:scale-105 transition-transform">Sincronizar Ahora</button><button onClick={() => setShowRescueModal(false)} className="text-gray-400 text-xs font-bold uppercase hover:text-gray-600 mt-4">Cancelar</button></div></div>);
 
   // --- FILTRADO ---
   const filteredItems = useMemo(() => {
@@ -530,17 +518,7 @@ function App() {
       {loading && <LoadingScreen progress={loadingProgress} />}
       {showSetupGuide && <SetupGuide />}
       {showRulesError && <RulesErrorModal />}
-      {showRescueModal && <RescueModal />}
       {showConnectionInfo && <ConnectionInfoModal />}
-      
-      <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 items-start">
-        {offlineStatus && !showRescueModal && localBackupCount > 0 && (
-             <button onClick={() => setShowRescueModal(true)} className="bg-yellow-500 text-white px-4 py-2 rounded-full text-[10px] font-bold shadow-lg border border-yellow-400 hover:scale-105 transition-transform flex items-center gap-2 animate-bounce cursor-pointer">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                Sincronizar ({localBackupCount})
-            </button>
-        )}
-      </div>
       
       {colorLightbox && colorLightbox.isOpen && (
           <div className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-4" onClick={() => setColorLightbox(null)}>
@@ -567,21 +545,21 @@ function App() {
             <Suspense fallback={null}><PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="3942" /></Suspense>
             <Suspense fallback={<LoadingScreen progress={50} />}>{selectedFurnitureToEdit && (<EditFurnitureModal furniture={selectedFurnitureToEdit} onClose={() => setSelectedFurnitureToEdit(null)} onSave={handleSaveFurniture} onDelete={handleDeleteFurniture} />)}</Suspense>
 
+            {/* CONFIG MODAL */}
+            <Suspense fallback={null}><ConfigModal isOpen={isConfigModalOpen} onClose={() => setConfigModalOpen(false)} /></Suspense>
+
             {view === 'grid' && (
                 <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative text-center">
                     
-                    {/* BOTÓN DE SINCRONIZACIÓN MANUAL DISCRETO */}
-                    <div className="absolute top-4 left-6 z-40">
-                       <button 
-                         onClick={() => handleRetryConnection(false)} 
-                         className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-300 hover:text-black transition-colors"
-                         title="Recargar datos desde la nube"
-                       >
-                         <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                         </svg>
-                         {offlineStatus ? 'Desconectado' : 'Actualizar'}
-                       </button>
+                    {/* BOTÓN DE CONFIGURACIÓN DE NUBE (GEAR) */}
+                    <div className="absolute top-4 left-4 z-50 flex items-center gap-4">
+                        <button 
+                            onClick={() => setConfigModalOpen(true)}
+                            className="text-gray-400 hover:text-black hover:rotate-90 transition-all duration-500"
+                            title="Conectar mi propia Nube (Firebase)"
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        </button>
                     </div>
 
                     <h1 className="font-serif text-6xl md:text-8xl font-bold tracking-tight text-slate-900 leading-none text-center">Catálogo de Telas</h1>
@@ -628,8 +606,9 @@ function App() {
                          fabrics.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-20 opacity-50">
                                 <svg className="w-20 h-20 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                                <h3 className="text-xl font-serif font-bold text-gray-400">Catálogo Vacío</h3>
-                                <p className="text-sm text-gray-400 mt-2">Sube telas (botón ".") o recupera tu copia de seguridad.</p>
+                                <h3 className="text-xl font-serif font-bold text-gray-400">Catálogo Vacío (Nube)</h3>
+                                <p className="text-sm text-gray-400 mt-2">No hay telas registradas en la base de datos.</p>
+                                <p className="text-[10px] text-gray-300 mt-1 uppercase tracking-widest">Usa el botón "." para subir</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 xl:gap-8 w-full max-w-[1920px]">
