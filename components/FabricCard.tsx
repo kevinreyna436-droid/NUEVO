@@ -20,6 +20,14 @@ const FabricCard: React.FC<FabricCardProps> = ({ fabric, onClick, onDetail, onQu
 
   // Determine which image to show
   let displayImage = fabric.mainImage;
+
+  // FALLBACK INTELLIGENCE: If mainImage is missing, try to grab the first available color image
+  if (!displayImage && fabric.colorImages) {
+      const firstColorKey = Object.keys(fabric.colorImages)[0];
+      if (firstColorKey) displayImage = fabric.colorImages[firstColorKey];
+  }
+
+  // Override if specific color mode
   if (mode === 'color' && specificColorName && fabric.colorImages?.[specificColorName]) {
     displayImage = fabric.colorImages[specificColorName];
   }

@@ -92,7 +92,10 @@ const UploadModal: React.FC<UploadModalProps> = ({
           colors.push(formatted);
       }
 
-      return { ...rawData, colors, colorImages, mainImage: imgFiles.length > 0 ? colorImages[colors[0]] : '', category: 'model' };
+      // Ensure mainImage is set from the first available color if possible
+      const mainImage = imgFiles.length > 0 ? colorImages[colors[0]] : '';
+
+      return { ...rawData, colors, colorImages, mainImage, category: 'model' };
   };
 
   const processFiles = async () => {
@@ -126,6 +129,11 @@ const UploadModal: React.FC<UploadModalProps> = ({
     const updated = extractedFabrics.map((item, idx) => 
        idx === index ? { ...item, [field]: value } : item
     );
+    setExtractedFabrics(updated);
+  };
+
+  const removeExtractedFabric = (index: number) => {
+    const updated = extractedFabrics.filter((_, i) => i !== index);
     setExtractedFabrics(updated);
   };
 
@@ -243,20 +251,32 @@ const UploadModal: React.FC<UploadModalProps> = ({
         });
     }, 200);
 
-    const finalFabrics: Fabric[] = extractedFabrics.map(data => ({
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        name: toSentenceCase(data.name || 'Sin Nombre'),
-        supplier: (data.supplier || 'Consultar').toUpperCase(),
-        technicalSummary: data.technicalSummary || '',
-        specs: data.specs || { composition: '', martindale: '', usage: '' },
-        colors: data.colors || [],
-        colorImages: data.colorImages || {},
-        mainImage: data.mainImage || '',
-        specsImage: data.specsImage,
-        pdfUrl: data.pdfUrl,
-        category: 'model',
-        customCatalog: data.customCatalog 
-    }));
+    const finalFabrics: Fabric[] = extractedFabrics.map(data => {
+        // --- SAFETY FIX: ENSURE MAIN IMAGE EXISTS ---
+        let finalMainImage = data.mainImage;
+        // If mainImage is missing but we have color images, grab the first one
+        if (!finalMainImage && data.colorImages) {
+            const firstColorKey = Object.keys(data.colorImages)[0];
+            if (firstColorKey) {
+                finalMainImage = data.colorImages[firstColorKey];
+            }
+        }
+
+        return {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            name: toSentenceCase(data.name || 'Sin Nombre'),
+            supplier: (data.supplier || 'Consultar').toUpperCase(),
+            technicalSummary: data.technicalSummary || '',
+            specs: data.specs || { composition: '', martindale: '', usage: '' },
+            colors: data.colors || [],
+            colorImages: data.colorImages || {},
+            mainImage: finalMainImage || '', // Use the safe main image
+            specsImage: data.specsImage,
+            pdfUrl: data.pdfUrl,
+            category: 'model',
+            customCatalog: data.customCatalog 
+        };
+    });
 
     const total = finalFabrics.length;
     let completed = 0;
@@ -499,10 +519,14 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                             <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center">
                                                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                                             </div>
+                                            {/* Plus Icon Overlay */}
+                                            <div className="absolute bottom-1 right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-md border border-gray-100">
+                                                <svg className="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                            </div>
                                         </div>
 
                                         <div className="flex-1 space-y-5 w-full">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                                                 <div>
                                                     <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Nombre Modelo</label>
                                                     <input 
@@ -519,6 +543,38 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                                         className="w-full p-2.5 bg-gray-50 rounded-lg border border-gray-200 outline-none font-sans text-sm uppercase font-bold text-slate-700"
                                                     />
                                                 </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Colección</label>
+                                                    <input 
+                                                        value={f.customCatalog || ''} 
+                                                        onChange={(e) => updateExtractedFabric(i, 'customCatalog', e.target.value.toUpperCase())}
+                                                        placeholder="EJ: 2024"
+                                                        className="w-full p-2.5 bg-gray-50 rounded-lg border border-gray-200 outline-none font-sans text-sm uppercase font-bold text-slate-700"
+                                                    />
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="flex justify-between items-center gap-4">
+                                                 <div className="flex gap-3">
+                                                      <button 
+                                                          onClick={() => triggerEditUpload(i, 'specsImage')}
+                                                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${f.specsImage ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'} text-xs font-bold uppercase transition-colors`}
+                                                      >
+                                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                          {f.specsImage ? 'Ficha (Foto) OK' : 'Subir Ficha (Foto)'}
+                                                      </button>
+                                                      <button 
+                                                          onClick={() => triggerEditUpload(i, 'pdfUrl')}
+                                                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${f.pdfUrl ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'} text-xs font-bold uppercase transition-colors`}
+                                                      >
+                                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 011.414.586l5.414 5.414a1 1 0 01.586 1.414V19a2 2 0 01-2 2z" /></svg>
+                                                          {f.pdfUrl ? 'Ficha (PDF) OK' : 'Subir Ficha (PDF)'}
+                                                      </button>
+                                                 </div>
+
+                                                 <button onClick={() => removeExtractedFabric(i)} className="text-red-500 text-[10px] font-bold uppercase hover:underline flex items-center gap-1">
+                                                    - Quitar Ficha
+                                                 </button>
                                             </div>
 
                                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
