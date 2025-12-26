@@ -8,17 +8,32 @@ interface ConfigModalProps {
 
 const ConfigModal: React.FC<ConfigModalProps> = ({ isOpen, onClose }) => {
   const [configJson, setConfigJson] = useState('');
+  const [databaseId, setDatabaseId] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('creata_firebase_config');
     if (saved) {
-      setConfigJson(saved);
+      try {
+          const parsed = JSON.parse(saved);
+          // Separar el databaseId del JSON para mostrarlo en su propio input
+          if (parsed.databaseId) {
+              setDatabaseId(parsed.databaseId);
+              // Lo quitamos temporalmente del JSON visual para no duplicarlo
+              const { databaseId, ...rest } = parsed;
+              setConfigJson(JSON.stringify(rest, null, 2));
+          } else {
+              setConfigJson(saved);
+          }
+      } catch (e) {
+          setConfigJson(saved);
+      }
     }
   }, [isOpen]);
 
   const handleSave = () => {
     try {
+      setError(null);
       // Limpiar el input en caso de que el usuario pegue "const firebaseConfig = { ... }"
       let cleanInput = configJson.trim();
       if (cleanInput.includes('=')) {
@@ -56,6 +71,11 @@ const ConfigModal: React.FC<ConfigModalProps> = ({ isOpen, onClose }) => {
       // Validar campos mínimos correctos
       if (!parsed.apiKey || !parsed.projectId) {
         throw new Error("Faltan campos obligatorios (apiKey, projectId). Revisa que hayas copiado el objeto correcto.");
+      }
+
+      // Añadir el databaseId si el usuario lo escribió
+      if (databaseId.trim()) {
+          parsed.databaseId = databaseId.trim();
       }
 
       localStorage.setItem('creata_firebase_config', JSON.stringify(parsed, null, 2));
@@ -100,13 +120,14 @@ const ConfigModal: React.FC<ConfigModalProps> = ({ isOpen, onClose }) => {
                 </ol>
             </div>
 
-            <div>
-                <label className="block text-xs font-bold uppercase text-gray-500 mb-2 tracking-widest">Pegar Configuración Aquí:</label>
-                <textarea 
-                    value={configJson}
-                    onChange={(e) => { setConfigJson(e.target.value); setError(null); }}
-                    className={`w-full h-48 p-4 bg-gray-900 font-mono text-xs rounded-xl focus:outline-none focus:ring-2 ${error ? 'ring-red-500 border-red-500 text-red-100' : 'focus:ring-black text-green-400'}`}
-                    placeholder={`{
+            <div className="space-y-4">
+                <div>
+                    <label className="block text-xs font-bold uppercase text-gray-500 mb-2 tracking-widest">1. Pegar Configuración Aquí:</label>
+                    <textarea 
+                        value={configJson}
+                        onChange={(e) => { setConfigJson(e.target.value); setError(null); }}
+                        className={`w-full h-40 p-4 bg-gray-900 font-mono text-xs rounded-xl focus:outline-none focus:ring-2 ${error ? 'ring-red-500 border-red-500 text-red-100' : 'focus:ring-black text-green-400'}`}
+                        placeholder={`{
   apiKey: "AIzaSy...",
   authDomain: "tu-proyecto.firebaseapp.com",
   projectId: "tu-proyecto",
@@ -114,9 +135,25 @@ const ConfigModal: React.FC<ConfigModalProps> = ({ isOpen, onClose }) => {
   messagingSenderId: "...",
   appId: "..."
 }`}
-                />
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-xs font-bold uppercase text-gray-500 mb-2 tracking-widest">2. ID de Base de Datos (Opcional):</label>
+                    <input 
+                        type="text"
+                        value={databaseId}
+                        onChange={(e) => setDatabaseId(e.target.value)}
+                        placeholder="Ej: telas"
+                        className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black font-medium text-slate-900"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1 pl-1">
+                        Solo si creaste una base de datos con nombre personalizado (distinto a <code>(default)</code>).
+                    </p>
+                </div>
+
                 {error && (
-                    <div className="mt-4 bg-red-50 p-4 rounded-xl border border-red-200 flex gap-3 items-start animate-fade-in">
+                    <div className="bg-red-50 p-4 rounded-xl border border-red-200 flex gap-3 items-start animate-fade-in">
                         <svg className="w-6 h-6 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                         <p className="text-red-700 text-xs font-bold whitespace-pre-wrap">{error}</p>
                     </div>

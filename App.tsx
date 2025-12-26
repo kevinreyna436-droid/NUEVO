@@ -28,7 +28,6 @@ const PinModal = lazy(() => import('./components/PinModal'));
 const ImageGenModal = lazy(() => import('./components/ImageGenModal'));
 const Visualizer = lazy(() => import('./components/Visualizer'));
 const EditFurnitureModal = lazy(() => import('./components/EditFurnitureModal'));
-const ConfigModal = lazy(() => import('./components/ConfigModal'));
 
 // Type for Sorting
 type SortOption = 'color' | 'name' | 'model' | 'supplier';
@@ -62,7 +61,6 @@ function App() {
   // Modals State
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
   const [isPinModalOpen, setPinModalOpen] = useState(false); 
-  const [isConfigModalOpen, setConfigModalOpen] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'visualizer'>('model');
@@ -73,7 +71,11 @@ function App() {
 
   const [offlineStatus, setOfflineStatus] = useState(false);
   const [showSetupGuide, setShowSetupGuide] = useState(false);
+  
+  // New: Specific Rules Error Type
   const [showRulesError, setShowRulesError] = useState(false); 
+  const [rulesErrorType, setRulesErrorType] = useState<'general' | 'storage'>('general');
+
   const [showConnectionInfo, setShowConnectionInfo] = useState(false);
 
   const [isAppLocked, setIsAppLocked] = useState(true);
@@ -104,11 +106,9 @@ function App() {
       setFurnitureTemplates(furnitureData);
       setOfflineStatus(false);
       
-      // 100% ONLINE: Si dbData está vacío, la app está vacía.
       setFabrics(dbData || []);
       setLoading(false);
 
-      // --- DIAGNÓSTICO DE PERMISOS ---
       setTimeout(async () => {
           if (isAuthConfigMissing() || isOfflineMode()) {
               const error = getAuthError();
@@ -122,6 +122,7 @@ function App() {
           } else {
               const hasWritePermission = await checkDatabasePermissions();
               if (!hasWritePermission) {
+                 setRulesErrorType('general');
                  setShowRulesError(true);
               }
           }
@@ -131,8 +132,8 @@ function App() {
       console.error("Error crítico cargando datos de nube:", e);
       clearInterval(interval);
       setLoadingProgress(100);
-      setFabrics([]); // Fallback a vacío si falla la nube
-      setOfflineStatus(true); // Indicar error de conexión
+      setFabrics([]); 
+      setOfflineStatus(true); 
       setLoading(false);
     }
   };
@@ -177,7 +178,6 @@ function App() {
 
   const handleSaveFabric = async (newFabric: Fabric) => {
     try {
-      // Optimistic update for UI speed
       setFabrics(prev => {
           const filtered = prev.filter(f => f.id !== newFabric.id);
           return [newFabric, ...filtered];
@@ -186,10 +186,14 @@ function App() {
       setView('grid');
     } catch (e: any) {
       console.error("Error saving fabric:", e);
-      loadData(); // Revert optimistic update on error
+      loadData(); 
       
-      // CRITICAL: Propagar el error para que UploadModal lo capture
-      if (e.message && e.message.includes("permission-denied")) {
+      // ERROR HANDLING MEJORADO
+      if (e.message && e.message.includes("unauthorized")) {
+          setRulesErrorType('storage'); // Específico de Storage
+          setShowRulesError(true);
+      } else if (e.message && e.message.includes("permission-denied")) {
+          setRulesErrorType('general');
           setShowRulesError(true);
       }
       throw e;
@@ -209,8 +213,11 @@ function App() {
         console.error("Error bulk saving:", e);
         loadData();
         
-        // CRITICAL: Propagar el error
-        if (e.message && e.message.includes("permission-denied")) {
+        if (e.message && e.message.includes("unauthorized")) {
+             setRulesErrorType('storage');
+             setShowRulesError(true);
+        } else if (e.message && e.message.includes("permission-denied")) {
+             setRulesErrorType('general');
              setShowRulesError(true);
         }
         throw e;
@@ -221,9 +228,17 @@ function App() {
     try {
       setFabrics(prev => prev.map(f => f.id === updatedFabric.id ? updatedFabric : f));
       await saveFabricToFirestore(updatedFabric);
-    } catch (e) { 
+    } catch (e: any) { 
         console.error("Error updating fabric:", e);
-        alert("Error actualizando. Verifica conexión.");
+        if (e.message && e.message.includes("unauthorized")) {
+             setRulesErrorType('storage');
+             setShowRulesError(true);
+        } else if (e.message && e.message.includes("permission-denied")) {
+             setRulesErrorType('general');
+             setShowRulesError(true);
+        } else {
+             alert("Error actualizando. Verifica conexión.");
+        }
         loadData();
     }
   };
@@ -246,7 +261,7 @@ function App() {
         setLoading(true);
         setLoadingProgress(50);
         await clearFirestoreCollection();
-        setFabrics([]); // Vaciamos estado local
+        setFabrics([]); 
         setLoadingProgress(100);
         alert("Catálogo borrado exitosamente.");
         setLoading(false);
@@ -262,7 +277,16 @@ function App() {
     try {
       const saved = await saveFurnitureTemplateToFirestore(template);
       setFurnitureTemplates(prev => [saved, ...prev.filter(t => t.id !== template.id)]);
-    } catch (e) { console.error("Error saving furniture:", e); }
+    } catch (e: any) { 
+        console.error("Error saving furniture:", e);
+        if (e.message && e.message.includes("unauthorized")) {
+             setRulesErrorType('storage');
+             setShowRulesError(true);
+        } else if (e.message && e.message.includes("permission-denied")) {
+             setRulesErrorType('general');
+             setShowRulesError(true);
+        }
+    }
   };
 
   const handleDeleteFurniture = async (id: string) => {
@@ -297,8 +321,12 @@ function App() {
       if(isOnline) {
           setShowSetupGuide(false);
           const hasWrite = await checkDatabasePermissions();
-          if(!hasWrite) setShowRulesError(true);
-          else setShowRulesError(false);
+          if(!hasWrite) {
+             setRulesErrorType('general');
+             setShowRulesError(true);
+          } else {
+             setShowRulesError(false);
+          }
           
           if(!silent) alert("¡Conectado! La nube está activa.");
           loadData(true); 
@@ -332,7 +360,6 @@ function App() {
              <div className="space-y-4 mb-6">
                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-center"><span className="block text-3xl font-bold text-slate-900">{total}</span><span className="text-[10px] uppercase font-bold text-gray-400">Telas en Nube</span></div>
                  
-                 {/* DETECTOR DE ERROR DE DOMINIO - AYUDA DE DEPLOY */}
                  {!isLocalhost && offlineStatus && authError === 'DOMAIN_ERROR' && (
                      <div className="bg-blue-50 p-6 rounded-xl border border-blue-100 text-left animate-fade-in-up">
                          <div className="flex items-center gap-2 mb-3">
@@ -368,7 +395,27 @@ function App() {
   };
 
   const RulesErrorModal = () => {
-    const firestoreRules = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
+    const firestoreRules = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`;
+    const storageRules = `rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}`;
+
+    const handleCopy = (text: string) => {
+        navigator.clipboard.writeText(text);
+        alert("Código copiado al portapapeles.");
+    };
     
     return (
       <div className="fixed inset-0 z-[350] bg-red-900/90 flex items-center justify-center p-4 backdrop-blur-md">
@@ -378,45 +425,65 @@ function App() {
                       <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                   </div>
                   <div>
-                      <h3 className="text-xl font-bold text-red-900">Problema de Escritura</h3>
-                      <p className="text-xs text-red-700 uppercase tracking-wide font-bold">No se puede guardar en la nube</p>
+                      <h3 className="text-xl font-bold text-red-900">Permiso Denegado</h3>
+                      <p className="text-xs text-red-700 uppercase tracking-wide font-bold">
+                          {rulesErrorType === 'storage' ? 'Error al subir Imágenes' : 'Faltan reglas en tu consola'}
+                      </p>
                   </div>
               </div>
               <div className="p-8 space-y-4 overflow-y-auto">
-                  <p className="text-gray-700 text-sm font-medium">
-                      Firebase está bloqueando tus datos. Esto ocurre cuando conectas una nueva base de datos y no configuras las reglas de seguridad.
-                  </p>
-                  <p className="text-xs text-gray-500">
-                      1. Ve a la consola de Firebase.<br/>
-                      2. Entra en <strong>Firestore Database</strong> &gt; Pestaña <strong>Reglas (Rules)</strong>.<br/>
-                      3. Borra todo y pega este código para permitir acceso (Modo Prueba):
-                  </p>
-                  
-                  <div className="space-y-4">
-                      <div>
-                          <div className="bg-gray-800 p-3 rounded-lg text-xs font-mono text-green-400 overflow-x-auto border border-gray-700">
-                              <pre>{firestoreRules}</pre>
-                          </div>
-                      </div>
-                  </div>
-                  
-                  <p className="text-xs text-gray-500 mt-4">
-                      <strong>Importante:</strong> Haz lo mismo en la sección <strong>Storage</strong> para permitir subir fotos.
-                  </p>
+                  {rulesErrorType === 'storage' ? (
+                      <>
+                        <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200 mb-2">
+                             <p className="text-sm text-yellow-800 font-bold mb-1">💡 Diagnóstico Inteligente:</p>
+                             <p className="text-xs text-yellow-900 leading-relaxed">
+                                Parece que tienes reglas de <strong>Base de Datos (Firestore)</strong> pegadas en la sección de <strong>Storage (Imágenes)</strong>.
+                                El código de Storage debe empezar por <code>service firebase.storage</code>.
+                             </p>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <p className="text-gray-700 text-sm font-medium">Copia esto en Storage {'>'} Rules:</p>
+                            <button onClick={() => handleCopy(storageRules)} className="text-[10px] bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-bold uppercase hover:bg-blue-200">Copiar Código</button>
+                        </div>
+                        <div className="bg-gray-800 p-3 rounded-lg text-xs font-mono text-blue-400 overflow-x-auto border border-gray-700">
+                             <pre>{storageRules}</pre>
+                        </div>
+                      </>
+                  ) : (
+                      <>
+                        <p className="text-gray-700 text-sm font-medium">
+                            Firebase está bloqueando tus datos. Actualiza las reglas en DOS lugares:
+                        </p>
+                        <div className="space-y-6">
+                            <div>
+                                <h4 className="font-bold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                                    <span className="w-5 h-5 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-xs">1</span> 
+                                    Firestore Database
+                                </h4>
+                                <div className="bg-gray-800 p-3 rounded-lg text-xs font-mono text-green-400 overflow-x-auto border border-gray-700">
+                                    <pre>{firestoreRules}</pre>
+                                </div>
+                            </div>
 
+                            <div>
+                                <h4 className="font-bold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                                    <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs">2</span> 
+                                    Storage (Imágenes)
+                                </h4>
+                                <div className="bg-gray-800 p-3 rounded-lg text-xs font-mono text-blue-400 overflow-x-auto border border-gray-700">
+                                    <pre>{storageRules}</pre>
+                                </div>
+                            </div>
+                        </div>
+                      </>
+                  )}
+                  
                   <div className="pt-4 flex flex-col gap-3">
                       <button 
                           onClick={() => { setShowRulesError(false); window.location.reload(); }}
                           className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-black transition-colors"
                       >
                           Ya actualicé las reglas, Reintentar
-                      </button>
-                      
-                       <button 
-                          onClick={() => { setShowRulesError(false); setConfigModalOpen(true); }}
-                          className="w-full bg-white text-gray-500 border border-gray-200 py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-gray-50 transition-colors"
-                      >
-                          Revisar Configuración de Conexión
                       </button>
                   </div>
               </div>
@@ -542,23 +609,8 @@ function App() {
             <Suspense fallback={null}><PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="3942" /></Suspense>
             <Suspense fallback={<LoadingScreen progress={50} />}>{selectedFurnitureToEdit && (<EditFurnitureModal furniture={selectedFurnitureToEdit} onClose={() => setSelectedFurnitureToEdit(null)} onSave={handleSaveFurniture} onDelete={handleDeleteFurniture} />)}</Suspense>
 
-            {/* CONFIG MODAL */}
-            <Suspense fallback={null}><ConfigModal isOpen={isConfigModalOpen} onClose={() => setConfigModalOpen(false)} /></Suspense>
-
             {view === 'grid' && (
                 <header className="pt-16 pb-12 px-6 flex flex-col items-center space-y-8 animate-fade-in-down relative text-center">
-                    
-                    {/* BOTÓN DE CONFIGURACIÓN DE NUBE (GEAR) */}
-                    <div className="absolute top-4 left-4 z-50 flex items-center gap-4">
-                        <button 
-                            onClick={() => setConfigModalOpen(true)}
-                            className="text-gray-400 hover:text-black hover:rotate-90 transition-all duration-500"
-                            title="Conectar mi propia Nube (Firebase)"
-                        >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                        </button>
-                    </div>
-
                     <h1 className="font-serif text-6xl md:text-8xl font-bold tracking-tight text-slate-900 leading-none text-center">Catálogo de Telas</h1>
                     <div className="flex space-x-8 md:space-x-12">
                         <button onClick={() => { setActiveTab('model'); }} className={`pb-2 text-sm font-medium uppercase tracking-wide transition-colors ${activeTab === 'model' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'}`}>Ver modelos</button>

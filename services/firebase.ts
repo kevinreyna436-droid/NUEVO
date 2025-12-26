@@ -44,6 +44,8 @@ const defaultConfig = {
 };
 
 let firebaseConfig = defaultConfig;
+// CAMBIO CRÍTICO: Se fuerza la conexión a 'telas' por defecto
+let customDatabaseId: string | undefined = 'telas'; 
 let isCustomConfig = false;
 
 // LIMPIEZA AUTOMÁTICA DE CONFIGURACIÓN ANTIGUA
@@ -61,8 +63,17 @@ try {
   const localConfig = localStorage.getItem('creata_firebase_config');
   if (localConfig) {
     const parsed = JSON.parse(localConfig);
-    if (parsed.apiKey && parsed.projectId && !parsed.private_key) {
-      firebaseConfig = parsed;
+    
+    // Si hay configuración local, intentamos usarla, pero mantenemos 'telas' como fallback fuerte
+    if (parsed.databaseId) {
+        customDatabaseId = parsed.databaseId;
+    }
+    
+    // Limpiamos el objeto config para que solo tenga las claves estándar de firebase
+    const { databaseId, ...stdConfig } = parsed;
+    
+    if (stdConfig.apiKey && stdConfig.projectId && !stdConfig.private_key) {
+      firebaseConfig = stdConfig;
       isCustomConfig = true;
     }
   }
@@ -88,17 +99,23 @@ try {
     analytics = getAnalytics(app);
     
     // Configuración estándar de Firestore SIN PERSISTENCIA
-    // Se elimina persistentLocalCache para obligar a la app a trabajar siempre contra la nube.
-    db = initializeFirestore(app, {
-      ignoreUndefinedProperties: true
-    });
+    // SOPORTE PARA BASE DE DATOS NOMBRADA (databaseId)
+    if (customDatabaseId) {
+        console.log(`Conectando a base de datos personalizada: ${customDatabaseId}`);
+        db = initializeFirestore(app, {
+            ignoreUndefinedProperties: true
+        }, customDatabaseId);
+    } else {
+        db = initializeFirestore(app, {
+            ignoreUndefinedProperties: true
+        });
+    }
 
     storage = getStorage(app);
 } catch (error: any) {
     console.error("Firebase Init Error:", error);
     if (isCustomConfig) {
-        localStorage.removeItem('creata_firebase_config');
-        window.location.reload();
+        console.warn("Configuración inválida detectada.");
     }
 }
 
@@ -117,7 +134,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, errorMessage: string): 
     ]);
 };
 
-// --- SISTEMA DE ESPERA DE AUTENTICACIÓN (CRÍTICO) ---
+// --- SISTEMA DE ESPERA DE AUTENTICACIÓN ---
 const waitForAuth = (): Promise<User | null> => {
     if (!auth) return Promise.resolve(null);
     if (auth.currentUser) return Promise.resolve(auth.currentUser);
@@ -133,19 +150,19 @@ const waitForAuth = (): Promise<User | null> => {
                     isConnected = true;
                     resolve(cred.user);
                 }).catch((e: AuthError) => {
-                    console.warn("Auth Failed:", e.code);
+                    console.warn("Auth Failed (This is OK if rules are public):", e.code);
                     lastAuthErrorMessage = e.code || e.message;
                     if (e.code === 'auth/operation-not-allowed') authConfigMissing = true;
                     else if (e.code === 'auth/unauthorized-domain') lastAuthErrorMessage = "DOMAIN_ERROR";
                     else if (e.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.') lastAuthErrorMessage = "INVALID_API_KEY";
-                    resolve(null);
+                    resolve(null); // Resolve null instead of error to allow public access attempt
                 });
             }
         });
     });
 
-    // Aumentado a 30s para dar tiempo a la autenticación anónima en redes muy lentas
-    return withTimeout(authPromise, 30000, "AUTH_TIMEOUT").catch(() => null);
+    // Timeout de 15s para auth, pero si falla devolvemos null para intentar acceso público
+    return withTimeout(authPromise, 15000, "AUTH_TIMEOUT").catch(() => null);
 };
 
 if (auth) {
@@ -159,13 +176,32 @@ export const checkDatabasePermissions = async (): Promise<boolean> => {
     try {
         await waitForAuth();
         const testRef = doc(db, "_health_check", "permission_test");
-        // Aumentado a 30s para verificación inicial robusta
         await withTimeout(setDoc(testRef, { status: "ok", ts: Date.now() }), 30000, "DB_TIMEOUT");
         return true; 
     } catch (error: any) {
         console.warn("Health Check Failed:", error.message);
         if (error.code === 'permission-denied') return false;
+        // Si es otro error (ej. db no encontrada), asumimos que podría funcionar o fallar más tarde
         return true; 
+    }
+};
+
+export const validateWriteAccess = async (): Promise<boolean> => {
+    try {
+        await waitForAuth();
+        // Intentamos escribir. Si falla por permisos, devolvemos false.
+        const testRef = doc(db, "_write_test", `test_${Date.now()}`);
+        await setDoc(testRef, { test: true });
+        await deleteDoc(testRef); 
+        return true;
+    } catch (e: any) {
+        console.error("Write Validation Failed:", e);
+        // Si es permiso denegado, devolvemos false explícitamente
+        if (e.code === 'permission-denied' || e.message?.includes('permission-denied')) {
+            return false;
+        }
+        // Para otros errores (timeout, network), permitimos intentar la operación real
+        return true;
     }
 };
 
@@ -189,7 +225,7 @@ const dataURItoBlob = (dataURI: string): Blob => {
 const uploadImageToStorage = async (base64String: string, path: string): Promise<string> => {
     if (!base64String || base64String.startsWith('http')) return base64String;
     
-    await waitForAuth();
+    await waitForAuth(); // Intentamos auth, pero procedemos igual
 
     try {
         const storageRef = ref(storage, path);
@@ -197,14 +233,14 @@ const uploadImageToStorage = async (base64String: string, path: string): Promise
         
         await withTimeout(
             uploadBytes(storageRef, blob), 
-            300000, // 5 minutos para subidas (imágenes pesadas)
+            300000, 
             "UPLOAD_TIMEOUT"
         );
 
         return await getDownloadURL(storageRef);
     } catch (error: any) {
         console.error(`Upload failed (${path}):`, error.message);
-        throw error; // Propagate error, no local fallback
+        throw error; 
     }
 };
 
@@ -236,14 +272,14 @@ const processFabricImagesForCloud = async (fabric: Fabric): Promise<Fabric> => {
     return updatedFabric;
 };
 
-// --- API MÉTODOS 100% ONLINE ---
+// --- API MÉTODOS ---
 
 export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
   await waitForAuth();
   try {
     const querySnapshot = await withTimeout<QuerySnapshot<DocumentData>>(
         getDocs(collection(db, COLLECTION_NAME)), 
-        120000, // 2 minutos para lectura inicial
+        120000, 
         "READ_TIMEOUT"
     );
     const fabrics: Fabric[] = [];
@@ -258,20 +294,19 @@ export const getFabricsFromFirestore = async (): Promise<Fabric[]> => {
 export const saveFabricToFirestore = async (fabric: Fabric) => {
   try {
     const user = await waitForAuth();
-    if (!user) throw new Error("No hay conexión con el servidor de autenticación.");
+    if (!user) console.warn("Saving without auth (Public Mode)");
     
     // Subir imágenes primero
     const cloudFabric = await processFabricImagesForCloud(fabric);
     
     await withTimeout(
         setDoc(doc(db, COLLECTION_NAME, cloudFabric.id), cloudFabric, { merge: true }),
-        180000, // Aumentado a 180s (3 minutos) para garantizar escritura en DB
+        180000, 
         "DB_WRITE_TIMEOUT"
     );
     return true;
   } catch (error: any) {
     console.error("Error guardando en nube:", error);
-    // Propagar errores de permisos específicamente para que la UI los maneje
     if (error.code === 'permission-denied' || error.message.includes('permission-denied')) {
         throw new Error('permission-denied');
     }
@@ -298,7 +333,7 @@ export const getFurnitureTemplatesFromFirestore = async (): Promise<FurnitureTem
         await waitForAuth();
         const querySnapshot = await withTimeout<QuerySnapshot<DocumentData>>(
             getDocs(collection(db, FURNITURE_COLLECTION)),
-            60000, // 60s
+            60000, 
             "READ_TIMEOUT"
         );
         const furniture: FurnitureTemplate[] = [];
@@ -322,7 +357,7 @@ export const saveFurnitureTemplateToFirestore = async (template: FurnitureTempla
         
         await withTimeout(
             setDoc(doc(db, FURNITURE_COLLECTION, finalTemplate.id), finalTemplate, { merge: true }),
-            180000, // Aumentado a 180s (3 minutos)
+            180000, 
             "DB_WRITE_TIMEOUT"
         );
         return finalTemplate;
@@ -376,7 +411,7 @@ export const retryAuth = async () => {
     try { await signInAnonymously(auth); return true; } catch (e) { return false; }
 };
 
-export const isOfflineMode = () => !auth || !auth.currentUser; 
+export const isOfflineMode = () => !auth; // Relaxed check
 export const isAuthConfigMissing = () => authConfigMissing;
 export const getAuthError = () => lastAuthErrorMessage;
 export const isUsingCustomConfig = () => isCustomConfig;

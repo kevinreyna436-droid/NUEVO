@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { extractFabricData, extractColorFromSwatch } from '../services/geminiService';
 import { Fabric, FurnitureTemplate } from '../types';
 import { compressImage } from '../utils/imageCompression';
+import { validateWriteAccess } from '../services/firebase';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -122,8 +123,9 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
   // --- EDITING LOGIC ---
   const updateExtractedFabric = (index: number, field: keyof Fabric, value: any) => {
-    const updated = [...extractedFabrics];
-    updated[index] = { ...updated[index], [field]: value };
+    const updated = extractedFabrics.map((item, idx) => 
+       idx === index ? { ...item, [field]: value } : item
+    );
     setExtractedFabrics(updated);
   };
 
@@ -211,15 +213,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
       setExtractedFabrics(updated);
   };
 
-  const clearSpecs = (index: number) => {
-      const updated = [...extractedFabrics];
-      const fabric = { ...updated[index] };
-      delete fabric.specsImage;
-      delete fabric.pdfUrl;
-      updated[index] = fabric;
-      setExtractedFabrics(updated);
-  };
-
   const isDuplicate = (name: string) => {
       if (!name) return false;
       return existingFabrics.some(f => f.name.trim().toLowerCase() === name.trim().toLowerCase());
@@ -228,12 +221,24 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const handleFinalSave = async () => {
     setIsSaving(true);
     setSaveError(null);
+    setUploadProgress(0);
+    setUploadStatusText('Verificando conexión...');
+
+    // 1. Validar Permisos ANTES de empezar
+    const hasWritePermission = await validateWriteAccess();
+    if (!hasWritePermission) {
+        setSaveError('BLOQUEADO: No tienes permiso de escritura en la Nube.');
+        setUploadStatusText('REVISA TU CONFIGURACIÓN FIREBASE (REGLAS)');
+        setIsSaving(true); // Keep UI open to show error
+        return; // STOP HERE
+    }
+
     setUploadProgress(5);
     
-    // Simulate initial progress to avoid "stuck" feeling
+    // Simulate initial progress
     const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
-            if (prev >= 90) return 90; // Wait for real completion
+            if (prev >= 90) return 90;
             return prev + Math.random() * 2; 
         });
     }, 200);
@@ -261,7 +266,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
             setUploadStatusText(`SINCRONIZANDO ${fabric.name.toUpperCase()}... (${completed + 1}/${total})`);
             await onSave(fabric);
             completed++;
-            // Bump progress significantly on each completion
             setUploadProgress(prev => Math.max(prev, 90)); 
         }
 
@@ -269,7 +273,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
         setUploadProgress(100);
         setUploadStatusText('¡COMPLETADO!');
         
-        // CRITICAL FIX: Reload page to ensure data is fetched from cloud
         setTimeout(() => {
             setIsSaving(false);
             window.location.reload();
@@ -278,8 +281,17 @@ const UploadModal: React.FC<UploadModalProps> = ({
     } catch (err: any) {
         clearInterval(progressInterval);
         console.error("Error guardando tela:", err);
-        setSaveError(`Error: ${err.message || "Fallo de conexión"}`);
-        setIsSaving(false); // Allow user to try again
+        
+        // Handle Permission Error explicitly for UI
+        // Check for both permission-denied (Firestore) and unauthorized (Storage)
+        if (err.message && (err.message.includes('permission-denied') || err.message.includes('unauthorized'))) {
+            setSaveError('ERROR: PERMISO DENEGADO (STORAGE/DB)');
+            setUploadStatusText('Faltan reglas de escritura en Storage o Database.');
+        } else {
+            setSaveError(`Error: ${err.message || "Fallo de conexión"}`);
+        }
+        
+        // DO NOT RELOAD PAGE ON ERROR - Let user see the message
     }
   };
 
@@ -294,6 +306,13 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
   const handleSaveFurnitureInternal = async () => {
       if (!furnName || !furnImage) { alert("Datos incompletos"); return; }
+      
+      const hasWrite = await validateWriteAccess();
+      if(!hasWrite) {
+          alert("Error: No tienes permiso para escribir en la base de datos.");
+          return;
+      }
+
       setIsSaving(true);
       setUploadProgress(10);
       setUploadStatusText('SUBIENDO MUEBLE...');
@@ -317,10 +336,14 @@ const UploadModal: React.FC<UploadModalProps> = ({
         setTimeout(() => {
              window.location.reload();
         }, 800);
-      } catch (err) {
+      } catch (err: any) {
           clearInterval(interval);
           setIsSaving(false);
-          alert("Error guardando mueble.");
+           if (err.message && (err.message.includes('permission-denied') || err.message.includes('unauthorized'))) {
+            alert("Error: Reglas de Storage/DB insuficientes.");
+          } else {
+            alert("Error guardando mueble.");
+          }
       }
   };
 
@@ -333,9 +356,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
         className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()} 
       >
-        {/* HEADER - MATCHING SCREENSHOT */}
+        {/* HEADER */}
         {isSaving ? (
-            // Clean header during saving to focus on progress
             <div className="h-4"></div>
         ) : (
             <div className="flex items-center justify-between px-8 py-6 bg-white sticky top-0 z-10">
@@ -352,7 +374,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900">Regresar</span>
                 </button>
 
-                {/* TAB SWITCHER PILL */}
                 <div className="flex bg-[#f2f2f2] p-1 rounded-full">
                     <button 
                         onClick={() => setActiveTab('fabrics')}
@@ -373,10 +394,9 @@ const UploadModal: React.FC<UploadModalProps> = ({
         <div className="flex-1 overflow-y-auto p-8 relative">
             {isSaving ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-20">
-                     {/* PROGRESS UI MATCHING SCREENSHOT */}
                      <div className="w-full max-w-lg px-8 text-center">
                         <div className="flex justify-between items-end mb-4">
-                             <span className={`text-[10px] font-bold uppercase tracking-[0.2em] ${saveError ? 'text-red-500' : 'text-slate-900'}`}>
+                             <span className={`text-[10px] font-bold uppercase tracking-[0.2em] ${saveError ? 'text-red-600' : 'text-slate-900'}`}>
                                 {saveError || uploadStatusText}
                              </span>
                              <span className="text-sm font-bold text-slate-900">{Math.round(uploadProgress)}%</span>
@@ -389,9 +409,19 @@ const UploadModal: React.FC<UploadModalProps> = ({
                             ></div>
                         </div>
                         
-                        <p className="text-[10px] text-gray-400 font-medium tracking-wide">
-                            Optimizando imágenes para carga rápida...
-                        </p>
+                        {saveError ? (
+                            <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-left mt-4 animate-fade-in">
+                                <p className="text-xs text-red-800 font-bold mb-2">La subida se ha detenido.</p>
+                                <p className="text-[10px] text-red-700 leading-relaxed">
+                                    Parece que tu base de datos o almacenamiento tiene reglas restrictivas. Debes configurar las <strong>Reglas de Seguridad</strong> en tu consola de Firebase.
+                                </p>
+                                <button onClick={() => setIsSaving(false)} className="mt-3 text-[10px] uppercase font-bold text-red-900 underline">Volver a intentar</button>
+                            </div>
+                        ) : (
+                            <p className="text-[10px] text-gray-400 font-medium tracking-wide">
+                                Optimizando imágenes para carga rápida...
+                            </p>
+                        )}
                      </div>
                 </div>
             ) : activeTab === 'fabrics' ? (
