@@ -186,13 +186,13 @@ function App() {
       setView('grid');
     } catch (e: any) {
       console.error("Error saving fabric:", e);
-      if (e.message && e.message.includes("permission-denied")) {
-          alert("⛔ ERROR DE PERMISOS: No se pudo guardar en la nube.\n\nEs probable que no tengas permisos de escritura en este proyecto. Haz clic en el engranaje ⚙️ y conecta tu propio Firebase.");
-          setShowRulesError(true);
-      } else {
-          alert("Error al guardar en la nube. Verifica tu conexión.");
-      }
       loadData(); // Revert optimistic update on error
+      
+      // CRITICAL: Propagar el error para que UploadModal lo capture
+      if (e.message && e.message.includes("permission-denied")) {
+          setShowRulesError(true);
+      }
+      throw e;
     }
   };
 
@@ -207,11 +207,13 @@ function App() {
       setView('grid');
     } catch (e: any) { 
         console.error("Error bulk saving:", e);
+        loadData();
+        
+        // CRITICAL: Propagar el error
         if (e.message && e.message.includes("permission-denied")) {
              setShowRulesError(true);
         }
-        alert("Error en carga masiva. Verifica conexión y permisos.");
-        loadData();
+        throw e;
     }
   };
 
