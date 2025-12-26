@@ -367,9 +367,7 @@ function App() {
 
   const RulesErrorModal = () => {
     const firestoreRules = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
-    const storageRules = `rules_version = '2';\nservice firebase.storage {\n  match /b/{bucket}/o {\n    match /{allPaths=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
-    const isCustom = isUsingCustomConfig();
-
+    
     return (
       <div className="fixed inset-0 z-[350] bg-red-900/90 flex items-center justify-center p-4 backdrop-blur-md">
           <div className="bg-white max-w-xl w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -383,43 +381,40 @@ function App() {
                   </div>
               </div>
               <div className="p-8 space-y-4 overflow-y-auto">
-                  {!isCustom ? (
-                      <div className="mb-4">
-                          <p className="text-slate-900 font-bold mb-2">Estás usando la Base de Datos de Demostración.</p>
-                          <p className="text-sm text-gray-600">
-                              Esta base de datos es pública y suele estar bloqueada para escritura. Para que tus datos se guarden de verdad, 
-                              debes conectar tu propio proyecto.
-                          </p>
-                          <button 
-                             onClick={() => { setShowRulesError(false); setConfigModalOpen(true); }}
-                             className="mt-4 w-full bg-black text-white py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:scale-105 transition-transform"
-                          >
-                             Conectar mi propia Nube
-                          </button>
+                  <p className="text-gray-700 text-sm font-medium">
+                      Firebase está bloqueando tus datos. Esto ocurre cuando conectas una nueva base de datos y no configuras las reglas de seguridad.
+                  </p>
+                  <p className="text-xs text-gray-500">
+                      1. Ve a la consola de Firebase.<br/>
+                      2. Entra en <strong>Firestore Database</strong> &gt; Pestaña <strong>Reglas (Rules)</strong>.<br/>
+                      3. Borra todo y pega este código para permitir acceso (Modo Prueba):
+                  </p>
+                  
+                  <div className="space-y-4">
+                      <div>
+                          <div className="bg-gray-800 p-3 rounded-lg text-xs font-mono text-green-400 overflow-x-auto border border-gray-700">
+                              <pre>{firestoreRules}</pre>
+                          </div>
                       </div>
-                  ) : (
-                      <>
-                        <p className="text-gray-700 text-sm font-medium">
-                            Firebase está bloqueando tus datos. Debes cambiar las "Reglas de Seguridad" en tu consola para permitir escritura pública (solo para desarrollo) o autenticarte.
-                        </p>
-                        <p className="text-xs text-gray-500">Copia esto en la pestaña "Rules" de Firestore y Storage:</p>
-                        
-                        <div className="space-y-4">
-                            <div>
-                                <div className="bg-gray-800 p-3 rounded-lg text-xs font-mono text-green-400 overflow-x-auto border border-gray-700">
-                                    <pre>{firestoreRules}</pre>
-                                </div>
-                            </div>
-                        </div>
-                      </>
-                  )}
+                  </div>
+                  
+                  <p className="text-xs text-gray-500 mt-4">
+                      <strong>Importante:</strong> Haz lo mismo en la sección <strong>Storage</strong> para permitir subir fotos.
+                  </p>
 
                   <div className="pt-4 flex flex-col gap-3">
                       <button 
                           onClick={() => { setShowRulesError(false); window.location.reload(); }}
-                          className="w-full bg-white text-red-600 border border-red-200 py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-red-50 transition-colors"
+                          className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-black transition-colors"
                       >
-                          Cerrar y Reintentar
+                          Ya actualicé las reglas, Reintentar
+                      </button>
+                      
+                       <button 
+                          onClick={() => { setShowRulesError(false); setConfigModalOpen(true); }}
+                          className="w-full bg-white text-gray-500 border border-gray-200 py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-gray-50 transition-colors"
+                      >
+                          Revisar Configuración de Conexión
                       </button>
                   </div>
               </div>

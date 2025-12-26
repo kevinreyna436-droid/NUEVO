@@ -25,14 +25,14 @@ import {
   User,
   AuthError
 } from "firebase/auth";
+import { getAnalytics } from "firebase/analytics";
 import { Fabric, FurnitureTemplate } from "../types";
 import { FURNITURE_TEMPLATES as DEFAULT_FURNITURE } from "../constants";
 
 // ==========================================
-// CONFIGURACIÓN DE FIREBASE (PRODUCCIÓN)
+// CONFIGURACIÓN DE FIREBASE
 // ==========================================
 
-// Credenciales proporcionadas por el usuario (telas-pruebas)
 const defaultConfig = {
   apiKey: "AIzaSyCEQTcNm4F3E-9qnHTcwqK91XXLyQa6Cws",
   authDomain: "telas-pruebas.firebaseapp.com",
@@ -80,10 +80,12 @@ let app;
 let auth: any;
 let db: any;
 let storage: any;
+let analytics: any;
 
 try {
     app = firebaseApp.getApps().length === 0 ? firebaseApp.initializeApp(firebaseConfig) : firebaseApp.getApps()[0];
     auth = getAuth(app);
+    analytics = getAnalytics(app);
     
     // Configuración estándar de Firestore SIN PERSISTENCIA
     // Se elimina persistentLocalCache para obligar a la app a trabajar siempre contra la nube.
