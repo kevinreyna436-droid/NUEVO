@@ -67,30 +67,91 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const analyzeFileGroup = async (groupFiles: File[], groupName: string): Promise<Partial<Fabric>> => {
       const pdfFile = groupFiles.find(f => f.type === 'application/pdf');
       const imgFiles = groupFiles.filter(f => f.type.startsWith('image/'));
-      let rawData: any = { name: groupName, supplier: "CONSULTAR", technicalSummary: "", specs: {} };
+      let rawData: any = { name: groupName, supplier: "", technicalSummary: "", specs: {} };
 
-      try {
-        if (pdfFile) {
-            const base64Data = await fileToBase64(pdfFile);
-            rawData = await extractFabricData(base64Data.split(',')[1], 'application/pdf');
-        } else if (imgFiles.length > 0) {
-            const aiImg = await compressImage(imgFiles[0], 800, 0.6);
-            rawData = await extractFabricData(aiImg.split(',')[1], 'image/jpeg');
-        }
-      } catch (e) {}
+      // PARALLEL PROCESSING STEP 1: Process PDF and Main Image AI Analysis concurrently
+      const analysisPromises = [];
+
+      // A. PDF Analysis
+      if (pdfFile) {
+          analysisPromises.push(async () => {
+             try {
+                const base64Data = await fileToBase64(pdfFile);
+                const pdfData = await extractFabricData(base64Data.split(',')[1], 'application/pdf');
+                return { type: 'pdf', data: pdfData };
+             } catch(e) { return null; }
+          });
+      } else if (imgFiles.length > 0) {
+          // B. Fallback: Main Image Analysis (if no PDF)
+          analysisPromises.push(async () => {
+             try {
+                // Use a smaller version for text analysis to speed up upload
+                const aiImg = await compressImage(imgFiles[0], 1280, 0.85); 
+                const imgData = await extractFabricData(aiImg.split(',')[1], 'image/jpeg');
+                return { type: 'img_analysis', data: imgData };
+             } catch(e) { return null; }
+          });
+      }
+
+      // Execute general analysis
+      const analysisResults = await Promise.all(analysisPromises.map(p => p()));
+      
+      // Merge results into rawData
+      analysisResults.forEach(res => {
+          if (res && res.data) {
+              if (res.data.name) rawData.name = res.data.name;
+              if (res.data.specs) rawData.specs = { ...rawData.specs, ...res.data.specs };
+              if (res.data.supplier) rawData.supplier = res.data.supplier.toUpperCase();
+              if (res.data.technicalSummary) rawData.technicalSummary = res.data.technicalSummary;
+          }
+      });
 
       if (rawData.name) rawData.name = toSentenceCase(rawData.name);
-      if (rawData.supplier) rawData.supplier = rawData.supplier.toUpperCase();
 
+      // PARALLEL PROCESSING STEP 2: Process ALL Color Swatches concurrently
+      // Instead of loop-await, we map to promises and await Promise.all
       const colorImages: Record<string, string> = {};
       const colors: string[] = [];
-      for (const file of imgFiles) {
-          const base64 = await compressImage(file, 1024, 0.7);
-          const detectedName = await extractColorFromSwatch(base64.split(',')[1]) || file.name.split('.')[0];
+
+      const colorProcessingPromises = imgFiles.map(async (file) => {
+          // 1. Compress Image (High Quality for visual, but parallelized)
+          const base64 = await compressImage(file, 1600, 0.90);
+          
+          // 2. Extract Data (AI OCR)
+          const extractionResult = await extractColorFromSwatch(base64.split(',')[1]);
+          
+          let detectedName = extractionResult.colorName;
+          
+          // Fallback to filename if AI fails
+          if (!detectedName || detectedName === 'Desconocido') {
+              detectedName = file.name.split('.')[0];
+          }
+
           const formatted = toSentenceCase(detectedName);
-          colorImages[formatted] = base64;
-          colors.push(formatted);
-      }
+          
+          return {
+              name: formatted,
+              base64: base64,
+              supplierFound: extractionResult.supplierName
+          };
+      });
+
+      // Wait for all colors to be processed
+      const processedColors = await Promise.all(colorProcessingPromises);
+
+      // Assemble the data
+      processedColors.forEach(item => {
+          colorImages[item.name] = item.base64;
+          colors.push(item.name);
+
+          // Late binding supplier detection (if PDF missed it but label has it)
+          if (!rawData.supplier && item.supplierFound && item.supplierFound.length > 2) {
+              rawData.supplier = item.supplierFound.toUpperCase();
+          }
+      });
+
+      // Final fallback for supplier
+      if (!rawData.supplier) rawData.supplier = "CONSULTAR";
 
       // Ensure mainImage is set from the first available color if possible
       const mainImage = imgFiles.length > 0 ? colorImages[colors[0]] : '';
@@ -103,23 +164,47 @@ const UploadModal: React.FC<UploadModalProps> = ({
     setStep('processing');
     try {
       const groups: Record<string, File[]> = {};
+      
+      // Grouping Logic
       files.forEach(f => {
           const path = f.webkitRelativePath || f.name;
           const parts = path.split('/');
-          const groupKey = parts.length > 1 ? parts[parts.length - 2] : 'General';
+          let groupKey = parts.length > 1 ? parts[parts.length - 2] : 'General';
+          
+          if (groupKey === 'General') {
+              const potentialName = f.name.split(/[_\- .]/)[0];
+              if (potentialName && potentialName.length > 2 && !potentialName.startsWith('IMG') && !potentialName.startsWith('DSC')) {
+                  groupKey = toSentenceCase(potentialName);
+              }
+          }
+
           if (!groups[groupKey]) groups[groupKey] = [];
           groups[groupKey].push(f);
       });
 
       const keys = Object.keys(groups);
       const results: Partial<Fabric>[] = [];
-      for (let i = 0; i < keys.length; i++) {
-          setCurrentProgress(`Analizando ${keys[i]} (${i+1}/${keys.length})...`);
-          results.push(await analyzeFileGroup(groups[keys[i]], keys[i]));
+      
+      // BATCH PROCESSING
+      // Process 2 folders at a time to balance speed vs browser memory
+      const BATCH_SIZE = 2; 
+      
+      for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+          const batchKeys = keys.slice(i, i + BATCH_SIZE);
+          setCurrentProgress(`Procesando bloque ${Math.floor(i/BATCH_SIZE) + 1} de ${Math.ceil(keys.length/BATCH_SIZE)}... (${batchKeys.join(', ')})`);
+          
+          // Process the batch in parallel
+          const batchResults = await Promise.all(
+              batchKeys.map(key => analyzeFileGroup(groups[key], key))
+          );
+          
+          results.push(...batchResults);
       }
+
       setExtractedFabrics(results);
       setStep('review');
     } catch (e) {
+      console.error("Error processing files", e);
       setStep('upload');
     }
   };
@@ -452,8 +537,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center flex-1">
                               <div onClick={triggerFolderUpload} className="h-64 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-black hover:bg-gray-50 transition-all text-center group">
                                   <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-gray-400 group-hover:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg></div>
-                                  <span className="font-serif text-xl font-bold">Carga Masiva (PC)</span>
-                                  <p className="text-[10px] text-gray-400 mt-2 uppercase tracking-widest">Sube carpetas completas</p>
+                                  <span className="font-serif text-xl font-bold">Carga de Carpetas (PC)</span>
+                                  <p className="text-[10px] text-gray-400 mt-2 uppercase tracking-widest">Sube una carpeta con subcarpetas</p>
                                   
                                   <input 
                                     ref={folderInputRef} 
@@ -466,9 +551,17 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
                               <div onClick={triggerMobileUpload} className="h-64 border-2 border-dashed border-blue-200 bg-blue-50/20 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all text-center group">
                                   <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
-                                  <span className="font-serif text-xl font-bold">Carga Masiva (Móvil)</span>
-                                  <p className="text-[10px] text-blue-400 mt-2 uppercase tracking-widest">Selecciona múltiples fotos</p>
-                                  <input ref={mobileInputRef} type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+                                  <span className="font-serif text-xl font-bold">Google Drive / Archivos</span>
+                                  <p className="text-[10px] text-blue-400 mt-2 uppercase tracking-widest">Seleccionar múltiples archivos</p>
+                                  
+                                  <input 
+                                    ref={mobileInputRef} 
+                                    type="file" 
+                                    multiple 
+                                    className="hidden" 
+                                    onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                                    {...({ webkitdirectory: "", directory: "" } as any)}
+                                  />
                               </div>
                           </div>
 
@@ -491,7 +584,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         <div className="text-center py-20">
                             <div className="animate-spin h-12 w-12 border-b-2 border-black mx-auto mb-6"></div>
                             <p className="text-lg font-serif italic">{currentProgress}</p>
-                            <p className="text-xs text-gray-400 mt-2">La IA está analizando las texturas y nombres...</p>
+                            <p className="text-xs text-gray-400 mt-2">Leyendo etiquetas en paralelo con IA...</p>
                         </div>
                     )}
                     {step === 'review' && (
@@ -503,8 +596,17 @@ const UploadModal: React.FC<UploadModalProps> = ({
                             
                             {extractedFabrics.map((f, i) => (
                                 <div key={i} className="p-6 bg-white rounded-3xl border border-gray-200 shadow-sm hover:shadow-md transition-all relative">
+                                    {/* --- NEW: FLOATING DELETE BUTTON --- */}
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); removeExtractedFabric(i); }}
+                                        className="absolute -top-3 -right-3 z-30 bg-white text-red-500 hover:bg-red-500 hover:text-white p-2 rounded-full shadow-md border border-gray-200 transition-all w-8 h-8 flex items-center justify-center group/del"
+                                        title="Eliminar esta ficha"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+
                                     {isDuplicate(f.name || '') && (
-                                        <div className="absolute top-4 right-4 bg-red-100 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-red-200 flex items-center gap-1 shadow-sm z-10">
+                                        <div className="absolute top-4 right-8 bg-red-100 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-red-200 flex items-center gap-1 shadow-sm z-10">
                                             <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                                             Repetida
                                         </div>
@@ -571,10 +673,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                                           {f.pdfUrl ? 'Ficha (PDF) OK' : 'Subir Ficha (PDF)'}
                                                       </button>
                                                  </div>
-
-                                                 <button onClick={() => removeExtractedFabric(i)} className="text-red-500 text-[10px] font-bold uppercase hover:underline flex items-center gap-1">
-                                                    - Quitar Ficha
-                                                 </button>
                                             </div>
 
                                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">

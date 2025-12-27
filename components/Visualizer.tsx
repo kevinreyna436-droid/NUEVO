@@ -259,7 +259,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         isOpen={showPinModal} 
         onClose={() => setShowPinModal(false)} 
         onSuccess={() => { setIsEditMode(true); setShowPinModal(false); }} 
-        requiredPin="3942"
+        requiredPin="1379"
       />
 
       {showOriginalTexture && (previewImage || selectedSwatchUrl) && (

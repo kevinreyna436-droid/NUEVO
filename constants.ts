@@ -15,6 +15,7 @@ export const IN_STOCK_DB: Record<string, string[]> = {
   "Aberdin": ["Gris", "Lino", "Natural", "Oxford"],
   "Alanis": ["Ash", "Beige", "Ivory", "Steel"],
   "Alpino": ["Acero", "Arena", "Gris", "Marfil"],
+  "Arles": ["Beige", "Gris", "Plata", "Taupe", "Marengo"], // Added Arles
   "Atlantis": ["Blue", "Charcoal", "Cloud", "Indigo", "Mineral", "Olive"],
   "Basket": ["Ash", "Beige", "Camel", "Graphite", "Grey", "Mocha", "Silver"],
   "Beckon": ["Cement", "Indigo", "Metal", "Poppy", "Reed", "Salt", "Shell"],
@@ -59,6 +60,7 @@ export const IN_STOCK_DB: Record<string, string[]> = {
   "Presto": ["Charcoal", "Flax", "Stone"],
   "Prohibition": ["Ivory", "Pearl", "Snow"],
   "Reflect": ["Charcoal", "Dove", "Fossil", "Nature"],
+  "Ron": ["01 Natural", "02 Lino", "05 Sand", "10 Gris", "12 Plomo", "15 Mostaza", "20 Azul"], // Added Ron
   "Ronda": ["Beige", "Blue", "Grey", "Ivory", "Mustard", "Silver", "Sky", "Stone", "Taupe"],
   "Sahara": ["Bluegrey", "Celestial", "Flax", "Linen", "Opal", "Snow", "Storm"],
   "Sapphire": ["Beige", "Black", "Blue", "Bone", "Deepgrey", "Gold", "Green", "Magenta", "Orange", "Persimon", "Rosequartz", "Serenity", "Silvergrey", "Smoke", "Wine"],

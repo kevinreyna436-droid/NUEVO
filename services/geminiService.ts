@@ -36,6 +36,7 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 6, del
 
 /**
  * Extrae datos técnicos de una tela a partir de una imagen o PDF.
+ * Ahora busca también la lista de colores disponibles en el texto.
  */
 export const extractFabricData = async (base64Data: string, mimeType: string): Promise<any> => {
   return retryWithBackoff(async () => {
@@ -45,7 +46,17 @@ export const extractFabricData = async (base64Data: string, mimeType: string): P
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Analyze this fabric swatch or technical sheet. Extract: name (string), supplier (string), technicalSummary (string), and specs object with composition, weight, martindale, usage. Return JSON." }
+          { text: `
+            Analyze this fabric technical document or image.
+            Extract the following structured data:
+            1. Model Name (name)
+            2. Supplier/Brand Name (supplier) - Look for logos or brand headers.
+            3. Technical Summary (technicalSummary) - A brief description in Spanish.
+            4. Available Colors (availableColors) - A list of all color names mentioned in the document.
+            5. Specs (composition, weight, martindale, usage).
+            
+            Return JSON.
+          ` }
         ]
       },
       config: {
@@ -56,6 +67,10 @@ export const extractFabricData = async (base64Data: string, mimeType: string): P
             name: { type: Type.STRING },
             supplier: { type: Type.STRING },
             technicalSummary: { type: Type.STRING },
+            availableColors: { 
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+            },
             specs: {
               type: Type.OBJECT,
               properties: {
@@ -75,9 +90,10 @@ export const extractFabricData = async (base64Data: string, mimeType: string): P
 };
 
 /**
- * Identifica el nombre del color dominante en una muestra.
+ * Identifica el nombre del color Y el proveedor leyendo la etiqueta (OCR).
+ * Retorna un objeto con ambos datos.
  */
-export const extractColorFromSwatch = async (base64Data: string): Promise<string> => {
+export const extractColorFromSwatch = async (base64Data: string): Promise<{ colorName: string, supplierName?: string }> => {
   return retryWithBackoff(async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
@@ -85,11 +101,37 @@ export const extractColorFromSwatch = async (base64Data: string): Promise<string
       contents: {
         parts: [
           { inlineData: { mimeType: "image/jpeg", data: base64Data } },
-          { text: "What is the single best color name for this fabric swatch? Return only the color name (e.g. 'Navy Blue', 'Mustard', 'Charcoal'). in Spanish." }
+          { text: `
+            Analyze this fabric swatch image, specifically looking at the label/sticker usually in the corner.
+            
+            Tasks:
+            1. EXTRACT COLOR NAME: Read the exact text for the color variant (e.g. "05 Sand", "Gris", "B-204").
+            2. EXTRACT SUPPLIER: Look for a brand logo or name on the header of the label (e.g. "FORMAT", "CREATA", "SUNBRELLA").
+            
+            Rules:
+            - Return JSON format.
+            - If text is missing/illegible, use visual description for colorName and leave supplierName empty.
+            - Do not guess. Read strictly.
+          ` }
         ]
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+                colorName: { type: Type.STRING },
+                supplierName: { type: Type.STRING }
+            }
+        }
       }
     });
-    return response.text?.trim() || "Desconocido";
+    
+    const result = JSON.parse(response.text || "{}");
+    return {
+        colorName: result.colorName || "Desconocido",
+        supplierName: result.supplierName || ""
+    };
   });
 };
 
