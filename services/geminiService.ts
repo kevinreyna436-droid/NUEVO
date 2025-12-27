@@ -47,15 +47,17 @@ export const extractFabricData = async (base64Data: string, mimeType: string): P
         parts: [
           { inlineData: { mimeType, data: base64Data } },
           { text: `
-            Analyze this fabric technical document or image.
-            Extract the following structured data:
-            1. Model Name (name)
-            2. Supplier/Brand Name (supplier) - Look for logos or brand headers.
-            3. Technical Summary (technicalSummary) - A brief description in Spanish.
-            4. Available Colors (availableColors) - A list of all color names mentioned in the document.
-            5. Specs (composition, weight, martindale, usage).
+            Analyze this fabric technical document (PDF) or image header.
             
-            Return JSON.
+            OBJECTIVE: Extract the main identity of the fabric model.
+            
+            INSTRUCTIONS:
+            1. **MODEL NAME (Crucial)**: Look for the LARGEST text at the top of the page. It is usually a single word like "FINN", "ALANIS", "RON". Ignore generic titles like "Technical Sheet".
+            2. **SUPPLIER**: Look for small brand logos, copyright footers, or web addresses (e.g., 'FORMATEX', 'SUNBRELLA').
+            3. **TECHNICAL SUMMARY**: Extract a brief description in Spanish found in the text.
+            4. **SPECS**: Find technical values for Composition (e.g., '100% Polyester'), Weight (gr/m2), Martindale (cycles).
+            
+            Return clean JSON.
           ` }
         ]
       },
@@ -64,7 +66,7 @@ export const extractFabricData = async (base64Data: string, mimeType: string): P
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            name: { type: Type.STRING },
+            name: { type: Type.STRING, description: "The Model Name found at the top (e.g. FINN)" },
             supplier: { type: Type.STRING },
             technicalSummary: { type: Type.STRING },
             availableColors: { 
@@ -102,16 +104,23 @@ export const extractColorFromSwatch = async (base64Data: string): Promise<{ colo
         parts: [
           { inlineData: { mimeType: "image/jpeg", data: base64Data } },
           { text: `
-            Analyze this fabric swatch image, specifically looking at the label/sticker usually in the corner.
+            Analyze this fabric swatch image.
             
-            Tasks:
-            1. EXTRACT COLOR NAME: Read the exact text for the color variant (e.g. "05 Sand", "Gris", "B-204").
-            2. EXTRACT SUPPLIER: Look for a brand logo or name on the header of the label (e.g. "FORMAT", "CREATA", "SUNBRELLA").
+            TASK: Extract the **COLOR NAME** text overlaid on the image.
             
-            Rules:
-            - Return JSON format.
-            - If text is missing/illegible, use visual description for colorName and leave supplierName empty.
-            - Do not guess. Read strictly.
+            LOCATIONS TO CHECK:
+            - **Bottom Left Corner**
+            - **Bottom Right Corner**
+            - **Center Bottom**
+            
+            EXAMPLES:
+            - If image shows text "Graphite" at the bottom -> Return "Graphite".
+            - If image shows text "Nickel" -> Return "Nickel".
+            - If text is "FINN GRAPHITE" -> Return "Graphite" (remove the model name if obvious).
+            
+            Return JSON with:
+            - colorName: The exact text found. If no text is found, return "Desconocido".
+            - supplierName: If a brand logo is visible (rare).
           ` }
         ]
       },

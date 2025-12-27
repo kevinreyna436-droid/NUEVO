@@ -64,16 +64,15 @@ const UploadModal: React.FC<UploadModalProps> = ({
     reader.readAsDataURL(file);
   });
 
-  // ANALISIS PARALELO REAL (VELOCIDAD MÁXIMA)
   const analyzeFileGroup = async (groupFiles: File[], groupName: string): Promise<Partial<Fabric>> => {
       const pdfFile = groupFiles.find(f => f.type === 'application/pdf');
       const imgFiles = groupFiles.filter(f => f.type.startsWith('image/'));
       let rawData: any = { name: groupName, supplier: "", technicalSummary: "", specs: {} };
 
-      // 1. Ejecutar análisis del PDF y análisis de la imagen principal AL MISMO TIEMPO
+      // PARALLEL PROCESSING STEP 1: Process PDF and Main Image AI Analysis concurrently
       const analysisPromises = [];
 
-      // A. Análisis PDF
+      // A. PDF Analysis
       if (pdfFile) {
           analysisPromises.push(async () => {
              try {
@@ -83,10 +82,10 @@ const UploadModal: React.FC<UploadModalProps> = ({
              } catch(e) { return null; }
           });
       } else if (imgFiles.length > 0) {
-          // B. Análisis Imagen Principal (si no hay PDF)
+          // B. Fallback: Main Image Analysis (if no PDF)
           analysisPromises.push(async () => {
              try {
-                // Comprimir rápido para lectura de texto
+                // Use a smaller version for text analysis to speed up upload
                 const aiImg = await compressImage(imgFiles[0], 1280, 0.85); 
                 const imgData = await extractFabricData(aiImg.split(',')[1], 'image/jpeg');
                 return { type: 'img_analysis', data: imgData };
@@ -94,9 +93,10 @@ const UploadModal: React.FC<UploadModalProps> = ({
           });
       }
 
-      // Esperar a que los análisis de metadatos terminen
+      // Execute general analysis
       const analysisResults = await Promise.all(analysisPromises.map(p => p()));
       
+      // Merge results into rawData
       analysisResults.forEach(res => {
           if (res && res.data) {
               if (res.data.name) rawData.name = res.data.name;
@@ -108,33 +108,23 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
       if (rawData.name) rawData.name = toSentenceCase(rawData.name);
 
-      // 2. PROCESAMIENTO PARALELO DE COLORES (Aquí está la velocidad)
+      // PARALLEL PROCESSING STEP 2: Process ALL Color Swatches concurrently
+      // Instead of loop-await, we map to promises and await Promise.all
       const colorImages: Record<string, string> = {};
       const colors: string[] = [];
 
-      // Mapeamos cada archivo a una Promesa. El navegador procesará múltiples hilos a la vez.
       const colorProcessingPromises = imgFiles.map(async (file) => {
-          // Compresión optimizada
+          // 1. Compress Image (High Quality for visual, but parallelized)
           const base64 = await compressImage(file, 1600, 0.90);
           
-          // Extracción IA (OCR de etiquetas)
+          // 2. Extract Data (AI OCR)
           const extractionResult = await extractColorFromSwatch(base64.split(',')[1]);
           
           let detectedName = extractionResult.colorName;
           
-          // Fallback al nombre del archivo si la IA falla
+          // Fallback to filename if AI fails
           if (!detectedName || detectedName === 'Desconocido') {
-              // Limpiamos el nombre del archivo para quitar prefijos comunes como el nombre del modelo
-              // Ej: "Alanis_Blue.jpg" -> "Blue"
-              const cleanFileName = file.name.split('.')[0];
-              const parts = cleanFileName.split(/[_\- ]/);
-              
-              // Si el nombre del archivo contiene el nombre del grupo, intentamos quitarlo para dejar solo el color
-              if (parts.length > 1 && parts[0].toLowerCase() === groupName.toLowerCase()) {
-                  detectedName = parts.slice(1).join(' ');
-              } else {
-                  detectedName = cleanFileName;
-              }
+              detectedName = file.name.split('.')[0];
           }
 
           const formatted = toSentenceCase(detectedName);
@@ -146,29 +136,24 @@ const UploadModal: React.FC<UploadModalProps> = ({
           };
       });
 
-      // Esperamos a que TODOS los colores se procesen en paralelo
+      // Wait for all colors to be processed
       const processedColors = await Promise.all(colorProcessingPromises);
 
-      // Ensamblamos los resultados
+      // Assemble the data
       processedColors.forEach(item => {
-          // Evitamos duplicados de color
-          let finalName = item.name;
-          if (colorImages[finalName]) {
-              finalName = `${finalName} (2)`;
-          }
-          
-          colorImages[finalName] = item.base64;
-          colors.push(finalName);
+          colorImages[item.name] = item.base64;
+          colors.push(item.name);
 
-          // Si la IA encontró el proveedor en la etiqueta, lo usamos
+          // Late binding supplier detection (if PDF missed it but label has it)
           if (!rawData.supplier && item.supplierFound && item.supplierFound.length > 2) {
               rawData.supplier = item.supplierFound.toUpperCase();
           }
       });
 
+      // Final fallback for supplier
       if (!rawData.supplier) rawData.supplier = "CONSULTAR";
 
-      // Asignar imagen principal
+      // Ensure mainImage is set from the first available color if possible
       const mainImage = imgFiles.length > 0 ? colorImages[colors[0]] : '';
 
       return { ...rawData, colors, colorImages, mainImage, category: 'model' };
@@ -180,35 +165,16 @@ const UploadModal: React.FC<UploadModalProps> = ({
     try {
       const groups: Record<string, File[]> = {};
       
-      // LÓGICA DE AGRUPACIÓN INTELIGENTE (Para Drive/Móvil)
+      // Grouping Logic
       files.forEach(f => {
-          // Intento 1: Usar estructura de carpetas real (Desktop)
-          const path = f.webkitRelativePath;
-          let groupKey = 'General';
-
-          if (path && path.includes('/')) {
-               const parts = path.split('/');
-               // Si la estructura es CarpetaRaiz/Modelo/Foto.jpg, tomamos "Modelo"
-               // Si es Modelo/Foto.jpg, tomamos "Modelo"
-               groupKey = parts.length > 1 ? parts[parts.length - 2] : parts[0];
-          } else {
-              // Intento 2: Usar nombre del archivo (Móvil / Drive aplanado)
-              // Ej: "Alanis_Blue.jpg" -> Grupo "Alanis"
-              // Ej: "Boston-Red.jpg" -> Grupo "Boston"
-              // Ej: "Tela Alpha 01.jpg" -> Grupo "Tela Alpha" (Más complejo)
-              
-              const nameParts = f.name.split(/[_\-]/); // Separar por guiones o barras bajas
-              
-              if (nameParts.length > 1) {
-                  // Tomamos la primera parte como nombre del modelo
-                  const potentialName = nameParts[0].trim();
-                  
-                  // Filtramos nombres genéricos de cámaras
-                  const isGeneric = /^(IMG|DSC|PHOTO|IMAGE|SCAN)/i.test(potentialName);
-                  
-                  if (!isGeneric && potentialName.length > 2) {
-                      groupKey = toSentenceCase(potentialName);
-                  }
+          const path = f.webkitRelativePath || f.name;
+          const parts = path.split('/');
+          let groupKey = parts.length > 1 ? parts[parts.length - 2] : 'General';
+          
+          if (groupKey === 'General') {
+              const potentialName = f.name.split(/[_\- .]/)[0];
+              if (potentialName && potentialName.length > 2 && !potentialName.startsWith('IMG') && !potentialName.startsWith('DSC')) {
+                  groupKey = toSentenceCase(potentialName);
               }
           }
 
@@ -217,23 +183,17 @@ const UploadModal: React.FC<UploadModalProps> = ({
       });
 
       const keys = Object.keys(groups);
-      
-      // Si todo cayó en "General", intentamos ser más agresivos con la agrupación o alertar
-      if (keys.length === 1 && keys[0] === 'General' && files.length > 5) {
-          console.warn("Todos los archivos cayeron en General. Intentando re-agrupar...");
-      }
-
       const results: Partial<Fabric>[] = [];
       
-      // Procesamiento por lotes (Batching) para no colapsar el navegador
-      // Procesamos 3 "carpetas" simultáneamente para máxima velocidad
-      const BATCH_SIZE = 3; 
+      // BATCH PROCESSING
+      // Process 2 folders at a time to balance speed vs browser memory
+      const BATCH_SIZE = 2; 
       
       for (let i = 0; i < keys.length; i += BATCH_SIZE) {
           const batchKeys = keys.slice(i, i + BATCH_SIZE);
-          setCurrentProgress(`Procesando bloque ${Math.floor(i/BATCH_SIZE) + 1}... (${batchKeys.join(', ')})`);
+          setCurrentProgress(`Procesando bloque ${Math.floor(i/BATCH_SIZE) + 1} de ${Math.ceil(keys.length/BATCH_SIZE)}... (${batchKeys.join(', ')})`);
           
-          // Promise.all lanza los grupos en paralelo
+          // Process the batch in parallel
           const batchResults = await Promise.all(
               batchKeys.map(key => analyzeFileGroup(groups[key], key))
           );
@@ -357,16 +317,18 @@ const UploadModal: React.FC<UploadModalProps> = ({
     setUploadProgress(0);
     setUploadStatusText('Verificando conexión...');
 
+    // 1. Validar Permisos ANTES de empezar
     const hasWritePermission = await validateWriteAccess();
     if (!hasWritePermission) {
         setSaveError('BLOQUEADO: No tienes permiso de escritura en la Nube.');
         setUploadStatusText('REVISA TU CONFIGURACIÓN FIREBASE (REGLAS)');
-        setIsSaving(true); 
-        return; 
+        setIsSaving(true); // Keep UI open to show error
+        return; // STOP HERE
     }
 
     setUploadProgress(5);
     
+    // Simulate initial progress
     const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
             if (prev >= 90) return 90;
@@ -375,7 +337,9 @@ const UploadModal: React.FC<UploadModalProps> = ({
     }, 200);
 
     const finalFabrics: Fabric[] = extractedFabrics.map(data => {
+        // --- SAFETY FIX: ENSURE MAIN IMAGE EXISTS ---
         let finalMainImage = data.mainImage;
+        // If mainImage is missing but we have color images, grab the first one
         if (!finalMainImage && data.colorImages) {
             const firstColorKey = Object.keys(data.colorImages)[0];
             if (firstColorKey) {
@@ -391,7 +355,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
             specs: data.specs || { composition: '', martindale: '', usage: '' },
             colors: data.colors || [],
             colorImages: data.colorImages || {},
-            mainImage: finalMainImage || '', 
+            mainImage: finalMainImage || '', // Use the safe main image
             specsImage: data.specsImage,
             pdfUrl: data.pdfUrl,
             category: 'model',
@@ -423,12 +387,16 @@ const UploadModal: React.FC<UploadModalProps> = ({
         clearInterval(progressInterval);
         console.error("Error guardando tela:", err);
         
+        // Handle Permission Error explicitly for UI
+        // Check for both permission-denied (Firestore) and unauthorized (Storage)
         if (err.message && (err.message.includes('permission-denied') || err.message.includes('unauthorized'))) {
             setSaveError('ERROR: PERMISO DENEGADO (STORAGE/DB)');
             setUploadStatusText('Faltan reglas de escritura en Storage o Database.');
         } else {
             setSaveError(`Error: ${err.message || "Fallo de conexión"}`);
         }
+        
+        // DO NOT RELOAD PAGE ON ERROR - Let user see the message
     }
   };
 
@@ -567,7 +535,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
                     {step === 'upload' && (
                       <div className="flex flex-col gap-8 h-full">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center flex-1">
-                              {/* PC UPLOAD */}
                               <div onClick={triggerFolderUpload} className="h-64 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-black hover:bg-gray-50 transition-all text-center group">
                                   <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-gray-400 group-hover:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg></div>
                                   <span className="font-serif text-xl font-bold">Carga de Carpetas (PC)</span>
@@ -582,23 +549,18 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                   />
                               </div>
 
-                              {/* MOBILE / DRIVE UPLOAD */}
                               <div onClick={triggerMobileUpload} className="h-64 border-2 border-dashed border-blue-200 bg-blue-50/20 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all text-center group">
                                   <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
-                                  <span className="font-serif text-xl font-bold">Carga Masiva (Móvil / Drive)</span>
-                                  <p className="text-[10px] text-blue-400 mt-2 uppercase tracking-widest leading-relaxed">
-                                     Selecciona fotos desde Drive, Fotos o Archivos.<br/>
-                                     La IA las agrupará por nombre automáticamente.
-                                  </p>
+                                  <span className="font-serif text-xl font-bold">Google Drive / Archivos</span>
+                                  <p className="text-[10px] text-blue-400 mt-2 uppercase tracking-widest">Seleccionar múltiples archivos</p>
                                   
                                   <input 
                                     ref={mobileInputRef} 
                                     type="file" 
                                     multiple 
                                     className="hidden" 
-                                    // Aceptamos PDFs e Imágenes para cubrir todos los casos
-                                    accept="image/*,application/pdf"
                                     onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                                    {...({ webkitdirectory: "", directory: "" } as any)}
                                   />
                               </div>
                           </div>
@@ -619,10 +581,10 @@ const UploadModal: React.FC<UploadModalProps> = ({
                       </div>
                     )}
                     {step === 'processing' && (
-                        <div className="text-center py-20 animate-fade-in">
+                        <div className="text-center py-20">
                             <div className="animate-spin h-12 w-12 border-b-2 border-black mx-auto mb-6"></div>
                             <p className="text-lg font-serif italic">{currentProgress}</p>
-                            <p className="text-xs text-gray-400 mt-2">Analizando etiquetas de color en paralelo con IA...</p>
+                            <p className="text-xs text-gray-400 mt-2">Leyendo etiquetas en paralelo con IA...</p>
                         </div>
                     )}
                     {step === 'review' && (
@@ -633,8 +595,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
                             </div>
                             
                             {extractedFabrics.map((f, i) => (
-                                <div key={i} className="p-6 bg-white rounded-3xl border border-gray-200 shadow-sm hover:shadow-md transition-all relative group/card">
-                                    {/* --- FLOATING DELETE BUTTON --- */}
+                                <div key={i} className="p-6 bg-white rounded-3xl border border-gray-200 shadow-sm hover:shadow-md transition-all relative">
+                                    {/* --- NEW: FLOATING DELETE BUTTON --- */}
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); removeExtractedFabric(i); }}
                                         className="absolute -top-3 -right-3 z-30 bg-white text-red-500 hover:bg-red-500 hover:text-white p-2 rounded-full shadow-md border border-gray-200 transition-all w-8 h-8 flex items-center justify-center group/del"

@@ -13,7 +13,7 @@ const PinModal: React.FC<PinModalProps> = ({
   isOpen, 
   onClose, 
   onSuccess, 
-  requiredPin = '1379', 
+  requiredPin = '3942', 
   isBlocking = false 
 }) => {
   const [pin, setPin] = useState('');

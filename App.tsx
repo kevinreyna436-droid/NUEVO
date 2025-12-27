@@ -601,12 +601,12 @@ service firebase.storage {
           </div>
       )}
 
-      {isAppLocked && (<Suspense fallback={<LoadingScreen progress={50} />}><PinModal isOpen={true} onClose={() => {}} onSuccess={() => setIsAppLocked(false)} requiredPin="1379" isBlocking={true} /></Suspense>)}
+      {isAppLocked && (<Suspense fallback={<LoadingScreen progress={50} />}><PinModal isOpen={true} onClose={() => {}} onSuccess={() => setIsAppLocked(false)} requiredPin="3942" isBlocking={true} /></Suspense>)}
 
       {!isAppLocked && (
           <>
             <button onClick={handleUploadClick} className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors">.</button>
-            <Suspense fallback={null}><PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="1379" /></Suspense>
+            <Suspense fallback={null}><PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="3942" /></Suspense>
             <Suspense fallback={<LoadingScreen progress={50} />}>{selectedFurnitureToEdit && (<EditFurnitureModal furniture={selectedFurnitureToEdit} onClose={() => setSelectedFurnitureToEdit(null)} onSave={handleSaveFurniture} onDelete={handleDeleteFurniture} />)}</Suspense>
 
             {view === 'grid' && (
