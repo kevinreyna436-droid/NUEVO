@@ -70,6 +70,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
       let rawData: any = { name: groupName, supplier: "", technicalSummary: "", specs: {} };
 
       // PARALLEL PROCESSING STEP 1: Process PDF and Main Image AI Analysis concurrently
+      // We run these checks in parallel to save time
       const analysisPromises = [];
 
       // A. PDF Analysis
@@ -82,7 +83,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
              } catch(e) { return null; }
           });
       } else if (imgFiles.length > 0) {
-          // B. Fallback: Main Image Analysis (if no PDF)
+          // B. Fallback: Main Image Analysis (if no PDF) - use the first image
           analysisPromises.push(async () => {
              try {
                 // Use a smaller version for text analysis to speed up upload
@@ -93,7 +94,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
           });
       }
 
-      // Execute general analysis
+      // Execute general analysis promises
       const analysisResults = await Promise.all(analysisPromises.map(p => p()));
       
       // Merge results into rawData
@@ -109,15 +110,17 @@ const UploadModal: React.FC<UploadModalProps> = ({
       if (rawData.name) rawData.name = toSentenceCase(rawData.name);
 
       // PARALLEL PROCESSING STEP 2: Process ALL Color Swatches concurrently
-      // Instead of loop-await, we map to promises and await Promise.all
+      // Instead of a for-loop which waits for each image, we map to an array of promises.
       const colorImages: Record<string, string> = {};
       const colors: string[] = [];
 
+      // Create a promise for each image to compress and analyze in parallel
       const colorProcessingPromises = imgFiles.map(async (file) => {
           // 1. Compress Image (High Quality for visual, but parallelized)
           const base64 = await compressImage(file, 1600, 0.90);
           
-          // 2. Extract Data (AI OCR)
+          // 2. Extract Data (AI OCR) - Hits Gemini API in parallel
+          // The Service handles 429 retries if we hit rate limits
           const extractionResult = await extractColorFromSwatch(base64.split(',')[1]);
           
           let detectedName = extractionResult.colorName;
@@ -136,7 +139,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
           };
       });
 
-      // Wait for all colors to be processed
+      // Wait for ALL colors to be processed
       const processedColors = await Promise.all(colorProcessingPromises);
 
       // Assemble the data
@@ -165,12 +168,15 @@ const UploadModal: React.FC<UploadModalProps> = ({
     try {
       const groups: Record<string, File[]> = {};
       
-      // Grouping Logic
+      // Grouping Logic with Mobile Fallback
       files.forEach(f => {
           const path = f.webkitRelativePath || f.name;
           const parts = path.split('/');
           let groupKey = parts.length > 1 ? parts[parts.length - 2] : 'General';
           
+          // INTELLIGENT FALLBACK FOR MOBILE/DRIVE:
+          // If files lose structure and land in "General", try to group by filename prefix.
+          // e.g., "Alanis_Blue.jpg" -> Group "Alanis"
           if (groupKey === 'General') {
               const potentialName = f.name.split(/[_\- .]/)[0];
               if (potentialName && potentialName.length > 2 && !potentialName.startsWith('IMG') && !potentialName.startsWith('DSC')) {
@@ -186,7 +192,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
       const results: Partial<Fabric>[] = [];
       
       // BATCH PROCESSING
-      // Process 2 folders at a time to balance speed vs browser memory
+      // Process 2 folders at a time to keep UI responsive but fast
       const BATCH_SIZE = 2; 
       
       for (let i = 0; i < keys.length; i += BATCH_SIZE) {
