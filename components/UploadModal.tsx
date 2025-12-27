@@ -373,7 +373,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div 
-        className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="bg-white w-full max-w-[95vw] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]"
         onClick={(e) => e.stopPropagation()} 
       >
         {/* HEADER */}
@@ -414,15 +414,15 @@ const UploadModal: React.FC<UploadModalProps> = ({
         <div className="flex-1 overflow-y-auto p-8 relative">
             {isSaving ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-20">
-                     <div className="w-full max-w-lg px-8 text-center">
-                        <div className="flex justify-between items-end mb-4">
-                             <span className={`text-[10px] font-bold uppercase tracking-[0.2em] ${saveError ? 'text-red-600' : 'text-slate-900'}`}>
+                     <div className="w-full max-w-3xl px-12 text-center">
+                        <div className="flex justify-between items-end mb-6">
+                             <span className={`text-sm font-bold uppercase tracking-[0.2em] ${saveError ? 'text-red-600' : 'text-slate-900'}`}>
                                 {saveError || uploadStatusText}
                              </span>
-                             <span className="text-sm font-bold text-slate-900">{Math.round(uploadProgress)}%</span>
+                             <span className="text-xl font-bold text-slate-900">{Math.round(uploadProgress)}%</span>
                         </div>
                         
-                        <div className="w-full h-[2px] bg-gray-100 overflow-hidden mb-4">
+                        <div className="w-full h-2 bg-gray-100 overflow-hidden mb-6 rounded-full">
                             <div 
                                 className={`h-full transition-all duration-300 ease-out ${saveError ? 'bg-red-500' : 'bg-slate-900'}`}
                                 style={{ width: `${uploadProgress}%` }}
@@ -438,7 +438,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                 <button onClick={() => setIsSaving(false)} className="mt-3 text-[10px] uppercase font-bold text-red-900 underline">Volver a intentar</button>
                             </div>
                         ) : (
-                            <p className="text-[10px] text-gray-400 font-medium tracking-wide">
+                            <p className="text-xs text-gray-400 font-medium tracking-wide">
                                 Optimizando imágenes para carga rápida...
                             </p>
                         )}
