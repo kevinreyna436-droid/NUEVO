@@ -35,6 +35,39 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 6, del
 }
 
 /**
+ * Safe JSON Parser specifically for AI responses that might contain markdown or be truncated.
+ */
+const safeJsonParse = (text: string | undefined): any => {
+  if (!text) return {};
+  try {
+    let clean = text.trim();
+    // Remove markdown code blocks (```json ... ```)
+    if (clean.startsWith('```')) {
+        clean = clean.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+    }
+    return JSON.parse(clean);
+  } catch (e) {
+    console.warn("JSON parsing failed (possibly truncated or invalid format). Returning empty object.", e);
+    // Optional: Try to parse a substring if the end is malformed (e.g. truncated)
+    // This is a basic recovery attempt for common truncation cases
+    if (typeof text === 'string') {
+        const firstBrace = text.indexOf('{');
+        // Try to find the last closing brace
+        for (let i = text.length - 1; i > firstBrace; i--) {
+            if (text[i] === '}') {
+                try {
+                    return JSON.parse(text.substring(firstBrace, i + 1));
+                } catch (e2) {
+                    continue; 
+                }
+            }
+        }
+    }
+    return {};
+  }
+};
+
+/**
  * Extrae datos técnicos de una tela a partir de una imagen o PDF.
  * Ahora busca también la lista de colores disponibles en el texto.
  */
@@ -87,7 +120,7 @@ export const extractFabricData = async (base64Data: string, mimeType: string): P
       }
     });
 
-    return JSON.parse(response.text || "{}");
+    return safeJsonParse(response.text);
   });
 };
 
@@ -136,7 +169,7 @@ export const extractColorFromSwatch = async (base64Data: string): Promise<{ colo
       }
     });
     
-    const result = JSON.parse(response.text || "{}");
+    const result = safeJsonParse(response.text);
     return {
         colorName: result.colorName || "Desconocido",
         supplierName: result.supplierName || ""

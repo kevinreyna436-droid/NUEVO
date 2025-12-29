@@ -120,26 +120,37 @@ const UploadModal: React.FC<UploadModalProps> = ({
       const colors: string[] = [];
 
       const colorProcessingPromises = imgFiles.map(async (file) => {
-          // 1. Compress Image (High Quality for visual, but parallelized)
-          const base64 = await compressImage(file, 1600, 0.90);
-          
-          // 2. Extract Data (AI OCR)
-          const extractionResult = await extractColorFromSwatch(base64.split(',')[1]);
-          
-          let detectedName = extractionResult.colorName;
-          
-          // Fallback to filename if AI fails
-          if (!detectedName || detectedName === 'Desconocido') {
-              detectedName = file.name.split('.')[0];
-          }
+          try {
+              // 1. Compress Image (High Quality for visual, but parallelized)
+              const base64 = await compressImage(file, 1600, 0.90);
+              
+              // 2. Extract Data (AI OCR)
+              const extractionResult = await extractColorFromSwatch(base64.split(',')[1]);
+              
+              let detectedName = extractionResult.colorName;
+              
+              // Fallback to filename if AI fails
+              if (!detectedName || detectedName === 'Desconocido') {
+                  detectedName = file.name.split('.')[0];
+              }
 
-          const formatted = toSentenceCase(detectedName);
-          
-          return {
-              name: formatted,
-              base64: base64,
-              supplierFound: extractionResult.supplierName
-          };
+              const formatted = toSentenceCase(detectedName);
+              
+              return {
+                  name: formatted,
+                  base64: base64,
+                  supplierFound: extractionResult.supplierName
+              };
+          } catch (err) {
+              console.warn("Error processing color image:", file.name, err);
+              // Fallback so we don't crash the whole batch
+              const base64 = await compressImage(file, 1600, 0.90);
+              return {
+                  name: toSentenceCase(file.name.split('.')[0]),
+                  base64: base64,
+                  supplierFound: ''
+              };
+          }
       });
 
       // Wait for all colors to be processed
@@ -701,18 +712,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                         </div>
 
                                         <div className="flex-1 space-y-5 w-full">
-                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                                                <div>
-                                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Tipo de Material</label>
-                                                    <select
-                                                        value={f.category || 'model'}
-                                                        onChange={(e) => updateExtractedFabric(i, 'category', e.target.value)}
-                                                        className="w-full p-2.5 bg-gray-50 rounded-lg border border-gray-200 outline-none font-bold text-sm text-slate-700 uppercase"
-                                                    >
-                                                        <option value="model">Textil</option>
-                                                        <option value="wood">Madera / Acabado</option>
-                                                    </select>
-                                                </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                                                 <div>
                                                     <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Nombre Modelo</label>
                                                     <input 
