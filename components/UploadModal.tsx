@@ -21,7 +21,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
     isOpen, onClose, onSave, onBulkSave, onReset, existingFabrics = [],
     existingFurniture = [], onSaveFurniture, onDeleteFurniture
 }) => {
-  const [activeTab, setActiveTab] = useState<'fabrics' | 'furniture'>('fabrics');
+  const [activeTab, setActiveTab] = useState<'fabrics' | 'furniture' | 'woods'>('fabrics');
   
   // States for Fabrics
   const [step, setStep] = useState<'upload' | 'processing' | 'review'>('upload');
@@ -34,6 +34,11 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const [furnCategory, setFurnCategory] = useState('sofa');
   const [furnSupplier, setFurnSupplier] = useState('');
   const [furnImage, setFurnImage] = useState<string | null>(null);
+
+  // States for Woods (Maderas)
+  const [woodName, setWoodName] = useState(''); // Color/Acabado
+  const [woodSupplier, setWoodSupplier] = useState('');
+  const [woodImage, setWoodImage] = useState<string | null>(null);
   
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0); // 0-100%
@@ -50,6 +55,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const folderInputRef = useRef<HTMLInputElement>(null);
   const mobileInputRef = useRef<HTMLInputElement>(null);
   const furnitureInputRef = useRef<HTMLInputElement>(null);
+  const woodInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -156,6 +162,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
       // Ensure mainImage is set from the first available color if possible
       const mainImage = imgFiles.length > 0 ? colorImages[colors[0]] : '';
 
+      // Default category is model (fabric), user can change it to wood in review
       return { ...rawData, colors, colorImages, mainImage, category: 'model' };
   };
 
@@ -358,7 +365,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
             mainImage: finalMainImage || '', // Use the safe main image
             specsImage: data.specsImage,
             pdfUrl: data.pdfUrl,
-            category: 'model',
+            category: data.category as 'model' | 'wood' || 'model', // Pass through the category
             customCatalog: data.customCatalog 
         };
     });
@@ -409,6 +416,66 @@ const UploadModal: React.FC<UploadModalProps> = ({
       }
   };
 
+  // --- LOGICA MADERAS (WOODS) ---
+  const handleWoodImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          try {
+              // Comprimir textura para que se vea bien en el render
+              const base64 = await compressImage(e.target.files[0], 1024, 0.85);
+              setWoodImage(base64);
+          } catch (err) { alert("Error procesando imagen de madera"); }
+      }
+  };
+
+  const handleSaveWoodInternal = async () => {
+      if (!woodName || !woodImage) { alert("Falta nombre o imagen de la madera"); return; }
+
+      const hasWrite = await validateWriteAccess();
+      if(!hasWrite) {
+          alert("Error: No tienes permiso para escribir en la base de datos.");
+          return;
+      }
+
+      setIsSaving(true);
+      setUploadProgress(10);
+      setUploadStatusText('SUBIENDO MADERA...');
+
+      const interval = setInterval(() => {
+        setUploadProgress(prev => (prev >= 90 ? 90 : prev + 5));
+      }, 200);
+
+      // Creamos un objeto Fabric pero con category='wood'
+      const newWood: Fabric = {
+          id: `wood-${Date.now()}`,
+          name: toSentenceCase(woodName),
+          supplier: woodSupplier ? woodSupplier.toUpperCase() : 'ARTEX',
+          category: 'wood',
+          mainImage: woodImage,
+          // Campos obligatorios por tipo Fabric, aunque no se usen para madera
+          technicalSummary: 'Acabado de madera natural',
+          specs: { composition: 'Madera', martindale: 'N/A', usage: 'Estructura' },
+          colors: [],
+          colorImages: {}
+      };
+
+      try {
+          await onSave(newWood);
+          clearInterval(interval);
+          setUploadProgress(100);
+          setTimeout(() => {
+             window.location.reload();
+          }, 800);
+      } catch (err: any) {
+          clearInterval(interval);
+          setIsSaving(false);
+           if (err.message && (err.message.includes('permission-denied') || err.message.includes('unauthorized'))) {
+            alert("Error: Reglas de Storage/DB insuficientes.");
+          } else {
+            alert("Error guardando madera.");
+          }
+      }
+  };
+
   const handleSaveFurnitureInternal = async () => {
       if (!furnName || !furnImage) { alert("Datos incompletos"); return; }
       
@@ -440,7 +507,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
         setUploadProgress(100);
         setTimeout(() => {
              window.location.reload();
-        }, 800);
+          }, 800);
       } catch (err: any) {
           clearInterval(interval);
           setIsSaving(false);
@@ -491,6 +558,12 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] transition-all ${activeTab === 'furniture' ? 'bg-white shadow-sm text-slate-900' : 'text-gray-400 hover:text-gray-600'}`}
                     >
                         Muebles
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('woods')}
+                        className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] transition-all ${activeTab === 'woods' ? 'bg-white shadow-sm text-slate-900' : 'text-gray-400 hover:text-gray-600'}`}
+                    >
+                        Maderas
                     </button>
                 </div>
             </div>
@@ -628,7 +701,18 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                         </div>
 
                                         <div className="flex-1 space-y-5 w-full">
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Tipo de Material</label>
+                                                    <select
+                                                        value={f.category || 'model'}
+                                                        onChange={(e) => updateExtractedFabric(i, 'category', e.target.value)}
+                                                        className="w-full p-2.5 bg-gray-50 rounded-lg border border-gray-200 outline-none font-bold text-sm text-slate-700 uppercase"
+                                                    >
+                                                        <option value="model">Textil</option>
+                                                        <option value="wood">Madera / Acabado</option>
+                                                    </select>
+                                                </div>
                                                 <div>
                                                     <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1.5 tracking-widest">Nombre Modelo</label>
                                                     <input 
@@ -677,7 +761,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
                                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                                                 <div className="flex justify-between items-center mb-3">
-                                                    <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest">Colores ({f.colors?.length})</label>
+                                                    <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest">Colores / Variantes ({f.colors?.length})</label>
                                                     <button onClick={() => handleAddColor(i)} className="text-[10px] font-bold uppercase text-blue-600 hover:underline">+ Agregar</button>
                                                 </div>
                                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -699,7 +783,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         </div>
                     )}
                 </>
-            ) : (
+            ) : activeTab === 'furniture' ? (
                 /* --- FURNITURE UI --- */
                 <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
                     <div className="text-center mb-8">
@@ -718,7 +802,43 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         <div className="w-full md:w-1/2 space-y-6">
                             <input type="text" value={furnName} onChange={(e) => setFurnName(e.target.value)} placeholder="Nombre del Mueble" className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 font-serif text-lg" />
                             <input type="text" value={furnCategory} onChange={(e) => setFurnCategory(e.target.value)} placeholder="Categoría (Sofá, Silla...)" className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 font-serif text-sm" />
+                            <input type="text" value={furnSupplier} onChange={(e) => setFurnSupplier(e.target.value)} placeholder="Proveedor (Ej: Artex)" className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 font-serif text-sm uppercase" />
                             <button onClick={handleSaveFurnitureInternal} disabled={!furnImage || !furnName} className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl hover:scale-105 transition-transform disabled:opacity-50">Guardar Mueble</button>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                /* --- WOODS UI --- */
+                <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
+                    <div className="text-center mb-8">
+                        <h3 className="font-serif text-3xl font-bold mb-2">Nueva Madera / Acabado</h3>
+                        <p className="text-sm text-gray-400">Sube una textura de madera para usar en muebles.</p>
+                    </div>
+                    <div className="flex flex-col md:flex-row gap-8 items-start">
+                        <div onClick={() => woodInputRef.current?.click()} className="w-full md:w-1/2 aspect-square bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 cursor-pointer flex flex-col items-center justify-center relative overflow-hidden group">
+                            {woodImage ? (
+                                <img src={woodImage} className="w-full h-full object-cover rounded-2xl" />
+                            ) : (
+                                <div className="flex flex-col items-center text-gray-400">
+                                    <svg className="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                    <span className="text-xs font-bold uppercase">Subir Textura</span>
+                                </div>
+                            )}
+                        </div>
+                        <input ref={woodInputRef} type="file" accept="image/*" className="hidden" onChange={handleWoodImageChange} />
+
+                        <div className="w-full md:w-1/2 space-y-6">
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1 tracking-widest">Nombre / Color</label>
+                                <input type="text" value={woodName} onChange={(e) => setWoodName(e.target.value)} placeholder="Ej: Nogal Oscuro" className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 font-serif text-lg" />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1 tracking-widest">Proveedor</label>
+                                <input type="text" value={woodSupplier} onChange={(e) => setWoodSupplier(e.target.value)} placeholder="Ej: ARTEX" className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 font-serif text-sm uppercase" />
+                            </div>
+
+                            <button onClick={handleSaveWoodInternal} disabled={!woodImage || !woodName} className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl hover:scale-105 transition-transform disabled:opacity-50">Guardar Madera</button>
                         </div>
                     </div>
                 </div>

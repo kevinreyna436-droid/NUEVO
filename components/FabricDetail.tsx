@@ -277,28 +277,30 @@ Generado automáticamente por Creata App
         </div>
       )}
 
-      {/* Navigation Header */}
-      <div className="sticky top-0 z-40 bg-[#f2f2f2]/90 backdrop-blur-sm px-6 py-3 flex items-center justify-center border-b border-gray-200/50">
-        <div className="absolute left-6">
-            <button onClick={onBack} className="flex items-center text-gray-400 hover:text-black transition-colors text-lg font-medium uppercase tracking-wide">
-            <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-            Volver
-            </button>
-        </div>
-        
-        {/* Right side controls */}
-        <div className="absolute right-6 flex items-center space-x-4">
-            <button 
-                onClick={handleEditClick} 
-                className="text-gray-400 hover:text-black transition-colors font-bold text-3xl pb-4 h-8 flex items-center"
-                title="Modificar ficha completa"
-            >
-                .
-            </button>
-        </div>
+      {/* Navigation - Botones Flotantes (Reemplaza la barra sticky) */}
+      <div className="fixed top-0 left-0 w-full p-6 z-40 flex justify-between items-start pointer-events-none">
+          {/* Botón Volver (Rectángulo) */}
+          <button
+              onClick={onBack}
+              className="pointer-events-auto bg-white text-slate-900 px-6 py-3 rounded-xl shadow-lg border border-gray-100 flex items-center gap-3 transition-all hover:scale-105 hover:shadow-xl group"
+          >
+               <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+               </div>
+               <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Volver</span>
+          </button>
+
+          {/* Botón Editar (Punto discreto) */}
+          <button
+              onClick={handleEditClick}
+              className="pointer-events-auto w-10 h-10 bg-white/50 hover:bg-white backdrop-blur-md rounded-full text-gray-400 hover:text-black transition-all font-bold text-2xl flex items-center justify-center shadow-sm hover:shadow-md"
+              title="Modificar ficha completa"
+          >
+              .
+          </button>
       </div>
 
-      <div className="container mx-auto px-4 py-6 flex flex-col items-center text-center max-w-5xl">
+      <div className="container mx-auto px-4 py-6 flex flex-col items-center text-center max-w-5xl mt-16">
         
         {/* 1. Centered Header Info */}
         <div className="mb-6 space-y-2">

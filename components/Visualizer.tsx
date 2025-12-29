@@ -19,6 +19,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   const [selectedFabricId, setSelectedFabricId] = useState<string>('');
   const [selectedColorName, setSelectedColorName] = useState<string>('');
   
+  // New: Wood Selection for Artex Furniture
+  const [selectedWoodId, setSelectedWoodId] = useState<string>('');
+  
   // Generation & Progress State
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -181,9 +184,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       try {
           const furnitureB64 = await ensureBase64(selectedFurniture!.imageUrl);
           
-          // CAMBIO: Buscar por ID
+          // Buscar Tela
           const fabric = fabrics.find(f => f.id === selectedFabricId);
-          
           const swatchRaw = (selectedColorName && fabric?.colorImages?.[selectedColorName]) 
             ? fabric.colorImages[selectedColorName] 
             : fabric?.mainImage;
@@ -191,7 +193,16 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           if (!swatchRaw) throw new Error("No se encontró la imagen de la tela. Asegúrate de que la tela seleccionada tenga foto.");
           const swatchB64 = await ensureBase64(swatchRaw);
 
-          const result = await visualizeUpholstery(furnitureB64, swatchB64);
+          // Buscar Madera (Opcional)
+          let woodB64: string | undefined = undefined;
+          if (selectedWoodId) {
+             const wood = fabrics.find(f => f.id === selectedWoodId);
+             if (wood && wood.mainImage) {
+                 woodB64 = await ensureBase64(wood.mainImage);
+             }
+          }
+
+          const result = await visualizeUpholstery(furnitureB64, swatchB64, woodB64);
           
           if (result) {
               setProgress(100);
@@ -242,6 +253,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           onEditFurniture(item);
       } else {
           setSelectedFurniture(item);
+          // Reset selection
+          setSelectedWoodId('');
           setStep(2);
       }
   };
@@ -251,6 +264,22 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   const selectedSwatchUrl = (selectedColorName && activeFabric?.colorImages?.[selectedColorName]) 
     ? activeFabric.colorImages[selectedColorName] 
     : activeFabric?.mainImage;
+    
+  // LOGIC FOR MATCHING PROVIDERS (Filtra las maderas según el proveedor del mueble)
+  const furnitureSupplier = selectedFurniture?.supplier?.toUpperCase() || '';
+  
+  const availableWoods = fabrics.filter(f => {
+      // 1. Debe ser categoría madera
+      if (f.category !== 'wood') return false;
+      
+      // 2. Si el mueble tiene proveedor, solo mostrar maderas de ese proveedor
+      if (furnitureSupplier) {
+          return f.supplier.toUpperCase() === furnitureSupplier;
+      }
+      
+      // 3. Si el mueble no tiene proveedor (internal), mostrar todas las maderas o maderas sin proveedor específico
+      return true; 
+  });
 
   return (
     <div className="container mx-auto px-4 md:px-6 pb-20 max-w-7xl animate-fade-in-up relative">
@@ -276,15 +305,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
       <div className="text-center mb-6">
         <h2 className="font-serif text-4xl md:text-5xl font-bold text-slate-900">Visualizador Pro</h2>
-        <div className="flex items-center justify-center gap-2 mt-3 mb-8">
-            <span className={`w-2 h-2 rounded-full ${hasKey ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
-            <p className="text-[10px] uppercase tracking-widest font-bold text-gray-500">
-                {hasKey ? 'Motor Privado Activo (Uso Ilimitado)' : 'Motor Compartido (Sujeto a límites de cuota)'}
-            </p>
-        </div>
         
         {isEditMode && (
-             <div className="inline-block bg-red-500 text-white px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest mb-4 animate-pulse">
+             <div className="inline-block bg-red-500 text-white px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest mb-4 animate-pulse mt-4">
                  Modo Edición Activado: Selecciona un mueble para editar
              </div>
         )}
@@ -313,6 +336,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                     />
                                     <div className={`absolute bottom-0 left-0 right-0 backdrop-blur-md p-3 text-center border-t border-black/5 ${isEditMode ? 'bg-red-500/20' : 'bg-white/50'}`}>
                                         <h4 className="font-serif font-bold text-sm text-slate-900 line-clamp-1">{item.name}</h4>
+                                        <span className="text-[9px] bg-black text-white px-2 py-0.5 rounded-full absolute top-2 right-2 shadow-sm">{item.supplier || 'GENERIC'}</span>
                                         {isEditMode && (
                                             <p className="text-[9px] uppercase font-bold text-red-600">Editar</p>
                                         )}
@@ -428,6 +452,33 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                             ) : (
                                 <div className="h-40 flex items-center justify-center bg-white/30 rounded-2xl border border-dashed border-slate-300 text-slate-500 text-sm italic">
                                     Selecciona un modelo arriba para ver sus colores
+                                </div>
+                            )}
+
+                            {/* --- DYNAMIC WOOD SELECTOR BASED ON PROVIDER --- */}
+                            {availableWoods.length > 0 && (
+                                <div className="space-y-4 animate-fade-in pt-4 border-t border-black/5">
+                                    <h3 className="font-serif text-3xl mb-2 text-slate-900">3. Elige el acabado (Madera)</h3>
+                                    <div className="flex justify-between items-center">
+                                        <p className="text-sm text-slate-600 font-medium">Mostrando acabados de: <span className="font-bold">{furnitureSupplier || 'GENÉRICO'}</span></p>
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap gap-4 py-2">
+                                        {availableWoods.map((wood) => (
+                                            <div 
+                                                key={wood.id}
+                                                onClick={() => setSelectedWoodId(selectedWoodId === wood.id ? '' : wood.id)}
+                                                className={`cursor-pointer flex flex-col items-center gap-2 transition-all ${selectedWoodId === wood.id ? 'scale-105' : 'hover:scale-105 opacity-80'}`}
+                                            >
+                                                <div className={`w-20 h-20 rounded-full overflow-hidden border-2 shadow-sm ${selectedWoodId === wood.id ? 'border-slate-900 ring-2 ring-offset-2 ring-slate-900' : 'border-gray-200'}`}>
+                                                    <img src={wood.mainImage} className="w-full h-full object-cover" alt={wood.name} />
+                                                </div>
+                                                <span className={`text-[10px] font-bold uppercase ${selectedWoodId === wood.id ? 'text-black' : 'text-gray-500'}`}>
+                                                    {wood.name}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 
@@ -551,6 +602,15 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                     {toSentenceCase(selectedColorName)}
                                 </p>
                              </div>
+
+                             {selectedWoodId && (
+                                 <div className="mt-4 pt-4 border-t border-black/5">
+                                    <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-1">Acabado Madera</p>
+                                    <p className="text-lg font-serif italic text-slate-600">
+                                        {fabrics.find(f => f.id === selectedWoodId)?.name}
+                                    </p>
+                                 </div>
+                             )}
                         </div>
                     </div>
 

@@ -146,40 +146,58 @@ export const extractColorFromSwatch = async (base64Data: string): Promise<{ colo
 
 /**
  * Visualizador Pro: Aplica la tela al mueble (Nano Banana Pro / Gemini 3 Pro Image).
+ * Ahora soporta opcionalmente una textura de madera (Input 3).
  */
 export const visualizeUpholstery = async (
     furnitureBase64: string, 
     fabricBase64: string,
-    fabricInfo?: any
+    woodBase64?: string
 ): Promise<string | null> => {
   return retryWithBackoff(async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Prompt actualizado con instrucciones estrictas para NO MODIFICAR la geometría del mueble.
-    const promptText = `
-      Act as a high-end photo retoucher specializing in furniture upholstery. 
-      Input 1: A piece of furniture image.
-      Input 2: A close-up fabric texture swatch.
+    // Prompt optimizado para MANTENER GEOMETRÍA ABSOLUTA
+    let promptText = `
+      You are a specialized texture mapping engine. You are NOT a creative generator.
       
-      Task: Create a photorealistic visualization by wrapping the fabric from Input 2 onto the upholstery areas of Input 1.
+      INPUTS:
+      1. Base Furniture Image (The "Target").
+      2. Fabric Texture (The "Material").
+      ${woodBase64 ? '3. Wood Texture (The "Finish").' : ''}
       
-      Requirements:
-      - STRICT GEOMETRY PRESERVATION: The furniture in the output MUST be identical in shape, size, angle, and position to Input 1. Do NOT rotate, resize, zoom, or distort the furniture object. The outline must match perfectly.
-      - BACKGROUND PRESERVATION: Keep the original background and floor shadows exactly as they are.
-      - TEXTURE SCALE (CRITICAL): The provided fabric swatch is a macro shot. You MUST reduce the scale of the texture pattern by approximately 70% (make it significantly denser) to look realistic on the large furniture surface.
-      - LIGHTING & SHADOWS: Preserve all original shadows, folds, highlights, and micro-creases to maintain volume and depth. The fabric must look like it wraps around the existing foam.
-      - MASKING: Keep legs, wooden frames, metal bases, and the surrounding environment completely untouched. Only change the upholstered fabric parts.
-      - QUALITY: The final output must look like a professional, high-resolution catalog photograph.
+      OBJECTIVE:
+      Apply the materials to the target object using strict digital compositing rules.
+      
+      CRITICAL CONSTRAINTS (DO NOT VIOLATE):
+      - **ZERO GEOMETRY CHANGE**: The output furniture MUST align pixel-perfectly with Input 1. Do not rotate, zoom, crop, or change the perspective. The silhouette must be identical.
+      - **PRESERVE BACKGROUND**: Do not regenerate the floor, walls, or background. Keep them exactly as they are in Input 1.
+      - **PRESERVE SHADOWS**: The lighting shadows on the floor and the self-shadows on the furniture cushions must remain exactly where they are.
+      
+      TASKS:
+      1. **Fabric Application**: Identify the soft upholstery parts of Input 1. Replace the original surface pixel data with the texture from Input 2.
+         - *Scaling*: The fabric swatch (Input 2) is a macro shot. Scale it down significantly (make the pattern smaller/denser) so it looks realistic on the furniture size.
+         - *Blending*: Multiply the new texture with the original lighting/shadow map to keep the volume.
+         
+      ${woodBase64 ? '2. **Wood Application**: Identify rigid structure parts (legs, arms, base). Replace their surface color/grain with Input 3. Maintain the original specularity (shine) and form.' : ''}
+      
+      Output the final composite image.
     `;
+
+    const parts: { inlineData?: { mimeType: string; data: string }; text?: string }[] = [
+      { inlineData: { mimeType: "image/jpeg", data: furnitureBase64 } },
+      { inlineData: { mimeType: "image/jpeg", data: fabricBase64 } }
+    ];
+
+    if (woodBase64) {
+        parts.push({ inlineData: { mimeType: "image/jpeg", data: woodBase64 } });
+    }
+
+    parts.push({ text: promptText });
 
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-image-preview",
       contents: {
-        parts: [
-          { inlineData: { mimeType: "image/jpeg", data: furnitureBase64 } },
-          { inlineData: { mimeType: "image/jpeg", data: fabricBase64 } },
-          { text: promptText }
-        ]
+        parts: parts
       }
     });
 
