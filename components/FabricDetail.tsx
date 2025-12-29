@@ -5,6 +5,7 @@ import EditFabricModal from './EditFabricModal';
 import PinModal from './PinModal';
 import { generateFormatexSKU, isFormatexSupplier } from '../utils/skuUtils';
 import { IN_STOCK_DB } from '../constants';
+import { jsPDF } from "jspdf";
 
 interface FabricDetailProps {
   fabric: Fabric;
@@ -77,53 +78,154 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
       setPinModalOpen(true);
   };
 
-  const handleDownloadFicha = (e: React.MouseEvent) => {
-      if (fabric.pdfUrl) return; // If real URL exists, let default behavior happen
+  const handleDownloadFicha = async (e: React.MouseEvent) => {
+      // If a real PDF URL exists, we allow the <a> tag to handle it natively.
+      // This will download the ORIGINAL pdf uploaded by the user.
+      if (fabric.pdfUrl) return; 
       
       e.preventDefault();
       
-      // Generate SKUs text if applicable
-      let skuSection = '';
-      if (isFormatex) {
-          skuSection = '\nCÓDIGOS DE REFERENCIA (SKU)\n';
-          sortedColors.forEach(color => {
-              const sku = generateFormatexSKU(fabric.name, color);
-              skuSection += `- ${color}: ${sku}\n`;
-          });
+      // Initialize PDF Generator (Fallback)
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      
+      // -- HEADER --
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.text("CREATA COLLECTION", 20, 20);
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("FICHA TÉCNICA DE PRODUCTO", 20, 26);
+      
+      doc.setDrawColor(0);
+      doc.setLineWidth(0.5);
+      doc.line(20, 30, pageWidth - 20, 30);
+
+      // -- MAIN INFO (LEFT COLUMN) --
+      let y = 45;
+      doc.setFontSize(12);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("MODELO:", 20, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(toSentenceCase(fabric.name), 60, y);
+      y += 10;
+
+      doc.setFont("helvetica", "bold");
+      doc.text("PROVEEDOR:", 20, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(fabric.supplier || "N/A", 60, y);
+      y += 10;
+
+      doc.setFont("helvetica", "bold");
+      doc.text("COLECCIÓN:", 20, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(fabric.customCatalog || (fabric.category === 'wood' ? 'Maderas' : 'Textil'), 60, y);
+      y += 15;
+
+      // -- SPECS --
+      doc.setFont("helvetica", "bold");
+      doc.text("ESPECIFICACIONES:", 20, y);
+      y += 8;
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      
+      if (fabric.specs.composition) {
+          doc.text(`• Composición: ${fabric.specs.composition}`, 20, y);
+          y += 6;
+      }
+      if (fabric.specs.martindale) {
+          doc.text(`• Durabilidad: ${fabric.specs.martindale}`, 20, y);
+          y += 6;
+      }
+      if (fabric.specs.weight) {
+          doc.text(`• Peso: ${fabric.specs.weight}`, 20, y);
+          y += 6;
+      }
+      
+      y += 5;
+
+      // -- SUMMARY TEXT --
+      if (fabric.technicalSummary) {
+          doc.setFont("helvetica", "bold");
+          doc.text("DESCRIPCIÓN:", 20, y);
+          y += 6;
+          doc.setFont("helvetica", "normal");
+          // Split text to fit width
+          const splitText = doc.splitTextToSize(fabric.technicalSummary, 100); 
+          doc.text(splitText, 20, y);
+          y += (splitText.length * 5) + 10;
       }
 
-      // Generate a text file with the specs
-      const content = `
-CREATA COLLECTION - FICHA TÉCNICA
----------------------------------
-Modelo: ${toSentenceCase(fabric.name)}
-Proveedor: ${fabric.supplier}
-Catálogo: ${fabric.customCatalog || (fabric.category === 'wood' ? 'Colección Maderas' : 'Colección Textil')}
+      // -- IMAGE (RIGHT SIDE) --
+      // Try to add image if base64
+      if (fabric.mainImage && fabric.mainImage.startsWith('data:image')) {
+          try {
+              // Add image at top right: x=130, y=35, w=60, h=60 (approx square)
+              doc.addImage(fabric.mainImage, 'JPEG', 130, 35, 60, 60, undefined, 'FAST');
+          } catch (err) {
+              console.warn("Could not add image to PDF", err);
+          }
+      }
 
-RESUMEN TÉCNICO
-${fabric.technicalSummary || 'Información no disponible'}
+      // -- COLORS LIST (FULL WIDTH BELOW) --
+      // Ensure y is below image (at least 110)
+      if (y < 110) y = 110;
+      
+      doc.setDrawColor(200);
+      doc.line(20, y, pageWidth - 20, y);
+      y += 10;
 
-ESPECIFICACIONES
-- Composición: ${fabric.specs.composition || 'N/A'}
-- Durabilidad (Martindale): ${fabric.specs.martindale || 'N/A'}
-- Peso: ${fabric.specs.weight || 'N/A'}
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("VARIANTES Y CÓDIGOS (SKU)", 20, y);
+      y += 10;
 
-VARIANTES DE COLOR
-${sortedColors.map(c => toSentenceCase(c)).join(', ')}
-${skuSection}
----------------------------------
-Generado automáticamente por Creata App
-`;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
 
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Ficha_Tecnica_${fabric.name.replace(/\s+/g, '_')}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      // Grid Layout for Colors
+      const col1X = 20;
+      const col2X = 110;
+      let currentX = col1X;
+      
+      sortedColors.forEach((color, index) => {
+          // Check for page break
+          if (y > 270) {
+              doc.addPage();
+              y = 20;
+          }
+
+          let lineText = `• ${toSentenceCase(color)}`;
+          
+          if (isFormatex) {
+              const sku = generateFormatexSKU(fabric.name, color);
+              lineText += `  [SKU: ${sku}]`;
+          }
+
+          doc.text(lineText, currentX, y);
+
+          // Alternar columnas
+          if (currentX === col1X) {
+              currentX = col2X;
+          } else {
+              currentX = col1X;
+              y += 7; // Nueva fila
+          }
+      });
+
+      // Footer
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`Generado por Creata App - Página ${i} de ${pageCount}`, pageWidth / 2, 290, { align: 'center' });
+      }
+
+      doc.save(`Ficha_Tecnica_${fabric.name.replace(/\s+/g, '_')}.pdf`);
   };
 
   return (
@@ -265,12 +367,12 @@ Generado automáticamente por Creata App
                 <div className="flex justify-end pt-2">
                      <a 
                        href={fabric.pdfUrl || "#"} 
-                       download={`${fabric.name}-ficha-tecnica.pdf`}
+                       download={fabric.pdfUrl ? `Ficha_Original_${fabric.name}.pdf` : `Ficha_Generada_${fabric.name}.pdf`}
                        className="flex items-center space-x-2 bg-black text-white px-8 py-4 rounded-full text-xs font-bold uppercase hover:bg-gray-800 transition-colors shadow-lg tracking-widest"
                        onClick={handleDownloadFicha}
                      >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                        <span>Descargar Ficha Texto</span>
+                        <span>{fabric.pdfUrl ? 'Descargar PDF Original' : 'Generar PDF'}</span>
                      </a>
                 </div>
             </div>

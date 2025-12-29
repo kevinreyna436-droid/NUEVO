@@ -525,7 +525,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div 
-        className="bg-white w-full max-w-[95vw] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]"
+        className="bg-white w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]"
         onClick={(e) => e.stopPropagation()} 
       >
         {/* HEADER */}

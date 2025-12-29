@@ -2,6 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { Fabric } from '../types';
 import { compressImage } from '../utils/imageCompression';
+import { extractFabricData } from '../services/geminiService';
 
 interface EditFabricModalProps {
   fabric: Fabric;
@@ -20,8 +21,10 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
   const fileInputRef = useRef<HTMLInputElement>(null);
   const specsImageInputRef = useRef<HTMLInputElement>(null);
   const specsPdfInputRef = useRef<HTMLInputElement>(null);
+  
   const [editingColorIndex, setEditingColorIndex] = useState<number | null>(null);
   const [processingImageId, setProcessingImageId] = useState<string | null>(null);
+  const [isAnalyzingPdf, setIsAnalyzingPdf] = useState(false);
 
   // Helper for Sentence Casing (First upper, rest lower)
   const toSentenceCase = (str: string) => {
@@ -135,7 +138,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
       }
   };
 
-  const handleSpecsPdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSpecsPdfChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
         const file = e.target.files[0];
         if (file.type !== 'application/pdf') {
@@ -143,12 +146,47 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
             return;
         }
         
+        setIsAnalyzingPdf(true);
+        
         const reader = new FileReader();
         reader.readAsDataURL(file);
-        reader.onload = () => {
-            setFormData(prev => ({ ...prev, pdfUrl: reader.result as string }));
+        reader.onload = async () => {
+            const base64Pdf = reader.result as string;
+            
+            // 1. Guardar el PDF inmediatamente
+            setFormData(prev => ({ ...prev, pdfUrl: base64Pdf }));
+
+            // 2. Analizar con IA para extraer datos
+            try {
+                // Remove data:application/pdf;base64, prefix
+                const cleanBase64 = base64Pdf.split(',')[1];
+                const extractedData = await extractFabricData(cleanBase64, 'application/pdf');
+
+                if (extractedData) {
+                    setFormData(prev => ({
+                        ...prev,
+                        name: extractedData.name ? toSentenceCase(extractedData.name) : prev.name,
+                        supplier: extractedData.supplier ? extractedData.supplier.toUpperCase() : prev.supplier,
+                        technicalSummary: extractedData.technicalSummary || prev.technicalSummary,
+                        specs: {
+                            composition: extractedData.specs?.composition || prev.specs.composition,
+                            weight: extractedData.specs?.weight || prev.specs.weight,
+                            martindale: extractedData.specs?.martindale || prev.specs.martindale,
+                            usage: extractedData.specs?.usage || prev.specs.usage
+                        }
+                    }));
+                }
+            } catch (err) {
+                console.warn("No se pudo extraer información del PDF automáticamente.", err);
+                // No alertamos al usuario para no interrumpir el flujo, ya que el PDF sí se guardó.
+            } finally {
+                setIsAnalyzingPdf(false);
+            }
         };
-        reader.onerror = () => alert("Error leyendo el PDF.");
+        reader.onerror = () => {
+            alert("Error leyendo el PDF.");
+            setIsAnalyzingPdf(false);
+        };
     }
   };
 
@@ -231,16 +269,28 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
             />
           </div>
 
-          <div>
+          <div className="relative">
              <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Resumen Técnico (Texto)</label>
              <textarea 
                value={formData.technicalSummary || ''}
                onChange={(e) => handleChange('technicalSummary', e.target.value)}
                className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-black outline-none h-32"
+               placeholder="Descripción técnica del tejido..."
              />
+             {isAnalyzingPdf && (
+                 <div className="absolute top-8 right-4 flex items-center gap-2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full border border-blue-100 shadow-sm animate-pulse">
+                     <div className="animate-spin h-3 w-3 border-b-2 border-blue-600 rounded-full"></div>
+                     <span className="text-[10px] text-blue-600 font-bold uppercase">Extrayendo datos de PDF...</span>
+                 </div>
+             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
+          <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100 relative overflow-hidden">
+             {isAnalyzingPdf && (
+                 <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] z-10 flex items-center justify-center">
+                     {/* Overlay loader */}
+                 </div>
+             )}
              <div>
                 <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Composición</label>
                 <input type="text" value={formData.specs.composition} onChange={(e) => handleSpecChange('composition', e.target.value)} className="w-full p-2 bg-white rounded border border-gray-200 text-sm"/>
@@ -292,7 +342,14 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                   </div>
 
                   {/* PDF Upload */}
-                  <div className="flex flex-col space-y-2 p-3 border border-gray-100 rounded-xl bg-gray-50">
+                  <div className="flex flex-col space-y-2 p-3 border border-gray-100 rounded-xl bg-gray-50 relative overflow-hidden">
+                      {isAnalyzingPdf && (
+                          <div className="absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center text-center">
+                              <div className="animate-spin h-6 w-6 border-b-2 border-black rounded-full mb-1"></div>
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-800">Analizando Datos...</span>
+                          </div>
+                      )}
+                      
                       <span className="text-[10px] font-bold uppercase text-gray-400">Documento (PDF)</span>
                       <div className="flex items-start space-x-3">
                           <div className="w-24 h-24 bg-white rounded-lg border border-gray-200 flex items-center justify-center shadow-sm">
@@ -315,6 +372,9 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                             )}
                           </div>
                       </div>
+                      <p className="text-[9px] text-gray-400 mt-1 italic leading-tight">
+                         💡 Al subir un PDF, la IA intentará completar los datos faltantes automáticamente.
+                      </p>
                   </div>
               </div>
 
