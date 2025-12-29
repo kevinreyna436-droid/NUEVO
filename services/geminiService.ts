@@ -208,7 +208,7 @@ export const visualizeUpholstery = async (
       
       TASKS:
       1. **Fabric Application**: Identify the soft upholstery parts of Input 1. Replace the original surface pixel data with the texture from Input 2.
-         - *Scaling*: The fabric swatch (Input 2) is a macro shot. Scale it down significantly (make the pattern smaller/denser) so it looks realistic on the furniture size.
+         - *Scaling*: The fabric swatch (Input 2) is a macro close-up. **You MUST tile and scale it down SIGNIFICANTLY (reduce scale by roughly 60-70%)** so the weave pattern appears fine and realistic relative to the furniture size. The texture should look like a high-quality furniture fabric, not a zoomed-in microscope shot.
          - *Blending*: Multiply the new texture with the original lighting/shadow map to keep the volume.
          
       ${woodBase64 ? '2. **Wood Application**: Identify rigid structure parts (legs, arms, base). Replace their surface color/grain with Input 3. Maintain the original specularity (shine) and form.' : ''}
