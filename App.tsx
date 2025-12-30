@@ -256,14 +256,15 @@ function App() {
   };
 
   const handleReset = async () => {
-    if (window.confirm("¡ATENCIÓN! 🗑️\n\n¿Estás seguro de que quieres BORRAR TODO el catálogo de la nube?\n\nEsta acción es irreversible.")) {
+    if (window.confirm("¡ATENCIÓN! 🗑️\n\n¿Estás seguro de que quieres BORRAR todas las TELAS?\n\n(Las maderas y muebles se mantendrán).")) {
       try {
         setLoading(true);
         setLoadingProgress(50);
         await clearFirestoreCollection();
-        setFabrics([]); 
+        // Recargamos para mantener los items que NO se borraron (como maderas)
+        setFabrics(prev => prev.filter(f => f.category === 'wood'));
         setLoadingProgress(100);
-        alert("Catálogo borrado exitosamente.");
+        alert("Telas eliminadas exitosamente. Maderas y Muebles conservados.");
         setLoading(false);
       } catch (e) { 
           console.error("Error clearing catalog:", e);

@@ -374,6 +374,10 @@ export const deleteFurnitureTemplateFromFirestore = async (id: string) => {
     } catch (error) { console.error("Error deleting furniture:", error); throw error; }
 };
 
+/**
+ * Borra SOLO los items que NO son categoría 'wood'.
+ * Mantiene 'wood' (Maderas) y no toca la colección de 'furniture'.
+ */
 export const clearFirestoreCollection = async () => {
     try {
         await waitForAuth();
@@ -387,6 +391,10 @@ export const clearFirestoreCollection = async () => {
         let batches = [];
 
         for (const doc of snapshot.docs) {
+            const data = doc.data();
+            // PROTECCIÓN DE DATOS: NO borrar maderas
+            if (data.category === 'wood') continue; 
+
             batch.delete(doc.ref);
             count++;
             if (count >= 400) {
