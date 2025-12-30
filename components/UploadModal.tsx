@@ -21,7 +21,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
     isOpen, onClose, onSave, onBulkSave, onReset, existingFabrics = [],
     existingFurniture = [], onSaveFurniture, onDeleteFurniture
 }) => {
-  const [activeTab, setActiveTab] = useState<'fabrics' | 'furniture' | 'woods'>('fabrics');
+  const [activeTab, setActiveTab] = useState<'fabrics' | 'furniture' | 'woods' | 'rugs'>('fabrics');
   
   // States for Fabrics
   const [step, setStep] = useState<'upload' | 'processing' | 'review'>('upload');
@@ -39,6 +39,11 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const [woodName, setWoodName] = useState(''); // Color/Acabado
   const [woodSupplier, setWoodSupplier] = useState('');
   const [woodImage, setWoodImage] = useState<string | null>(null);
+
+  // States for Rugs (Tapetes)
+  const [rugName, setRugName] = useState('');
+  const [rugSupplier, setRugSupplier] = useState('');
+  const [rugImage, setRugImage] = useState<string | null>(null);
   
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0); // 0-100%
@@ -56,6 +61,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const mobileInputRef = useRef<HTMLInputElement>(null);
   const furnitureInputRef = useRef<HTMLInputElement>(null);
   const woodInputRef = useRef<HTMLInputElement>(null);
+  const rugInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -75,16 +81,25 @@ const UploadModal: React.FC<UploadModalProps> = ({
       const imgFiles = groupFiles.filter(f => f.type.startsWith('image/'));
       let rawData: any = { name: groupName, supplier: "", technicalSummary: "", specs: {} };
 
+      // GUARADAR PDF ORIGINAL: Si hay un PDF, lo leemos y lo guardamos para descarga futura.
+      let pdfBase64 = "";
+      if (pdfFile) {
+          try {
+              pdfBase64 = await fileToBase64(pdfFile);
+              rawData.pdfUrl = pdfBase64; // IMPORTANTE: Guardar el string completo para que FabricDetail pueda descargarlo.
+          } catch(e) { console.warn("Error leyendo PDF", e); }
+      }
+
       // PARALLEL PROCESSING STEP 1: Process PDF and Main Image AI Analysis concurrently
       const analysisPromises = [];
 
-      // A. PDF Analysis
-      if (pdfFile) {
+      // A. PDF Analysis (Prioridad Alta)
+      if (pdfFile && pdfBase64) {
           analysisPromises.push(async () => {
              try {
-                const base64Data = await fileToBase64(pdfFile);
-                const pdfData = await extractFabricData(base64Data.split(',')[1], 'application/pdf');
-                return { type: 'pdf', data: pdfData };
+                // Pasamos el contenido del PDF a Gemini para extraer proveedor y resumen
+                const pdfData = await extractFabricData(pdfBase64.split(',')[1], 'application/pdf');
+                return { type: 'pdf_analysis', data: pdfData };
              } catch(e) { return null; }
           });
       } else if (imgFiles.length > 0) {
@@ -115,21 +130,20 @@ const UploadModal: React.FC<UploadModalProps> = ({
       if (rawData.name) rawData.name = toSentenceCase(rawData.name);
 
       // PARALLEL PROCESSING STEP 2: Process ALL Color Swatches concurrently
-      // Instead of loop-await, we map to promises and await Promise.all
       const colorImages: Record<string, string> = {};
       const colors: string[] = [];
 
       const colorProcessingPromises = imgFiles.map(async (file) => {
           try {
-              // 1. Compress Image (High Quality for visual, but parallelized)
+              // 1. Compress Image
               const base64 = await compressImage(file, 1600, 0.90);
               
-              // 2. Extract Data (AI OCR)
+              // 2. Extract Data (AI OCR for Color Name)
               const extractionResult = await extractColorFromSwatch(base64.split(',')[1]);
               
               let detectedName = extractionResult.colorName;
               
-              // Fallback to filename if AI fails
+              // Si la IA dice "Desconocido", usamos el nombre del archivo
               if (!detectedName || detectedName === 'Desconocido') {
                   detectedName = file.name.split('.')[0];
               }
@@ -173,7 +187,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
       // Ensure mainImage is set from the first available color if possible
       const mainImage = imgFiles.length > 0 ? colorImages[colors[0]] : '';
 
-      // Default category is model (fabric), user can change it to wood in review
       return { ...rawData, colors, colorImages, mainImage, category: 'model' };
   };
 
@@ -376,7 +389,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
             mainImage: finalMainImage || '', // Use the safe main image
             specsImage: data.specsImage,
             pdfUrl: data.pdfUrl,
-            category: data.category as 'model' | 'wood' || 'model', // Pass through the category
+            category: data.category as 'model' | 'wood' | 'rug' || 'model', // Pass through the category
             customCatalog: data.customCatalog 
         };
     });
@@ -487,6 +500,64 @@ const UploadModal: React.FC<UploadModalProps> = ({
       }
   };
 
+  // --- LOGICA TAPETES (RUGS) ---
+  const handleRugImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          try {
+              const base64 = await compressImage(e.target.files[0], 1024, 0.85);
+              setRugImage(base64);
+          } catch (err) { alert("Error procesando imagen del tapete"); }
+      }
+  };
+
+  const handleSaveRugInternal = async () => {
+      if (!rugName || !rugImage) { alert("Falta nombre o imagen del tapete"); return; }
+
+      const hasWrite = await validateWriteAccess();
+      if(!hasWrite) {
+          alert("Error: No tienes permiso para escribir en la base de datos.");
+          return;
+      }
+
+      setIsSaving(true);
+      setUploadProgress(10);
+      setUploadStatusText('SUBIENDO TAPETE...');
+
+      const interval = setInterval(() => {
+        setUploadProgress(prev => (prev >= 90 ? 90 : prev + 5));
+      }, 200);
+
+      // Creamos un objeto Fabric pero con category='rug'
+      const newRug: Fabric = {
+          id: `rug-${Date.now()}`,
+          name: toSentenceCase(rugName),
+          supplier: rugSupplier ? rugSupplier.toUpperCase() : 'CREATA RUGS',
+          category: 'rug',
+          mainImage: rugImage,
+          technicalSummary: 'Tapete decorativo',
+          specs: { composition: 'Textil', martindale: 'N/A', usage: 'Suelo' },
+          colors: [],
+          colorImages: {}
+      };
+
+      try {
+          await onSave(newRug);
+          clearInterval(interval);
+          setUploadProgress(100);
+          setTimeout(() => {
+             window.location.reload();
+          }, 800);
+      } catch (err: any) {
+          clearInterval(interval);
+          setIsSaving(false);
+           if (err.message && (err.message.includes('permission-denied') || err.message.includes('unauthorized'))) {
+            alert("Error: Reglas de Storage/DB insuficientes.");
+          } else {
+            alert("Error guardando tapete.");
+          }
+      }
+  };
+
   const handleSaveFurnitureInternal = async () => {
       if (!furnName || !furnImage) { alert("Datos incompletos"); return; }
       
@@ -557,24 +628,30 @@ const UploadModal: React.FC<UploadModalProps> = ({
                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900">Regresar</span>
                 </button>
 
-                <div className="flex bg-[#f2f2f2] p-1 rounded-full">
+                <div className="flex bg-[#f2f2f2] p-1 rounded-full overflow-x-auto hide-scrollbar">
                     <button 
                         onClick={() => setActiveTab('fabrics')}
-                        className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] transition-all ${activeTab === 'fabrics' ? 'bg-white shadow-sm text-slate-900' : 'text-gray-400 hover:text-gray-600'}`}
+                        className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] transition-all whitespace-nowrap ${activeTab === 'fabrics' ? 'bg-white shadow-sm text-slate-900' : 'text-gray-400 hover:text-gray-600'}`}
                     >
                         Telas
                     </button>
                     <button 
                         onClick={() => setActiveTab('furniture')}
-                        className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] transition-all ${activeTab === 'furniture' ? 'bg-white shadow-sm text-slate-900' : 'text-gray-400 hover:text-gray-600'}`}
+                        className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] transition-all whitespace-nowrap ${activeTab === 'furniture' ? 'bg-white shadow-sm text-slate-900' : 'text-gray-400 hover:text-gray-600'}`}
                     >
                         Muebles
                     </button>
                     <button 
                         onClick={() => setActiveTab('woods')}
-                        className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] transition-all ${activeTab === 'woods' ? 'bg-white shadow-sm text-slate-900' : 'text-gray-400 hover:text-gray-600'}`}
+                        className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] transition-all whitespace-nowrap ${activeTab === 'woods' ? 'bg-white shadow-sm text-slate-900' : 'text-gray-400 hover:text-gray-600'}`}
                     >
                         Maderas
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('rugs')}
+                        className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] transition-all whitespace-nowrap ${activeTab === 'rugs' ? 'bg-white shadow-sm text-slate-900' : 'text-gray-400 hover:text-gray-600'}`}
+                    >
+                        Tapetes
                     </button>
                 </div>
             </div>
@@ -660,6 +737,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                     <svg className="w-4 h-4 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                     Borrar Telas (Modelos y Colores)
                                 </button>
+                                <p className="text-[9px] text-red-300 mt-2 text-center">* Solo borra las Telas. Los Muebles y Tapetes se conservan.</p>
                             </div>
                           )}
                       </div>
@@ -668,7 +746,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         <div className="text-center py-20">
                             <div className="animate-spin h-12 w-12 border-b-2 border-black mx-auto mb-6"></div>
                             <p className="text-lg font-serif italic">{currentProgress}</p>
-                            <p className="text-xs text-gray-400 mt-2">Leyendo etiquetas en paralelo con IA...</p>
+                            <p className="text-xs text-gray-400 mt-2">Leyendo etiquetas y PDFs con IA...</p>
                         </div>
                     )}
                     {step === 'review' && (
@@ -807,7 +885,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         </div>
                     </div>
                 </div>
-            ) : (
+            ) : activeTab === 'woods' ? (
                 /* --- WOODS UI --- */
                 <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
                     <div className="text-center mb-8">
@@ -839,6 +917,41 @@ const UploadModal: React.FC<UploadModalProps> = ({
                             </div>
 
                             <button onClick={handleSaveWoodInternal} disabled={!woodImage || !woodName} className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl hover:scale-105 transition-transform disabled:opacity-50">Guardar Madera</button>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                /* --- RUGS UI --- */
+                <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
+                    <div className="text-center mb-8">
+                        <h3 className="font-serif text-3xl font-bold mb-2">Nuevo Tapete</h3>
+                        <p className="text-sm text-gray-400">Sube una foto del tapete para el catálogo.</p>
+                    </div>
+                    <div className="flex flex-col md:flex-row gap-8 items-start">
+                        <div onClick={() => rugInputRef.current?.click()} className="w-full md:w-1/2 aspect-square bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 cursor-pointer flex flex-col items-center justify-center relative overflow-hidden group">
+                            {rugImage ? (
+                                <img src={rugImage} className="w-full h-full object-cover rounded-2xl" />
+                            ) : (
+                                <div className="flex flex-col items-center text-gray-400">
+                                    <svg className="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                    <span className="text-xs font-bold uppercase">Subir Foto</span>
+                                </div>
+                            )}
+                        </div>
+                        <input ref={rugInputRef} type="file" accept="image/*" className="hidden" onChange={handleRugImageChange} />
+
+                        <div className="w-full md:w-1/2 space-y-6">
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1 tracking-widest">Nombre / Modelo</label>
+                                <input type="text" value={rugName} onChange={(e) => setRugName(e.target.value)} placeholder="Ej: Tapete Persa 3x2" className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 font-serif text-lg" />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1 tracking-widest">Proveedor</label>
+                                <input type="text" value={rugSupplier} onChange={(e) => setRugSupplier(e.target.value)} placeholder="Ej: CREATA RUGS" className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 font-serif text-sm uppercase" />
+                            </div>
+
+                            <button onClick={handleSaveRugInternal} disabled={!rugImage || !rugName} className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl hover:scale-105 transition-transform disabled:opacity-50">Guardar Tapete</button>
                         </div>
                     </div>
                 </div>

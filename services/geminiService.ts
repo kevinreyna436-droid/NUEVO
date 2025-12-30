@@ -48,11 +48,8 @@ const safeJsonParse = (text: string | undefined): any => {
     return JSON.parse(clean);
   } catch (e) {
     console.warn("JSON parsing failed (possibly truncated or invalid format). Returning empty object.", e);
-    // Optional: Try to parse a substring if the end is malformed (e.g. truncated)
-    // This is a basic recovery attempt for common truncation cases
     if (typeof text === 'string') {
         const firstBrace = text.indexOf('{');
-        // Try to find the last closing brace
         for (let i = text.length - 1; i > firstBrace; i--) {
             if (text[i] === '}') {
                 try {
@@ -69,7 +66,7 @@ const safeJsonParse = (text: string | undefined): any => {
 
 /**
  * Extrae datos técnicos de una tela a partir de una imagen o PDF.
- * Ahora busca también la lista de colores disponibles en el texto.
+ * UPDATED: Includes visual analysis fallback if text is missing.
  */
 export const extractFabricData = async (base64Data: string, mimeType: string): Promise<any> => {
   return retryWithBackoff(async () => {
@@ -80,15 +77,17 @@ export const extractFabricData = async (base64Data: string, mimeType: string): P
         parts: [
           { inlineData: { mimeType, data: base64Data } },
           { text: `
-            Analyze this fabric technical document (PDF) or image header.
+            Analyze this document (PDF or Image). It is a Technical Fabric Specification Sheet.
             
-            OBJECTIVE: Extract the main identity of the fabric model.
+            OBJECTIVE: Extract complete fabric data.
             
             INSTRUCTIONS:
-            1. **MODEL NAME (Crucial)**: Look for the LARGEST text at the top of the page. It is usually a single word like "FINN", "ALANIS", "RON". Ignore generic titles like "Technical Sheet".
-            2. **SUPPLIER**: Look for small brand logos, copyright footers, or web addresses (e.g., 'FORMATEX', 'SUNBRELLA').
-            3. **TECHNICAL SUMMARY**: Extract a brief description in Spanish found in the text.
-            4. **SPECS**: Find technical values for Composition (e.g., '100% Polyester'), Weight (gr/m2), Martindale (cycles).
+            1. **SUPPLIER NAME**: Search specifically in the HEADER or FOOTER for the brand name (e.g., FORMATEX, ARTEX, CREATA). If found, extract it exactly.
+            2. **MODEL NAME**: Look for the largest text usually at the top.
+            3. **TECHNICAL SUMMARY (CRITICAL)**: Read the "Description", "Notes", or "General Info" paragraph. Summarize it in Spanish. Include details about texture, usage, or finish (e.g., "Easy Clean"). 
+               - IF PDF: You MUST extract this from the text.
+               - IF IMAGE with no text: Analyze the texture visually.
+            4. **SPECS**: Extract Composition, Weight, Martindale (abrasion), and Usage (Heavy Duty, Decorative, etc.).
             
             Return clean JSON.
           ` }
@@ -99,13 +98,10 @@ export const extractFabricData = async (base64Data: string, mimeType: string): P
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            name: { type: Type.STRING, description: "The Model Name found at the top (e.g. FINN)" },
+            name: { type: Type.STRING },
             supplier: { type: Type.STRING },
             technicalSummary: { type: Type.STRING },
-            availableColors: { 
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-            },
+            availableColors: { type: Type.ARRAY, items: { type: Type.STRING } },
             specs: {
               type: Type.OBJECT,
               properties: {
@@ -119,14 +115,12 @@ export const extractFabricData = async (base64Data: string, mimeType: string): P
         }
       }
     });
-
     return safeJsonParse(response.text);
   });
 };
 
 /**
  * Identifica el nombre del color Y el proveedor leyendo la etiqueta (OCR).
- * Retorna un objeto con ambos datos.
  */
 export const extractColorFromSwatch = async (base64Data: string): Promise<{ colorName: string, supplierName?: string }> => {
   return retryWithBackoff(async () => {
@@ -137,23 +131,16 @@ export const extractColorFromSwatch = async (base64Data: string): Promise<{ colo
         parts: [
           { inlineData: { mimeType: "image/jpeg", data: base64Data } },
           { text: `
-            Analyze this fabric swatch image.
+            Analyze this image of a fabric swatch with a label.
             
-            TASK: Extract the **COLOR NAME** text overlaid on the image.
+            TASK 1: **READ** the specific color name printed on the label (OCR).
+               - Look for text like "05 Sand", "Navy Blue", "12 Graphite".
+               - Do not describe the visual color (e.g., do NOT say "It is blue"). READ the text.
+               - If no text is visible, return "Desconocido".
+               
+            TASK 2: Look for a Supplier/Brand name on the label (e.g., FORMARTEX).
             
-            LOCATIONS TO CHECK:
-            - **Bottom Left Corner**
-            - **Bottom Right Corner**
-            - **Center Bottom**
-            
-            EXAMPLES:
-            - If image shows text "Graphite" at the bottom -> Return "Graphite".
-            - If image shows text "Nickel" -> Return "Nickel".
-            - If text is "FINN GRAPHITE" -> Return "Graphite" (remove the model name if obvious).
-            
-            Return JSON with:
-            - colorName: The exact text found. If no text is found, return "Desconocido".
-            - supplierName: If a brand logo is visible (rare).
+            Return JSON.
           ` }
         ]
       },
@@ -168,7 +155,6 @@ export const extractColorFromSwatch = async (base64Data: string): Promise<{ colo
         }
       }
     });
-    
     const result = safeJsonParse(response.text);
     return {
         colorName: result.colorName || "Desconocido",
@@ -178,8 +164,8 @@ export const extractColorFromSwatch = async (base64Data: string): Promise<{ colo
 };
 
 /**
- * Visualizador Pro: Aplica la tela al mueble (Nano Banana Pro / Gemini 3 Pro Image).
- * Ahora soporta opcionalmente una textura de madera (Input 3).
+ * Visualizador Pro: Aplica la tela al mueble (Gemini 3 Pro Image).
+ * PROMPT REFORZADO CON GEOMETRY LOCK
  */
 export const visualizeUpholstery = async (
     furnitureBase64: string, 
@@ -189,31 +175,28 @@ export const visualizeUpholstery = async (
   return retryWithBackoff(async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Prompt optimizado para MANTENER GEOMETRÍA ABSOLUTA
+    // --- GEOMETRY LOCK PROMPT ---
     let promptText = `
-      You are a specialized texture mapping engine. You are NOT a creative generator.
+      Role: Professional Digital Retoucher / Texture Mapping Specialist.
+      Task: Apply the provided fabric texture to the furniture in the source image.
       
       INPUTS:
-      1. Base Furniture Image (The "Target").
-      2. Fabric Texture (The "Material").
-      ${woodBase64 ? '3. Wood Texture (The "Finish").' : ''}
+      1. Source Image: Furniture scene (Reference Geometry).
+      2. Texture Image: Fabric swatch.
+      ${woodBase64 ? '3. Finish Image: Wood texture.' : ''}
       
-      OBJECTIVE:
-      Apply the materials to the target object using strict digital compositing rules.
+      CRITICAL RULES (GEOMETRY LOCK):
+      1. **ABSOLUTE POSITIONING**: The furniture MUST remain in the exact same pixel coordinates. Do not move, rotate, zoom, or shift the camera angle.
+      2. **BACKGROUND PRESERVATION**: The floor, walls, shadows, and surrounding objects must remain 100% identical to Input 1.
+      3. **VOLUME & LIGHTING**: You must strictly preserve the original folds, wrinkles, ambient occlusion, and lighting highlights of Input 1.
       
-      CRITICAL CONSTRAINTS (DO NOT VIOLATE):
-      - **ZERO GEOMETRY CHANGE**: The output furniture MUST align pixel-perfectly with Input 1. Do not rotate, zoom, crop, or change the perspective. The silhouette must be identical.
-      - **PRESERVE BACKGROUND**: Do not regenerate the floor, walls, or background. Keep them exactly as they are in Input 1.
-      - **PRESERVE SHADOWS**: The lighting shadows on the floor and the self-shadows on the furniture cushions must remain exactly where they are.
+      EXECUTION:
+      - Replace the existing upholstery material with Input 2.
+      - Scale the texture down (60-80%) to simulate realistic thread count.
+      - Blend mode: Use "Multiply" logic to keep original shadows visible.
+      ${woodBase64 ? '- Apply Input 3 to rigid parts (legs/arms) maintaining original specular highlights.' : ''}
       
-      TASKS:
-      1. **Fabric Application**: Identify the soft upholstery parts of Input 1. Replace the original surface pixel data with the texture from Input 2.
-         - *Scaling*: The fabric swatch (Input 2) is a macro close-up. **You MUST tile and scale it down SIGNIFICANTLY (reduce scale by roughly 60-70%)** so the weave pattern appears fine and realistic relative to the furniture size. The texture should look like a high-quality furniture fabric, not a zoomed-in microscope shot.
-         - *Blending*: Multiply the new texture with the original lighting/shadow map to keep the volume.
-         
-      ${woodBase64 ? '2. **Wood Application**: Identify rigid structure parts (legs, arms, base). Replace their surface color/grain with Input 3. Maintain the original specularity (shine) and form.' : ''}
-      
-      Output the final composite image.
+      Output only the high-quality composite image.
     `;
 
     const parts: { inlineData?: { mimeType: string; data: string }; text?: string }[] = [
@@ -229,9 +212,7 @@ export const visualizeUpholstery = async (
 
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-image-preview",
-      contents: {
-        parts: parts
-      }
+      contents: { parts: parts }
     });
 
     for (const candidate of response.candidates || []) {
@@ -241,14 +222,10 @@ export const visualizeUpholstery = async (
         }
       }
     }
-    
     throw new Error("No image generated by the model");
   });
 };
 
-/**
- * Generador de diseños de tela (Image Gen).
- */
 export const generateFabricDesign = async (prompt: string, aspectRatio: string = "1:1", size: string = "1K"): Promise<string> => {
   return retryWithBackoff(async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -258,13 +235,9 @@ export const generateFabricDesign = async (prompt: string, aspectRatio: string =
         parts: [{ text: `Design a seamless fabric pattern: ${prompt}. High quality, detailed texture.` }]
       },
       config: {
-        imageConfig: {
-          aspectRatio: aspectRatio as any, 
-          imageSize: size as any
-        }
+        imageConfig: { aspectRatio: aspectRatio as any, imageSize: size as any }
       }
     });
-
     for (const candidate of response.candidates || []) {
       for (const part of candidate.content.parts) {
         if (part.inlineData && part.inlineData.data) {
@@ -276,37 +249,22 @@ export const generateFabricDesign = async (prompt: string, aspectRatio: string =
   });
 };
 
-/**
- * ChatBot Experto.
- */
 export const chatWithExpert = async (message: string, history: any[], context: string): Promise<{ text: string, sources?: any[] }> => {
   return retryWithBackoff(async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const systemInstruction = `You are an expert textile consultant for 'Creata Collection'. 
-    Use the following catalog data to answer questions: 
-    ${context}
-    
-    If the answer is not in the context, use your general knowledge but mention it's general info.
-    Be concise, professional, and helpful. Always answer in Spanish.`;
-
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: [
-            ...history,
-            { role: 'user', parts: [{ text: message }] }
-        ],
+        contents: [...history, { role: 'user', parts: [{ text: message }] }],
         config: {
-            systemInstruction: systemInstruction,
+            systemInstruction: `You are an expert textile consultant for 'Creata Collection'. Context: ${context}. Answer in Spanish.`,
             tools: [{ googleSearch: {} }]
         }
     });
-
     const text = response.text || "";
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
         title: chunk.web?.title || "Fuente Web",
         uri: chunk.web?.uri || "#"
     })).filter((s: any) => s.uri !== "#") || [];
-
     return { text, sources };
   });
 };

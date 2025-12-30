@@ -251,12 +251,22 @@ const processFabricImagesForCloud = async (fabric: Fabric): Promise<Fabric> => {
     
     const promises = [];
     
+    // Subir imagen principal
     if (updatedFabric.mainImage?.startsWith('data:')) {
         promises.push((async () => updatedFabric.mainImage = await uploadImageToStorage(updatedFabric.mainImage, `fabrics/${cleanId}/main_${timestamp}.jpg`))());
     }
+    // Subir imagen de especificaciones
     if (updatedFabric.specsImage?.startsWith('data:')) {
         promises.push((async () => updatedFabric.specsImage = await uploadImageToStorage(updatedFabric.specsImage, `fabrics/${cleanId}/specs_${timestamp}.jpg`))());
     }
+    // Subir PDF original (SI EXISTE)
+    if (updatedFabric.pdfUrl?.startsWith('data:')) {
+        // Detectar si es realmente un PDF por el header
+        if (updatedFabric.pdfUrl.includes('application/pdf')) {
+             promises.push((async () => updatedFabric.pdfUrl = await uploadImageToStorage(updatedFabric.pdfUrl, `fabrics/${cleanId}/original_specs_${timestamp}.pdf`))());
+        }
+    }
+
     if (updatedFabric.colorImages) {
         const newColors = { ...updatedFabric.colorImages };
         const colorEntries = Object.entries(updatedFabric.colorImages);
@@ -375,8 +385,8 @@ export const deleteFurnitureTemplateFromFirestore = async (id: string) => {
 };
 
 /**
- * Borra SOLO los items que NO son categoría 'wood'.
- * Mantiene 'wood' (Maderas) y no toca la colección de 'furniture'.
+ * Borra SOLO los items que NO son categoría 'wood' ni 'rug'.
+ * Mantiene 'wood' (Maderas) y 'rug' (Tapetes) y no toca la colección de 'furniture'.
  */
 export const clearFirestoreCollection = async () => {
     try {
@@ -392,8 +402,8 @@ export const clearFirestoreCollection = async () => {
 
         for (const doc of snapshot.docs) {
             const data = doc.data();
-            // PROTECCIÓN DE DATOS: NO borrar maderas
-            if (data.category === 'wood') continue; 
+            // PROTECCIÓN DE DATOS: NO borrar maderas NI tapetes
+            if (data.category === 'wood' || data.category === 'rug') continue; 
 
             batch.delete(doc.ref);
             count++;

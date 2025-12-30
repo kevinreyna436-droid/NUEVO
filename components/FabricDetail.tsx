@@ -79,12 +79,31 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
   };
 
   const handleDownloadFicha = async (e: React.MouseEvent) => {
-      // If a real PDF URL exists, we allow the <a> tag to handle it natively.
-      // This will download the ORIGINAL pdf uploaded by the user.
-      if (fabric.pdfUrl) return; 
+      e.preventDefault(); // Control total del evento
       
-      e.preventDefault();
+      // OPCIÓN A: DESCARGAR ORIGINAL
+      // Si existe una URL de PDF (ya sea Base64 o URL remota), la descargamos directamente.
+      if (fabric.pdfUrl) {
+          try {
+              const link = document.createElement('a');
+              link.href = fabric.pdfUrl;
+              
+              // Sanitizar nombre de archivo
+              const safeName = fabric.name.replace(/\s+/g, '_');
+              link.download = `Ficha_Original_${safeName}.pdf`;
+              link.target = '_blank'; // Ayuda con algunos navegadores y URLs remotas
+              
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+          } catch (err) {
+              console.error("Error iniciando descarga del PDF original", err);
+              alert("Error al intentar descargar el archivo original.");
+          }
+          return;
+      }
       
+      // OPCIÓN B: GENERAR PDF (Si no hay original)
       // Initialize PDF Generator (Fallback)
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -315,7 +334,7 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
       {showSpecs && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-fade-in" onClick={() => setShowSpecs(false)}>
             <div 
-                className="bg-white w-full max-w-2xl rounded-3xl p-10 md:p-12 shadow-2xl relative"
+                className="bg-white w-full max-w-2xl rounded-3xl p-10 md:p-12 shadow-2xl relative max-h-[90vh] overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
             >
                 <button 
@@ -327,53 +346,57 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
 
                 <h3 className="font-serif text-3xl font-bold mb-6 text-slate-900 leading-tight">Resumen Técnico</h3>
                 
-                {fabric.specsImage ? (
-                     <div className="mb-6 rounded-lg overflow-hidden border border-gray-100">
-                         <img src={fabric.specsImage} alt="Ficha Técnica" className="w-full h-auto object-contain" />
+                {/* 1. Show Image IF Exists */}
+                {fabric.specsImage && (
+                     <div className="mb-8 rounded-lg overflow-hidden border border-gray-100">
+                         <img src={fabric.specsImage} alt="Ficha Técnica Visual" className="w-full h-auto object-contain" />
+                         <p className="text-[10px] text-gray-400 text-center mt-2 uppercase tracking-widest">Documento escaneado</p>
                      </div>
-                ) : (
-                    <>
-                        {/* Only show technical summary if it exists */}
-                        {fabric.technicalSummary && (
-                            <p className="text-gray-600 mb-10 leading-relaxed font-sans text-lg border-b border-gray-100 pb-8">
-                                {fabric.technicalSummary}
-                            </p>
-                        )}
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
-                            {/* Hide blocks if data is missing */}
-                            {fabric.specs.composition && (
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Composición</span>
-                                    <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.composition}</span>
-                                </div>
-                            )}
-                            {fabric.specs.martindale && (
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Durabilidad</span>
-                                    <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.martindale}</span>
-                                </div>
-                            )}
-                            {fabric.specs.weight && (
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Peso</span>
-                                    <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.weight}</span>
-                                </div>
-                            )}
-                        </div>
-                    </>
                 )}
 
+                {/* 2. Show Extracted Data ALWAYS (if available), regardless of image */}
+                <div className="mt-4">
+                     {fabric.technicalSummary ? (
+                        <p className="text-gray-600 mb-10 leading-relaxed font-sans text-lg border-b border-gray-100 pb-8">
+                            {fabric.technicalSummary}
+                        </p>
+                     ) : (
+                        <p className="text-gray-400 italic mb-10 text-sm">
+                            Información técnica no disponible. <br/>
+                            <span className="text-[10px] not-italic">Usa el botón "." para editar y agregar datos manualmente.</span>
+                        </p>
+                     )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
+                        {fabric.specs.composition && (
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Composición</span>
+                                <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.composition}</span>
+                            </div>
+                        )}
+                        {fabric.specs.martindale && (
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Durabilidad</span>
+                                <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.martindale}</span>
+                            </div>
+                        )}
+                        {fabric.specs.weight && (
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 font-sans">Peso</span>
+                                <span className="text-xl text-slate-900 font-medium font-serif leading-tight">{fabric.specs.weight}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
                 <div className="flex justify-end pt-2">
-                     <a 
-                       href={fabric.pdfUrl || "#"} 
-                       download={fabric.pdfUrl ? `Ficha_Original_${fabric.name}.pdf` : `Ficha_Generada_${fabric.name}.pdf`}
-                       className="flex items-center space-x-2 bg-black text-white px-8 py-4 rounded-full text-xs font-bold uppercase hover:bg-gray-800 transition-colors shadow-lg tracking-widest"
+                     <button 
                        onClick={handleDownloadFicha}
+                       className="flex items-center space-x-2 bg-black text-white px-8 py-4 rounded-full text-xs font-bold uppercase hover:bg-gray-800 transition-colors shadow-lg tracking-widest cursor-pointer"
                      >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                         <span>{fabric.pdfUrl ? 'Descargar PDF Original' : 'Generar PDF'}</span>
-                     </a>
+                     </button>
                 </div>
             </div>
         </div>
