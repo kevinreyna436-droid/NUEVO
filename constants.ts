@@ -107,5 +107,13 @@ export const FURNITURE_TEMPLATES: FurnitureTemplate[] = [
     name: 'Sofá Minimalista',
     category: 'sofa',
     imageUrl: 'https://images.unsplash.com/photo-1550254478-ead40cc54513?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'
+  },
+  {
+    id: 'rug-01',
+    name: 'Habitación Vacía (Concreto)',
+    category: 'rug',
+    // Using the requested image: Empty room, concrete floor, curtains
+    imageUrl: 'https://images.unsplash.com/photo-1634712282287-14ed57ef99df?q=80&w=2000&auto=format&fit=crop',
+    supplier: 'CREATA RUGS'
   }
 ];

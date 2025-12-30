@@ -118,7 +118,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         'sofa': 'Sofá',
         'chair': 'Silla',
         'armchair': 'Butaca',
-        'bed': 'Cama'
+        'bed': 'Cama',
+        'rug': 'Tapete'
     };
     const lower = cat.toLowerCase();
     if (map[lower]) return map[lower];
@@ -281,6 +282,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       return true; 
   });
 
+  const furnitureTemplates = templates.filter(t => t.category !== 'rug');
+  const rugTemplates = templates.filter(t => t.category === 'rug');
+
   return (
     <div className="container mx-auto px-4 md:px-6 pb-20 max-w-7xl animate-fade-in-up relative">
       
@@ -319,30 +323,75 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
             <div className="w-full p-8 md:p-12">
                  {step === 1 && (
                     <div className="animate-fade-in relative">
-                        <h3 className="font-serif text-3xl mb-8 text-center text-slate-900">
-                            {isEditMode ? 'Selecciona un mueble para EDITAR' : '1. Selecciona el mueble a retapizar'}
-                        </h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                            {templates.map((item) => (
-                                <div 
-                                    key={item.id} 
-                                    onClick={() => handleFurnitureClick(item)} 
-                                    className={`cursor-pointer rounded-3xl border hover:border-black/20 bg-white/40 hover:bg-white/60 overflow-hidden group shadow-lg transition-all relative backdrop-blur-sm ${isEditMode ? 'border-red-400 ring-2 ring-red-400/50' : 'border-black/5'}`}
-                                >
-                                    <img 
-                                      src={item.imageUrl} 
-                                      className="w-full h-48 object-contain p-4 group-hover:scale-105 transition-transform duration-700" 
-                                      alt={item.name}
-                                    />
-                                    <div className={`absolute bottom-0 left-0 right-0 backdrop-blur-md p-3 text-center border-t border-black/5 ${isEditMode ? 'bg-red-500/20' : 'bg-white/50'}`}>
-                                        <h4 className="font-serif font-bold text-sm text-slate-900 line-clamp-1">{item.name}</h4>
-                                        <span className="text-[9px] bg-black text-white px-2 py-0.5 rounded-full absolute top-2 right-2 shadow-sm">{item.supplier || 'GENERIC'}</span>
+                        {isEditMode && (
+                            <h3 className="font-serif text-3xl mb-8 text-center text-slate-900">Selecciona un mueble para EDITAR</h3>
+                        )}
+                        
+                        {/* SECTION: TELAS (Muebles) */}
+                        <div className="mb-12">
+                            <h4 className="font-serif text-2xl mb-6 text-slate-900 pl-4 border-l-4 border-black">
+                                Telas
+                            </h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                                {furnitureTemplates.map((item) => (
+                                    <div 
+                                        key={item.id} 
+                                        onClick={() => handleFurnitureClick(item)} 
+                                        className={`cursor-pointer rounded-3xl border hover:border-black/20 bg-white/40 hover:bg-white/60 overflow-hidden group shadow-lg transition-all relative backdrop-blur-sm ${isEditMode ? 'border-red-400 ring-2 ring-red-400/50' : 'border-black/5'}`}
+                                    >
+                                        <img 
+                                        src={item.imageUrl} 
+                                        className="w-full h-48 object-contain p-4 group-hover:scale-105 transition-transform duration-700" 
+                                        alt={item.name}
+                                        />
+                                        <div className={`absolute bottom-0 left-0 right-0 backdrop-blur-md p-3 text-center border-t border-black/5 ${isEditMode ? 'bg-red-500/20' : 'bg-white/50'}`}>
+                                            <h4 className="font-serif font-bold text-sm text-slate-900 line-clamp-1">{item.name}</h4>
+                                            <span className="text-[9px] bg-black text-white px-2 py-0.5 rounded-full absolute top-2 right-2 shadow-sm">{item.supplier || 'GENERIC'}</span>
+                                            {isEditMode && (
+                                                <p className="text-[9px] uppercase font-bold text-red-600">Editar</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* SECTION: TAPETES (Single Large Card) */}
+                        <div>
+                            <h4 className="font-serif text-2xl mb-6 text-slate-900 pl-4 border-l-4 border-black">
+                                Tapetes
+                            </h4>
+                            <div className="w-full flex justify-center">
+                                {rugTemplates.map((item) => (
+                                    <div 
+                                        key={item.id} 
+                                        onClick={() => handleFurnitureClick(item)} 
+                                        className={`w-[95%] md:w-[90%] aspect-[16/9] md:aspect-[21/9] cursor-pointer rounded-3xl border hover:border-black/20 bg-white/40 hover:bg-white/60 overflow-hidden group shadow-xl transition-all relative backdrop-blur-sm ${isEditMode ? 'border-red-400 ring-2 ring-red-400/50' : 'border-black/5'}`}
+                                    >
+                                        <img 
+                                        src={item.imageUrl} 
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" 
+                                        alt={item.name}
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+                                        
+                                        <div className="absolute bottom-6 left-6 text-white text-left">
+                                            <h4 className="font-serif font-bold text-2xl md:text-3xl text-shadow-lg">{item.name}</h4>
+                                            <p className="text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] opacity-90 mt-1">
+                                                Toque para previsualizar
+                                            </p>
+                                        </div>
+
+                                        <span className="text-[9px] bg-black text-white px-3 py-1 rounded-full absolute top-4 right-4 shadow-md font-bold uppercase tracking-widest">{item.supplier || 'RUGS'}</span>
+                                        
                                         {isEditMode && (
-                                            <p className="text-[9px] uppercase font-bold text-red-600">Editar</p>
+                                            <div className="absolute top-4 left-4 bg-red-600 text-white px-3 py-1 rounded-full text-[10px] uppercase font-bold shadow-sm">
+                                                Editar Foto Base
+                                            </div>
                                         )}
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
                     </div>
                  )}
@@ -352,7 +401,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                         {/* Left Side: Furniture */}
                         <div className="w-full md:w-1/3 flex flex-col items-center">
                             <div className="aspect-square w-full bg-white rounded-3xl overflow-hidden border border-gray-100 mb-6 p-6 relative shadow-inner">
-                                <img src={selectedFurniture?.imageUrl} className="w-full h-full object-contain drop-shadow-lg" />
+                                <img src={selectedFurniture?.imageUrl} className={`w-full h-full ${selectedFurniture?.category === 'rug' ? 'object-cover' : 'object-contain'} drop-shadow-lg`} />
                             </div>
                             
                             <button 
@@ -360,7 +409,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 className="w-full py-4 px-6 bg-white/40 hover:bg-white/60 rounded-full text-sm font-bold uppercase tracking-widest text-slate-900 transition-all flex items-center justify-center gap-3 backdrop-blur-md shadow-sm hover:shadow-lg border border-white/50"
                             >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                                Cambiar Mueble
+                                Cambiar Escenario
                             </button>
                         </div>
 
@@ -368,7 +417,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                         <div className="flex-1 flex flex-col space-y-8">
                             <div>
                                 <h3 className="font-serif text-4xl mb-2 text-slate-900">2. Elige la textura</h3>
-                                <p className="text-sm text-slate-600 font-medium">Selecciona una tela para ver cómo quedaría.</p>
+                                <p className="text-sm text-slate-600 font-medium">
+                                    {selectedFurniture?.category === 'rug' 
+                                        ? 'Selecciona el tapete que deseas visualizar.' 
+                                        : 'Selecciona una tela para ver cómo quedaría.'}
+                                </p>
                             </div>
                             
                             {/* Model Selector (BY ID NOW) */}
@@ -380,7 +433,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 >
                                     <option value="" className="text-slate-900">Selecciona el Modelo...</option>
                                     {fabrics
-                                        .filter(f => f.category !== 'wood')
+                                        // Filtra telas vs tapetes según la selección actual
+                                        .filter(f => selectedFurniture?.category === 'rug' ? f.category === 'rug' : (f.category !== 'wood' && f.category !== 'rug'))
                                         // Priorizar visualmente las que tienen imágenes
                                         .sort((a,b) => {
                                             const aHasImg = !!a.mainImage;
@@ -455,8 +509,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 </div>
                             )}
 
-                            {/* --- DYNAMIC WOOD SELECTOR BASED ON PROVIDER --- */}
-                            {availableWoods.length > 0 && (
+                            {/* --- DYNAMIC WOOD SELECTOR BASED ON PROVIDER (Only for Furniture, not Rugs) --- */}
+                            {selectedFurniture?.category !== 'rug' && availableWoods.length > 0 && (
                                 <div className="space-y-4 animate-fade-in pt-4 border-t border-black/5">
                                     <h3 className="font-serif text-3xl mb-2 text-slate-900">3. Elige el acabado (Madera)</h3>
                                     <div className="flex justify-between items-center">
