@@ -331,7 +331,17 @@ function App() {
                       <p className="text-sm uppercase tracking-[0.2em] opacity-60 mb-6">{fabrics.find(f => f.id === colorLightbox.fabricId)?.name}</p>
                       <div className="flex items-center justify-center gap-4">
                           <button onClick={(e) => { e.stopPropagation(); const fabric = fabrics.find(f => f.id === colorLightbox.fabricId); if (fabric) { setColorLightbox(null); handleGoToDetail(fabric); }}} className="bg-white text-black px-6 py-3 rounded-full font-bold uppercase text-[10px] tracking-widest hover:bg-gray-200 transition-colors shadow-lg flex items-center gap-2"><span>Ver Ficha Modelo</span></button>
-                          <button onClick={(e) => { e.stopPropagation(); const fabric = fabrics.find(f => f.id === colorLightbox.fabricId); if (fabric) { setColorLightbox(null); handleVisualizeAction(fabric, colorLightbox.colorName); }}} className="bg-transparent border border-white text-white px-6 py-3 rounded-full font-bold uppercase text-[10px] tracking-widest hover:bg-white/10 transition-colors shadow-lg flex items-center gap-2"><span>Probar</span></button>
+                          
+                          {/* HIDE PROBAR BUTTON FOR RUGS */}
+                          {(() => {
+                              const lightboxFabric = fabrics.find(f => f.id === colorLightbox.fabricId);
+                              if (lightboxFabric && lightboxFabric.category !== 'rug') {
+                                  return (
+                                      <button onClick={(e) => { e.stopPropagation(); setColorLightbox(null); handleVisualizeAction(lightboxFabric, colorLightbox.colorName); }} className="bg-transparent border border-white text-white px-6 py-3 rounded-full font-bold uppercase text-[10px] tracking-widest hover:bg-white/10 transition-colors shadow-lg flex items-center gap-2"><span>Probar</span></button>
+                                  );
+                              }
+                              return null;
+                          })()}
                       </div>
                   </div>
               </div>

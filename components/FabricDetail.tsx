@@ -297,21 +297,23 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
                   className="w-full h-full object-contain"
                />
 
-               {/* PREMIUM ACTION BUTTON */}
-               <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-[120]">
-                    <button 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (lightboxIndex !== null) {
-                                const color = sortedColors[lightboxIndex];
-                                onVisualize(fabric, color);
-                            }
-                        }}
-                        className="bg-white text-black px-10 py-4 rounded-full font-serif font-bold text-sm uppercase tracking-[0.25em] shadow-[0_10px_30px_rgba(0,0,0,0.3)] hover:bg-black hover:text-white transition-all duration-500 border border-gray-100 hover:scale-105"
-                    >
-                        Utilizar
-                    </button>
-               </div>
+               {/* PREMIUM ACTION BUTTON - HIDDEN FOR RUGS */}
+               {fabric.category !== 'rug' && (
+                   <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-[120]">
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (lightboxIndex !== null) {
+                                    const color = sortedColors[lightboxIndex];
+                                    onVisualize(fabric, color);
+                                }
+                            }}
+                            className="bg-white text-black px-10 py-4 rounded-full font-serif font-bold text-sm uppercase tracking-[0.25em] shadow-[0_10px_30px_rgba(0,0,0,0.3)] hover:bg-black hover:text-white transition-all duration-500 border border-gray-100 hover:scale-105"
+                        >
+                            Utilizar
+                        </button>
+                   </div>
+               )}
             </div>
 
             <button 
