@@ -11,6 +11,15 @@ interface VisualizerProps {
   onEditFurniture?: (template: FurnitureTemplate) => void;
 }
 
+// Interface to store details of the furniture generated in the previous step
+interface FurnitureOverlayMetadata {
+    furnitureName: string;
+    fabricName: string;
+    fabricColor: string;
+    fabricImg?: string;
+    woodName?: string;
+}
+
 const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSelection, onEditFurniture }) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedFurniture, setSelectedFurniture] = useState<FurnitureTemplate | null>(null);
@@ -24,6 +33,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   
   // New: Furniture Overlay (El sillón generado que se pondrá sobre el tapete)
   const [furnitureOverlay, setFurnitureOverlay] = useState<string | null>(null);
+  // New: Metadata for the overlay furniture to display in the final result
+  const [overlayMetadata, setOverlayMetadata] = useState<FurnitureOverlayMetadata | null>(null);
 
   // Generation & Progress State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -311,6 +322,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           // Reset specific selections but KEEP furnitureOverlay if we are switching to Rug Scene
           if (item.category !== 'rug') {
               setFurnitureOverlay(null); // Reset overlay if picking a new furniture
+              setOverlayMetadata(null); // Reset metadata
           }
           setSelectedWoodId('');
           setStep(2);
@@ -330,17 +342,29 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           return;
       }
 
-      // 2. Save current result as the overlay for the next step
+      // 2. Capture Current Metadata BEFORE changing state
+      const currentFabric = fabrics.find(f => f.id === selectedFabricId);
+      const currentWood = selectedWoodId ? fabrics.find(f => f.id === selectedWoodId) : null;
+      
+      setOverlayMetadata({
+          furnitureName: selectedFurniture?.name || 'Mueble',
+          fabricName: currentFabric?.name || 'Tela',
+          fabricColor: selectedColorName,
+          fabricImg: selectedSwatchUrl,
+          woodName: currentWood?.name
+      });
+
+      // 3. Save current result as the overlay for the next step
       setFurnitureOverlay(resultImage);
 
-      // 3. Set Context to Room Scene
+      // 4. Set Context to Room Scene
       setSelectedFurniture(roomTemplate);
 
-      // 4. Reset Fabric Selection (User must now pick a Rug)
+      // 5. Reset Fabric Selection (User must now pick a Rug)
       setSelectedFabricId('');
       setSelectedColorName('');
       
-      // 5. Go to Step 2 (Select Texture - Rugs)
+      // 6. Go to Step 2 (Select Texture - Rugs)
       setStep(2);
   };
 
@@ -495,7 +519,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                             </div>
                             
                             <button 
-                                onClick={() => { setStep(1); setFurnitureOverlay(null); }} 
+                                onClick={() => { setStep(1); setFurnitureOverlay(null); setOverlayMetadata(null); }} 
                                 className="w-full py-4 px-6 bg-white/40 hover:bg-white/60 rounded-full text-sm font-bold uppercase tracking-widest text-slate-900 transition-all flex items-center justify-center gap-3 backdrop-blur-md shadow-sm hover:shadow-lg border border-white/50"
                             >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
@@ -709,62 +733,104 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                 </div>
 
                 {/* Info Panel */}
-                <div className="w-full md:w-[35%] bg-[rgb(241,245,249)] flex flex-col items-center text-center p-8 md:p-10 z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transition-colors duration-500 text-slate-900">
+                <div className="w-full md:w-[35%] bg-[rgb(241,245,249)] flex flex-col items-center text-center p-8 md:p-10 z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transition-colors duration-500 text-slate-900 overflow-y-auto max-h-[100vh]">
                     <div className="w-full border-b border-black/10 pb-6 mb-8">
-                        <h3 className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">Resultado Generado</h3>
+                        <h3 className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">Escena Generada</h3>
                     </div>
 
-                    <div className="flex-1 w-full flex flex-col items-center justify-center space-y-8">
+                    <div className="flex-1 w-full flex flex-col items-center justify-start space-y-8">
+                        
+                        {/* 1. ROOM / RUG / MAIN FURNITURE SECTION */}
                         <div>
                             <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-2">
                                 {getCategoryLabel(selectedFurniture?.category || '')}
                             </p>
-                            <h2 className="font-serif text-3xl text-slate-900 leading-none">
+                            <h2 className="font-serif text-3xl text-slate-900 leading-none mb-6">
                                 {toSentenceCase(selectedFurniture?.name || 'Mueble')}
                             </h2>
-                        </div>
 
-                        <div className="w-full relative">
-                             <div className="w-12 h-px bg-black/10 mx-auto mb-8"></div>
-                             
-                             <div className="mb-6 relative group inline-block">
-                                <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-4">
-                                    {selectedFurniture?.category === 'rug' ? 'Tapete Aplicado' : 'Tapizado con'}
-                                </p>
-                                <div 
-                                    onClick={() => { setPreviewImage(selectedSwatchUrl || null); setShowOriginalTexture(true); }}
-                                    className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-white shadow-xl cursor-pointer hover:scale-110 transition-transform duration-300 mx-auto group"
-                                >
-                                    <img src={selectedSwatchUrl || ''} className="w-full h-full object-cover" alt="Swatch" />
-                                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
+                            <div className="w-full relative">
+                                 <div className="mb-6 relative group inline-block">
+                                    <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-4">
+                                        {selectedFurniture?.category === 'rug' ? 'Tapete Aplicado' : 'Tapizado con'}
+                                    </p>
+                                    <div 
+                                        onClick={() => { setPreviewImage(selectedSwatchUrl || null); setShowOriginalTexture(true); }}
+                                        className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-white shadow-xl cursor-pointer hover:scale-110 transition-transform duration-300 mx-auto group"
+                                    >
+                                        <img src={selectedSwatchUrl || ''} className="w-full h-full object-cover" alt="Swatch" />
+                                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
+                                        </div>
                                     </div>
-                                </div>
-                             </div>
+                                 </div>
 
-                             <div className="mb-4">
-                                <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-1">Modelo</p>
-                                <h2 className="font-serif text-3xl text-slate-900 leading-tight">
-                                    {toSentenceCase(activeFabric?.name || 'Tela')}
-                                </h2>
-                             </div>
-                             
-                             <div>
-                                <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-1">Color / Variante</p>
-                                <p className="text-xl font-serif italic text-slate-600">
-                                    {toSentenceCase(selectedColorName)}
-                                </p>
-                             </div>
-
-                             {selectedWoodId && (
-                                 <div className="mt-4 pt-4 border-t border-black/5">
-                                    <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-1">Acabado Madera</p>
-                                    <p className="text-lg font-serif italic text-slate-600">
-                                        {fabrics.find(f => f.id === selectedWoodId)?.name}
+                                 <div className="mb-4">
+                                    <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-1">Modelo</p>
+                                    <h2 className="font-serif text-2xl text-slate-900 leading-tight">
+                                        {toSentenceCase(activeFabric?.name || 'Tela')}
+                                    </h2>
+                                 </div>
+                                 
+                                 <div>
+                                    <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-1">Color / Variante</p>
+                                    <p className="text-xl font-serif italic text-slate-600">
+                                        {toSentenceCase(selectedColorName)}
                                     </p>
                                  </div>
-                             )}
+
+                                 {selectedWoodId && (
+                                     <div className="mt-4 pt-4 border-t border-black/5">
+                                        <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-1">Acabado Madera</p>
+                                        <p className="text-lg font-serif italic text-slate-600">
+                                            {fabrics.find(f => f.id === selectedWoodId)?.name}
+                                        </p>
+                                     </div>
+                                 )}
+                            </div>
                         </div>
+
+                        {/* 2. OVERLAY FURNITURE DETAILS (If in Scene Mode) */}
+                        {selectedFurniture?.category === 'rug' && overlayMetadata && (
+                            <div className="w-full pt-8 mt-4 border-t-2 border-black/5">
+                                 <div className="w-8 h-8 bg-slate-900 text-white rounded-full flex items-center justify-center mx-auto mb-4 text-xs font-bold shadow-md">
+                                     +
+                                 </div>
+                                 <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-3">
+                                     Mueble Integrado
+                                 </p>
+                                 
+                                 <h3 className="font-serif text-2xl text-slate-900 leading-none mb-6">
+                                     {toSentenceCase(overlayMetadata.furnitureName)}
+                                 </h3>
+
+                                 <div className="flex gap-4 justify-center items-start">
+                                     {overlayMetadata.fabricImg && (
+                                         <div 
+                                            className="w-16 h-16 rounded-xl overflow-hidden border border-white shadow-md"
+                                            title="Tela del Mueble"
+                                         >
+                                             <img src={overlayMetadata.fabricImg} className="w-full h-full object-cover" />
+                                         </div>
+                                     )}
+                                     <div className="text-left">
+                                         <p className="text-[9px] font-bold uppercase text-slate-400 tracking-wider mb-1">Tela</p>
+                                         <p className="font-serif text-lg text-slate-800 leading-none mb-2">{toSentenceCase(overlayMetadata.fabricName)}</p>
+                                         
+                                         <p className="text-[9px] font-bold uppercase text-slate-400 tracking-wider mb-1">Color</p>
+                                         <p className="font-serif text-sm text-slate-600 italic">{toSentenceCase(overlayMetadata.fabricColor)}</p>
+                                         
+                                         {overlayMetadata.woodName && (
+                                             <>
+                                                <p className="text-[9px] font-bold uppercase text-slate-400 tracking-wider mb-1 mt-2">Madera</p>
+                                                <p className="font-serif text-sm text-slate-600">{toSentenceCase(overlayMetadata.woodName)}</p>
+                                             </>
+                                         )}
+                                     </div>
+                                 </div>
+                            </div>
+                        )}
+
                     </div>
 
                     <div className="w-full space-y-3 mt-8 pt-8 border-t border-black/10">
