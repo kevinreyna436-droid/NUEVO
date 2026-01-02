@@ -117,3 +117,68 @@ export const FURNITURE_TEMPLATES: FurnitureTemplate[] = [
     supplier: 'CREATA RUGS'
   }
 ];
+
+// --- DATOS DE DEMOSTRACIÓN (FALLBACK) ---
+// Estos datos se cargan automáticamente si la nube está vacía o falla.
+export const MOCK_FABRICS: Fabric[] = [
+    {
+        id: 'mock-001',
+        name: 'Alanis',
+        supplier: 'FORMATEX',
+        technicalSummary: 'Tejido suave de alta resistencia con acabado antimanchas. Ideal para uso residencial intenso.',
+        specs: { composition: '100% Poliéster', martindale: '50,000 Ciclos', usage: 'Heavy Duty', weight: '380g/m2' },
+        colors: ["Ash", "Beige", "Ivory", "Steel"],
+        colorImages: {
+            "Ash": "https://images.unsplash.com/photo-1616627561950-9f84a1c78021?w=800&auto=format&fit=crop&q=60",
+            "Beige": "https://images.unsplash.com/photo-1520699697851-3dc68aa3a474?w=800&auto=format&fit=crop&q=60",
+            "Ivory": "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=800&auto=format&fit=crop&q=60"
+        },
+        mainImage: "https://images.unsplash.com/photo-1520699697851-3dc68aa3a474?w=800&auto=format&fit=crop&q=60",
+        category: 'model'
+    },
+    {
+        id: 'mock-002',
+        name: 'Belucci',
+        supplier: 'FORMATEX',
+        technicalSummary: 'Chenille de textura rica y tacto aterciopelado. Aporta elegancia y calidez.',
+        specs: { composition: '90% PES 10% Cot', martindale: '40,000 Ciclos', usage: 'General', weight: '420g/m2' },
+        colors: ["Black", "Brick", "Grey", "Navy", "Olive"],
+        colorImages: {
+             "Navy": "https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?w=800&auto=format&fit=crop&q=60",
+             "Brick": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&auto=format&fit=crop&q=60"
+        },
+        mainImage: "https://images.unsplash.com/photo-1507149833265-60c372daea22?w=800&auto=format&fit=crop&q=60",
+        category: 'model'
+    },
+    {
+        id: 'mock-003',
+        name: 'Ronda',
+        supplier: 'ARTEX',
+        technicalSummary: 'Lino sintético de trama abierta. Aspecto natural con la durabilidad del poliéster.',
+        specs: { composition: '100% PES', martindale: '35,000 Ciclos', usage: 'Decorativo', weight: '300g/m2' },
+        colors: ["Beige", "Blue", "Grey", "Ivory"],
+        mainImage: "https://images.unsplash.com/photo-1598532163257-ae3c6b2524b6?w=800&auto=format&fit=crop&q=60",
+        category: 'model'
+    },
+    {
+        id: 'mock-rug-01',
+        name: 'Persa Azul Vintage',
+        supplier: 'CREATA RUGS',
+        technicalSummary: 'Alfombra de estilo persa con acabado desgastado moderno.',
+        specs: { composition: 'Lana/Sintético', martindale: 'N/A', usage: 'Piso', weight: '1200g/m2' },
+        dimensions: "200x300 cm",
+        colors: ["Azul"],
+        mainImage: "https://images.unsplash.com/photo-1575414723300-3009842462e3?w=800&auto=format&fit=crop&q=60",
+        category: 'rug'
+    },
+    {
+        id: 'mock-wood-01',
+        name: 'Nogal Americano',
+        supplier: 'MADERAS',
+        technicalSummary: 'Madera oscura con veta pronunciada.',
+        specs: { composition: 'Madera Natural', martindale: '', usage: 'Estructura' },
+        colors: ["Nogal"],
+        mainImage: "https://images.unsplash.com/photo-1549419266-419b679a6157?w=800&auto=format&fit=crop&q=60",
+        category: 'wood'
+    }
+];

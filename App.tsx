@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import FabricCard from './components/FabricCard';
 import FabricDetail from './components/FabricDetail';
-import { IN_STOCK_DB } from './constants';
+import { IN_STOCK_DB, MOCK_FABRICS } from './constants';
 import { Fabric, AppView, FurnitureTemplate } from './types';
 import { 
   getFabricsFromFirestore, 
@@ -48,7 +48,7 @@ const LoadingScreen = ({ progress }: { progress: number }) => {
   );
 };
 
-function App() {
+export function App() {
   const [view, setView] = useState<AppView>('grid');
   const [fabrics, setFabrics] = useState<Fabric[]>([]);
   const [furnitureTemplates, setFurnitureTemplates] = useState<FurnitureTemplate[]>([]);
@@ -59,7 +59,6 @@ function App() {
   const [isPinModalOpen, setPinModalOpen] = useState(false); 
   
   const [searchQuery, setSearchQuery] = useState('');
-  // Added 'rug' to activeTab state
   const [activeTab, setActiveTab] = useState<'model' | 'color' | 'visualizer' | 'rug'>('model');
   
   const [loading, setLoading] = useState(true);
@@ -74,7 +73,7 @@ function App() {
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
   const [isSupplierMenuOpen, setSupplierMenuOpen] = useState(false);
   const [selectedFurnitureToEdit, setSelectedFurnitureToEdit] = useState<FurnitureTemplate | null>(null);
-  const [visualizerPreSelection, setVisualizerPreSelection] = useState<{model: string, color: string, category?: string} | null>(null);
+  const [visualizerPreSelection, setVisualizerPreSelection] = useState<{model: string, color: string} | null>(null);
   const [colorLightbox, setColorLightbox] = useState<{ isOpen: boolean; image: string; fabricId: string; colorName: string; } | null>(null);
   const [visibleItemsCount, setVisibleItemsCount] = useState(24);
 
@@ -93,8 +92,18 @@ function App() {
       setLoadingProgress(100);
       setFurnitureTemplates(furnitureData);
       setOfflineStatus(false);
-      setFabrics(dbData || []);
+      
+      // --- RESTORED FALLBACK LOGIC ---
+      if (dbData && dbData.length > 0) {
+          setFabrics(dbData);
+      } else {
+          // If cloud is empty, fallback to Mock Data immediately so the app is not empty
+          console.warn("Nube vacía o inaccesible. Usando datos locales de respaldo (MOCK_FABRICS).");
+          setFabrics(MOCK_FABRICS);
+      }
+
       setLoading(false);
+      
       setTimeout(async () => {
           if (isAuthConfigMissing() || isOfflineMode()) {
               const error = getAuthError();
@@ -110,7 +119,10 @@ function App() {
       console.error("Error crítico cargando datos de nube:", e);
       clearInterval(interval);
       setLoadingProgress(100);
-      setFabrics([]); 
+      
+      // Fallback on error as well
+      setFabrics(MOCK_FABRICS);
+      
       setOfflineStatus(true); 
       setLoading(false);
     }
@@ -136,9 +148,9 @@ function App() {
   };
   const handleGoToDetail = (fabric: Fabric) => { setSelectedFabricId(fabric.id); setView('detail'); };
   const handleQuickView = (img: string, fabric: Fabric, colorName?: string) => { setColorLightbox({ isOpen: true, image: img, fabricId: fabric.id, colorName: colorName || 'Vista Rápida' }); };
-  const handleVisualizeAction = (fabric: Fabric, color?: string, targetCategory?: string) => {
+  const handleVisualizeAction = (fabric: Fabric, color?: string) => {
       const colorName = color || (fabric.colors?.[0] || '');
-      setVisualizerPreSelection({ model: fabric.name, color: colorName, category: targetCategory });
+      setVisualizerPreSelection({ model: fabric.name, color: colorName });
       setActiveTab('visualizer');
       setView('grid');
   };
@@ -189,7 +201,6 @@ function App() {
       try {
         setLoading(true); setLoadingProgress(50);
         await clearFirestoreCollection();
-        // Update local state to remove only 'model' fabrics, keeping 'wood' and 'rug'
         setFabrics(prev => prev.filter(f => f.category === 'wood' || f.category === 'rug'));
         setLoadingProgress(100); 
         alert("Telas eliminadas. Maderas y Tapetes conservados."); 
@@ -234,9 +245,9 @@ function App() {
       }
   };
 
-  const ConnectionInfoModal = () => { /* ... existing code ... */ return null; }; // Placeholder to keep concise
-  const RulesErrorModal = () => { /* ... existing code ... */ return null; };
-  const SetupGuide = () => { /* ... existing code ... */ return null; };
+  const ConnectionInfoModal = () => { return null; }; 
+  const RulesErrorModal = () => { return null; };
+  const SetupGuide = () => { return null; };
 
   // --- FILTRADO ---
   const filteredItems = useMemo(() => {
@@ -332,7 +343,6 @@ function App() {
                       <div className="flex items-center justify-center gap-4">
                           <button onClick={(e) => { e.stopPropagation(); const fabric = fabrics.find(f => f.id === colorLightbox.fabricId); if (fabric) { setColorLightbox(null); handleGoToDetail(fabric); }}} className="bg-white text-black px-6 py-3 rounded-full font-bold uppercase text-[10px] tracking-widest hover:bg-gray-200 transition-colors shadow-lg flex items-center gap-2"><span>Ver Ficha Modelo</span></button>
                           
-                          {/* HIDE PROBAR BUTTON FOR RUGS */}
                           {(() => {
                               const lightboxFabric = fabrics.find(f => f.id === colorLightbox.fabricId);
                               if (lightboxFabric && lightboxFabric.category !== 'rug') {
@@ -349,12 +359,12 @@ function App() {
           </div>
       )}
 
-      {isAppLocked && (<Suspense fallback={<LoadingScreen progress={50} />}><PinModal isOpen={true} onClose={() => {}} onSuccess={() => setIsAppLocked(false)} requiredPin="2717" isBlocking={true} /></Suspense>)}
+      {isAppLocked && (<Suspense fallback={<LoadingScreen progress={50} />}><PinModal isOpen={true} onClose={() => {}} onSuccess={() => setIsAppLocked(false)} requiredPin="1379" isBlocking={true} /></Suspense>)}
 
       {!isAppLocked && (
           <>
             <button onClick={handleUploadClick} className="fixed top-4 right-4 z-50 text-gray-300 hover:text-black font-bold text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors">.</button>
-            <Suspense fallback={null}><PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="2717" /></Suspense>
+            <Suspense fallback={null}><PinModal isOpen={isPinModalOpen} onClose={() => setPinModalOpen(false)} onSuccess={() => setUploadModalOpen(true)} requiredPin="1379" /></Suspense>
             <Suspense fallback={<LoadingScreen progress={50} />}>{selectedFurnitureToEdit && (<EditFurnitureModal furniture={selectedFurnitureToEdit} onClose={() => setSelectedFurnitureToEdit(null)} onSave={handleSaveFurniture} onDelete={handleDeleteFurniture} />)}</Suspense>
 
             {view === 'grid' && (
@@ -366,7 +376,7 @@ function App() {
                         <button onClick={() => { setActiveTab('rug'); }} className={`pb-2 text-sm font-medium uppercase tracking-wide transition-colors ${activeTab === 'rug' ? 'text-black border-b-2 border-black' : 'text-gray-400 hover:text-gray-600'}`}>Ver Tapetes</button>
                         <button onClick={() => { setActiveTab('visualizer'); }} className={`pb-2 text-sm font-bold tracking-wide uppercase transition-colors flex items-center gap-1 ${activeTab === 'visualizer' ? 'text-black border-b-2 border-black' : 'text-accent hover:text-yellow-600'}`}>Probar</button>
                     </div>
-                    {/* ... Search and Filters UI (same as before) ... */}
+                    {/* Filter UI */}
                     {activeTab !== 'visualizer' && (
                     <div className="flex flex-row items-center gap-3 w-full max-w-2xl relative">
                         <div className="relative flex-grow">
@@ -375,7 +385,6 @@ function App() {
                         </div>
                         <div className="relative">
                             <button onClick={() => setSupplierMenuOpen(!isSupplierMenuOpen)} className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${isSupplierMenuOpen || selectedSupplier || isRecentOnly ? 'bg-black text-white border-black shadow-lg scale-105' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`} title="Filtros"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg></button>
-                            {/* ... Dropdown Menu Code ... */}
                             {isSupplierMenuOpen && (
                                 <div className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 overflow-hidden animate-fade-in max-h-80 overflow-y-auto hide-scrollbar">
                                     <div className="px-4 py-2 text-[10px] uppercase font-bold text-gray-400 tracking-wider border-b border-gray-50 mb-1">FILTRAR POR</div>
@@ -438,5 +447,3 @@ function App() {
     </div>
   );
 }
-
-export default App;

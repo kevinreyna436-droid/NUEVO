@@ -65,6 +65,20 @@ const safeJsonParse = (text: string | undefined): any => {
 };
 
 /**
+ * Helper to extract MIME type and Base64 data from a Data URI.
+ * Falls back to image/jpeg if raw base64 is provided.
+ */
+const parseDataUri = (dataUri: string) => {
+    if (!dataUri) return { mimeType: "image/jpeg", data: "" };
+    const match = dataUri.match(/^data:([^;]+);base64,(.+)$/);
+    if (match) {
+        return { mimeType: match[1], data: match[2] };
+    }
+    // If it's just raw base64 (no header), assume jpeg (legacy behavior)
+    return { mimeType: "image/jpeg", data: dataUri };
+};
+
+/**
  * Extrae datos técnicos de una tela a partir de una imagen o PDF.
  * UPDATED: Includes visual analysis fallback if text is missing.
  */
@@ -168,13 +182,17 @@ export const extractColorFromSwatch = async (base64Data: string): Promise<{ colo
  * PROMPT REFORZADO: BLOQUEO DE GEOMETRÍA Y ESCALA REDUCIDA
  */
 export const visualizeUpholstery = async (
-    furnitureBase64: string, 
-    fabricBase64: string,
-    woodBase64?: string
+    furnitureURI: string, 
+    fabricURI: string,
+    woodURI?: string
 ): Promise<string | null> => {
   return retryWithBackoff(async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
+    // Parse Data URIs to get correct mimeTypes (Critical for PNG vs JPEG)
+    const furniture = parseDataUri(furnitureURI);
+    const fabric = parseDataUri(fabricURI);
+
     // Prompt optimizado con tus requerimientos específicos
     let promptText = `
       Role: Expert 3D Rendering & Texture Mapping Engine.
@@ -182,7 +200,7 @@ export const visualizeUpholstery = async (
       INPUTS:
       - Image 1 (BASE): Furniture photography (Master Geometry).
       - Image 2 (TEXTURE): Fabric swatch (Close-up).
-      ${woodBase64 ? '- Image 3: Wood swatch.' : ''}
+      ${woodURI ? '- Image 3: Wood swatch.' : ''}
 
       OBJECTIVE: Photo-realistically replace the upholstery of the furniture in Image 1 with the texture from Image 2.
 
@@ -208,12 +226,13 @@ export const visualizeUpholstery = async (
     `;
 
     const parts: { inlineData?: { mimeType: string; data: string }; text?: string }[] = [
-      { inlineData: { mimeType: "image/jpeg", data: furnitureBase64 } },
-      { inlineData: { mimeType: "image/jpeg", data: fabricBase64 } }
+      { inlineData: { mimeType: furniture.mimeType, data: furniture.data } },
+      { inlineData: { mimeType: fabric.mimeType, data: fabric.data } }
     ];
 
-    if (woodBase64) {
-        parts.push({ inlineData: { mimeType: "image/jpeg", data: woodBase64 } });
+    if (woodURI) {
+        const wood = parseDataUri(woodURI);
+        parts.push({ inlineData: { mimeType: wood.mimeType, data: wood.data } });
     }
 
     parts.push({ text: promptText });
@@ -245,13 +264,16 @@ export const visualizeUpholstery = async (
  * Maneja dimensiones manuales para ajustar el prompt.
  */
 export const visualizeRoomScene = async (
-    roomBase64: string,
-    rugBase64: string,
-    furnitureBase64: string | undefined, // Puede ser undefined si solo queremos ver el tapete
+    roomURI: string,
+    rugURI: string,
+    furnitureURI: string | undefined, // Puede ser undefined si solo queremos ver el tapete
     rugDimensions: string
 ): Promise<string | null> => {
     return retryWithBackoff(async () => {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        
+        const room = parseDataUri(roomURI);
+        const rug = parseDataUri(rugURI);
 
         // Logic to interpret dimensions string
         let orientationInstruction = "Place the rug in the center of the floor.";
@@ -283,7 +305,7 @@ export const visualizeRoomScene = async (
           INPUT IMAGES:
           1. **IMAGE 1 (BASE SCENE)**: An empty room with concrete floors and specific lighting.
           2. **IMAGE 2 (RUG)**: A flat texture/photo of a rug.
-          ${furnitureBase64 ? '3. **IMAGE 3 (FURNITURE)**: A cutout or photo of a sofa/chair.' : ''}
+          ${furnitureURI ? '3. **IMAGE 3 (FURNITURE)**: A cutout or photo of a sofa/chair.' : ''}
 
           OBJECTIVE: Create a photorealistic composite image combining these elements into the room.
 
@@ -306,7 +328,7 @@ export const visualizeRoomScene = async (
              - It must look like it is laying flat on the concrete.
              - Ensure meaningful distance between the rug edges and the window wall.
 
-          ${furnitureBase64 ? `
+          ${furnitureURI ? `
           3. **FURNITURE PLACEMENT**:
              - Place the FURNITURE (Image 3) **ON TOP** of the rug.
              - **SCALE**: The furniture must be significantly smaller than the room height. It should look comfortably placed in the center, not filling the frame.
@@ -319,12 +341,13 @@ export const visualizeRoomScene = async (
         `;
 
         const parts: { inlineData?: { mimeType: string; data: string }; text?: string }[] = [
-            { inlineData: { mimeType: "image/jpeg", data: roomBase64 } },
-            { inlineData: { mimeType: "image/jpeg", data: rugBase64 } }
+            { inlineData: { mimeType: room.mimeType, data: room.data } },
+            { inlineData: { mimeType: rug.mimeType, data: rug.data } }
         ];
 
-        if (furnitureBase64) {
-            parts.push({ inlineData: { mimeType: "image/jpeg", data: furnitureBase64 } });
+        if (furnitureURI) {
+            const furniture = parseDataUri(furnitureURI);
+            parts.push({ inlineData: { mimeType: furniture.mimeType, data: furniture.data } });
         }
 
         parts.push({ text: promptText });
