@@ -117,7 +117,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   };
 
   /**
-   * Helper Updated: Returns FULL Data URI (including "data:image/png;base64,...").
+   * Helper Updated: Returns FULL Data URI.
    */
   const ensureDataUri = async (input: string): Promise<string> => {
     if (!input) return "";
@@ -235,11 +235,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
   const handleRugSelected = async (rug: Fabric) => {
       setIsRugSelectorOpen(false);
-      // Find default room template if current selection is not already a scene
       const roomTemplate = templates.find(t => t.id === 'rug-01' || t.name.includes("Vacía") || t.category === 'rug');
       
-      // If we are currently viewing a generated scene (rug category), use it as base. 
-      // If we are viewing a furniture piece, we need a base room (roomTemplate).
       const baseRoom = (selectedFurniture?.category === 'rug') ? selectedFurniture : roomTemplate;
 
       if (!baseRoom || !resultImage) return;
@@ -248,14 +245,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       try {
            const roomB64 = await ensureDataUri(baseRoom.imageUrl);
            const rugB64 = await ensureDataUri(rug.mainImage);
-           
-           // If current view is furniture, 'resultImage' is the furniture cutout. Pass it as furnitureURI.
-           // If current view is already a scene (Rug), 'resultImage' is the previous scene (we probably shouldn't use it as furnitureURI to avoid recursion artifacts, 
-           // but for simplicity we assume we are placing a NEW rug in the BASE room, so we don't pass furnitureURI if we are just swapping rugs in a scene without furniture).
-           
-           // Correct Logic: 
-           // 1. If we have a generated furniture (e.g. Sofa), we want to put it in the room.
-           // 2. If we are just viewing rugs, we don't have furniture.
            
            let furnitureResultB64: string | undefined = undefined;
            if (selectedFurniture?.category !== 'rug') {
@@ -472,144 +461,4 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 </div>
                             )}
 
-                            <button disabled={!selectedColorName || !selectedSwatchUrl} onClick={() => handleGenerate()} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold uppercase tracking-[0.2em] text-xs shadow-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-black transition-all mt-auto">
-                                Ver resultados
-                            </button>
-                        </div>
-                    </div>
-                 )}
-            </div>
-          )}
-
-          {/* STEP 3: RESULT VIEW (Split Screen Updated - Premium Look) */}
-          {step === 3 && (
-             <div className="flex flex-col md:flex-row w-full h-full min-h-[600px] bg-white rounded-[2rem] overflow-hidden">
-                
-                {/* LEFT: GENERATED IMAGE (Premium Light Background) */}
-                <div className="w-full md:w-2/3 h-[50vh] md:h-full bg-[#E5E5E5] relative flex items-center justify-center p-8 md:p-12 overflow-hidden">
-                     {isGenerating || isGeneratingScene ? (
-                        <div className="text-center z-20">
-                             <div className="w-20 h-20 border-4 border-slate-300 border-t-slate-800 rounded-full animate-spin mx-auto mb-6"></div>
-                             <h3 className="text-3xl font-serif text-slate-800 mb-2 font-bold animate-pulse">{progressMessage}</h3>
-                             <div className="w-64 h-1 bg-gray-300 rounded-full mx-auto overflow-hidden mt-4">
-                                  <div className="h-full bg-slate-800 transition-all duration-300" style={{ width: `${progress}%` }}></div>
-                             </div>
-                        </div>
-                    ) : resultImage ? (
-                        <div className="relative shadow-2xl rounded-sm overflow-hidden bg-white p-2 transform transition-all duration-700 hover:scale-[1.01]">
-                            <img src={resultImage} className="max-w-full max-h-[70vh] object-contain" alt="Render" />
-                        </div>
-                    ) : (
-                        <div className="text-center text-slate-400">
-                             <p>{errorMessage || "Error o sin imagen."}</p>
-                             <button onClick={() => setStep(2)} className="mt-4 underline text-slate-900">Volver</button>
-                        </div>
-                    )}
-                </div>
-
-                {/* RIGHT: DETAILS PANEL */}
-                {/* Always rendered, but content changes based on loading state */}
-                <div className="w-full md:w-1/3 h-auto md:h-full bg-white border-l border-gray-100 flex flex-col p-8 md:p-10 overflow-y-auto animate-fade-in-up">
-                    <h3 className="font-serif text-2xl font-bold text-slate-900 mb-6">
-                        {isGenerating || isGeneratingScene ? 'Procesando...' : 'Resultado'}
-                    </h3>
-                    
-                    {!isGenerating && !isGeneratingScene && (
-                        <>
-                            <div className="space-y-6 flex-1">
-                                {/* Selected Furniture Info */}
-                                <div>
-                                    <h4 className="text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Mueble / Escena</h4>
-                                    <p className="font-serif text-lg font-bold text-slate-900 leading-tight">{selectedFurniture?.name}</p>
-                                    <p className="text-xs text-gray-500 mt-1">{selectedFurniture?.category}</p>
-                                </div>
-
-                                <hr className="border-gray-100" />
-
-                                {/* Selected Fabric Info */}
-                                <div>
-                                    <h4 className="text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-2">Material Aplicado</h4>
-                                    <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
-                                        <div className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200 shadow-sm flex-shrink-0">
-                                            <img src={selectedSwatchUrl || ''} className="w-full h-full object-cover" />
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-sm text-slate-900 leading-tight">{activeFabric?.name}</p>
-                                            <p className="text-xs text-gray-500 mt-0.5">{toSentenceCase(selectedColorName)}</p>
-                                            <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider inline-block mt-1">
-                                                {activeFabric?.supplier}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {activeFabric?.technicalSummary && (
-                                    <div>
-                                        <h4 className="text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-2">Ficha Técnica</h4>
-                                        <p className="text-xs text-gray-500 leading-relaxed italic bg-gray-50 p-3 rounded-xl border border-gray-100">
-                                            "{activeFabric.technicalSummary.substring(0, 120)}{activeFabric.technicalSummary.length > 120 ? '...' : ''}"
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Actions */}
-                            <div className="mt-8 space-y-3 pt-6 border-t border-gray-100">
-                                <button 
-                                    onClick={handleDownload}
-                                    className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold uppercase tracking-[0.2em] text-xs shadow-lg hover:bg-black transition-all transform hover:scale-105"
-                                >
-                                    Descargar
-                                </button>
-                                
-                                {selectedFurniture?.category !== 'rug' && (
-                                    <button 
-                                        onClick={() => setIsRugSelectorOpen(true)}
-                                        className="w-full bg-slate-100 text-slate-900 py-4 rounded-xl font-bold uppercase tracking-[0.2em] text-xs border border-transparent hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
-                                    >
-                                        <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                        Ver en Sala
-                                    </button>
-                                )}
-
-                                {selectedFurniture?.category === 'rug' && (
-                                    <button 
-                                        onClick={() => setIsRugSelectorOpen(true)}
-                                        className="w-full bg-slate-100 text-slate-900 py-4 rounded-xl font-bold uppercase tracking-[0.2em] text-xs border border-transparent hover:bg-slate-200 transition-all"
-                                    >
-                                        Cambiar Tapete
-                                    </button>
-                                )}
-                                
-                                <button 
-                                    onClick={() => setStep(2)}
-                                    className="w-full text-gray-400 py-2 text-[10px] font-bold uppercase tracking-widest hover:text-black hover:underline"
-                                >
-                                    Probar otra tela
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </div>
-             </div>
-          )}
-
-           {!isEditMode && step === 1 && (
-              <button 
-                onClick={(e) => { e.stopPropagation(); setShowPinModal(true); }}
-                className="absolute bottom-6 right-6 w-8 h-8 bg-white/30 hover:bg-white/60 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 transition-all font-bold text-xl cursor-pointer z-50 backdrop-blur-sm shadow-sm"
-              >
-                .
-              </button>
-          )}
-           {isEditMode && step === 1 && (
-               <button onClick={() => setIsEditMode(false)} className="absolute bottom-4 right-4 text-xs font-bold uppercase text-red-500 hover:text-red-700 bg-white/50 px-3 py-1 rounded-full z-50">
-                  Salir Edición
-               </button>
-           )}
-      </div>
-    </div>
-  );
-};
-
-export default Visualizer;
+                            <button disabled={!selectedColorName || !selectedSwatchUrl} onClick={() => handleGenerate()} className="w-full bg-slate-

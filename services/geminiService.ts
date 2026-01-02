@@ -261,7 +261,7 @@ export const visualizeUpholstery = async (
 
 /**
  * Nueva Función: Escena Completa (Room + Rug + Furniture)
- * Maneja dimensiones manuales para ajustar el prompt.
+ * Maneja dimensiones manuales para ajustar el prompt y superposición de elementos.
  */
 export const visualizeRoomScene = async (
     roomURI: string,
@@ -280,139 +280,9 @@ export const visualizeRoomScene = async (
         let scaleInstruction = "The rug size is standard for a living room.";
         
         if (rugDimensions) {
-             // Basic parsing logic
              const nums = rugDimensions.match(/\d+/g)?.map(Number);
              if (nums && nums.length >= 2) {
                  const [width, height] = nums;
-                 // Assuming width is X and height is Y/Depth relative to camera roughly
                  if (width > 280 || height > 280) {
-                     scaleInstruction = "It is a LARGE rug (Grand Format). It should cover a significant area but NOT touch the walls. Leave breathable concrete floor space around the perimeter to maintain room scale.";
-                 } else if (width < 150 || height < 150) {
-                     scaleInstruction = "It is a SMALL rug (Accent/Runner). It should look small in this large room, leaving plenty of concrete visible around it.";
-                 }
-
-                 if (width > height) {
-                     orientationInstruction = "Place the rug oriented HORIZONTALLY (Landscape), extending left to right across the room.";
-                 } else if (height > width) {
-                     orientationInstruction = "Place the rug oriented VERTICALLY (Portrait), extending from the foreground towards the background.";
-                 }
-             }
-        }
-
-        let promptText = `
-          Role: Expert Interior Design Renderer.
-          
-          INPUT IMAGES:
-          1. **IMAGE 1 (BASE SCENE)**: An empty room with concrete floors and specific lighting.
-          2. **IMAGE 2 (RUG)**: A flat texture/photo of a rug.
-          ${furnitureURI ? '3. **IMAGE 3 (FURNITURE)**: A cutout or photo of a sofa/chair.' : ''}
-
-          OBJECTIVE: Create a photorealistic composite image combining these elements into the room.
-
-          CRITICAL SCALE INSTRUCTION (WINDOW REFERENCE):
-          - **OBSERVE THE WINDOW in Image 1**: This is a large architectural window.
-          - **SCALING RULE**: The furniture and rug MUST be scaled down proportionally to the window height.
-          - Do NOT make the sofa/chair look giant. It should look like a normal piece of furniture in a spacious room with high ceilings.
-          - The rug should not wall-to-wall. It sits on the concrete.
-
-          STRICT RULES (Option 1 Reference Mode):
-          1. **BASE SCENE IMMUTABILITY**: 
-             - Use IMAGE 1 as the absolute ground truth for the room structure.
-             - DO NOT change the walls, the window, the curtains, the lighting direction, or the camera angle.
-             - The floor must remain concrete where not covered.
-
-          2. **RUG PLACEMENT**:
-             - Place the RUG (Image 2) on the floor.
-             - **SIZE/SCALE**: ${scaleInstruction}
-             - **ORIENTATION**: ${orientationInstruction}
-             - It must look like it is laying flat on the concrete.
-             - Ensure meaningful distance between the rug edges and the window wall.
-
-          ${furnitureURI ? `
-          3. **FURNITURE PLACEMENT**:
-             - Place the FURNITURE (Image 3) **ON TOP** of the rug.
-             - **SCALE**: The furniture must be significantly smaller than the room height. It should look comfortably placed in the center, not filling the frame.
-             - Position it centrally/logically in the room (e.g., facing the camera or slightly angled).
-             - The furniture MUST cast a realistic shadow onto the rug and floor based on the window light source.
-          ` : ''}
-
-          4. **INTEGRATION**:
-             - Blending must be seamless. Match color grading and light levels.
-        `;
-
-        const parts: { inlineData?: { mimeType: string; data: string }; text?: string }[] = [
-            { inlineData: { mimeType: room.mimeType, data: room.data } },
-            { inlineData: { mimeType: rug.mimeType, data: rug.data } }
-        ];
-
-        if (furnitureURI) {
-            const furniture = parseDataUri(furnitureURI);
-            parts.push({ inlineData: { mimeType: furniture.mimeType, data: furniture.data } });
-        }
-
-        parts.push({ text: promptText });
-
-        const response = await ai.models.generateContent({
-            model: "gemini-3-pro-image-preview",
-            contents: { parts: parts },
-            config: {
-                imageConfig: {
-                    imageSize: "1K", // High res for scene
-                    aspectRatio: "16:9" // Landscape for room view
-                }
-            }
-        });
-
-        for (const candidate of response.candidates || []) {
-            for (const part of candidate.content.parts) {
-                if (part.inlineData && part.inlineData.data) {
-                    return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                }
-            }
-        }
-        throw new Error("No scene generated");
-    });
-};
-
-export const generateFabricDesign = async (prompt: string, aspectRatio: string = "1:1", size: string = "1K"): Promise<string> => {
-  return retryWithBackoff(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-image-preview",
-      contents: {
-        parts: [{ text: `Design a seamless fabric pattern: ${prompt}. High quality, detailed texture.` }]
-      },
-      config: {
-        imageConfig: { aspectRatio: aspectRatio as any, imageSize: size as any }
-      }
-    });
-    for (const candidate of response.candidates || []) {
-      for (const part of candidate.content.parts) {
-        if (part.inlineData && part.inlineData.data) {
-          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-        }
-      }
-    }
-    throw new Error("No design generated");
-  });
-};
-
-export const chatWithExpert = async (message: string, history: any[], context: string): Promise<{ text: string, sources?: any[] }> => {
-  return retryWithBackoff(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [...history, { role: 'user', parts: [{ text: message }] }],
-        config: {
-            systemInstruction: `You are an expert textile consultant for 'Creata Collection'. Context: ${context}. Answer in Spanish.`,
-            tools: [{ googleSearch: {} }]
-        }
-    });
-    const text = response.text || "";
-    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
-        title: chunk.web?.title || "Fuente Web",
-        uri: chunk.web?.uri || "#"
-    })).filter((s: any) => s.uri !== "#") || [];
-    return { text, sources };
-  });
-};
+                     scaleInstruction = "It is a LARGE rug (Grand Format). It covers a large area of the concrete floor but keeps distance from the walls.";
+                 } else if (width < 150 || height < 150
