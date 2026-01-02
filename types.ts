@@ -16,7 +16,6 @@ export interface Fabric {
     martindale: string;
     usage: string;
   };
-  dimensions?: string; // New: Manual dimensions string (e.g., "200x300 cm")
   colors: string[]; // List of color names
   colorImages?: Record<string, string>; // Map color name -> base64/url image
   mainImage: string; // Base64 or URL

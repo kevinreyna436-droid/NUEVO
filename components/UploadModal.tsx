@@ -15,13 +15,15 @@ interface UploadModalProps {
   onDeleteFurniture?: (id: string) => Promise<void>;
 }
 
-// Helper interface for Bulk Items
+// Updated Helper interface for Bulk Items to support Folder Grouping
 interface BulkItem {
     tempId: string;
     name: string;
     supplier: string;
-    image: string; // Base64
-    originalFile: File;
+    image: string; // Representative image (First one found)
+    colors: { name: string; image: string }[]; // All variants found in folder
+    pdf?: string; // Base64 of the PDF if found
+    originalFile?: File;
 }
 
 const UploadModal: React.FC<UploadModalProps> = ({ 
@@ -35,11 +37,15 @@ const UploadModal: React.FC<UploadModalProps> = ({
   // Tabs: 'fabric' | 'rug' | 'wood' | 'furniture' | 'scene'
   const [activeTab, setActiveTab] = useState<'fabric' | 'rug' | 'wood' | 'furniture' | 'scene'>('fabric');
   const [isSaving, setIsSaving] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   // MODE: Single vs Bulk
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkItems, setBulkItems] = useState<BulkItem[]>([]);
+  
+  // Refs for different inputs
   const bulkInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null); // For directory upload
 
   // --- FABRIC STATE (Single) ---
   const [fabName, setFabName] = useState('');
@@ -50,7 +56,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
   // --- RUG STATE (Single) ---
   const [rugName, setRugName] = useState('');
   const [rugSupplier, setRugSupplier] = useState('');
-  const [rugDimensions, setRugDimensions] = useState(''); // New: Dimensions
   const [rugImage, setRugImage] = useState<string | null>(null);
   const rugInputRef = useRef<HTMLInputElement>(null);
 
@@ -89,23 +94,25 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
   // --- BULK HANDLERS ---
   
+  // A. SIMPLE FILES (Flat list, 1 image = 1 model)
   const handleBulkFilesSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files.length > 0) {
+          setIsProcessing(true);
           const newItems: BulkItem[] = [];
-          // Fix: Explicitly cast to File[] to avoid unknown type inference
           const files = Array.from(e.target.files) as File[];
           
-          // Limit to 50 at a time to prevent browser crash
-          const filesToProcess = files.slice(0, 50);
+          const filesToProcess = files.slice(0, 50); // Safety limit
 
           for (const file of filesToProcess) {
              try {
-                 const base64 = await compressImage(file, 1024, 0.85); // Slightly lower quality for bulk speed
+                 const base64 = await compressImage(file, 1024, 0.85); 
+                 const name = toSentenceCase(file.name);
                  newItems.push({
                      tempId: Math.random().toString(36).substr(2, 9),
-                     name: toSentenceCase(file.name), // Smart name inference from filename
+                     name: name,
                      supplier: activeTab === 'rug' ? 'CREATA RUGS' : '',
                      image: base64,
+                     colors: [{ name: name, image: base64 }], // Single color for flat files
                      originalFile: file
                  });
              } catch (err) {
@@ -114,8 +121,102 @@ const UploadModal: React.FC<UploadModalProps> = ({
           }
           
           setBulkItems(prev => [...prev, ...newItems]);
-          // Clear input to allow re-selecting same files if needed
           if (bulkInputRef.current) bulkInputRef.current.value = '';
+          setIsProcessing(false);
+      }
+  };
+
+  // B. FOLDER UPLOAD (Structured: Folder = Model, Files inside = Colors/PDF)
+  const handleFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+          setIsProcessing(true);
+          const files = Array.from(e.target.files) as File[];
+          
+          // 1. Group files by parent directory
+          const groups: Record<string, { name: string, images: File[], pdf?: File }> = {};
+
+          files.forEach(file => {
+              if (file.name.startsWith('.')) return; // Ignore hidden system files
+
+              // Extract path info
+              // webkitRelativePath example: "RootFolder/ModelName/Color.jpg"
+              const path = file.webkitRelativePath;
+              if (!path) return; // Should not happen with directory selection
+
+              const parts = path.split('/');
+              // We assume the containing folder is the model name.
+              // If path is "Downloads/Images/ModelA/img.jpg", we might want "ModelA".
+              // Heuristic: Use the immediate parent folder as grouping key.
+              
+              if (parts.length < 2) return; // Root file, ignore or handle differently?
+
+              // Group Key: The full path to the folder (to avoid name collisions in different subtrees)
+              const parentPath = parts.slice(0, -1).join('/');
+              const folderName = parts[parts.length - 2]; 
+
+              if (!groups[parentPath]) {
+                  groups[parentPath] = {
+                      name: toSentenceCase(folderName),
+                      images: [],
+                      pdf: undefined
+                  };
+              }
+
+              if (file.type === 'application/pdf') {
+                  groups[parentPath].pdf = file;
+              } else if (file.type.startsWith('image/')) {
+                  groups[parentPath].images.push(file);
+              }
+          });
+
+          // 2. Process groups into BulkItems
+          const newItems: BulkItem[] = [];
+          
+          // Limit concurrent processing if folders are huge
+          const groupKeys = Object.keys(groups);
+          
+          for (const key of groupKeys) {
+              const group = groups[key];
+              if (group.images.length === 0) continue; // Skip empty folders or folders with only PDFs
+
+              try {
+                  // Compress all images
+                  const processedColors = [];
+                  for (const imgFile of group.images) {
+                      const base64 = await compressImage(imgFile, 1200, 0.85);
+                      processedColors.push({
+                          name: toSentenceCase(imgFile.name),
+                          image: base64
+                      });
+                  }
+
+                  // Process PDF if exists
+                  let pdfBase64 = undefined;
+                  if (group.pdf) {
+                      const reader = new FileReader();
+                      pdfBase64 = await new Promise<string>((resolve) => {
+                          reader.onload = (e) => resolve(e.target?.result as string);
+                          reader.readAsDataURL(group.pdf!);
+                      });
+                  }
+
+                  newItems.push({
+                      tempId: Math.random().toString(36).substr(2, 9),
+                      name: group.name,
+                      supplier: activeTab === 'rug' ? 'CREATA RUGS' : '',
+                      image: processedColors[0].image, // Use first image as main
+                      colors: processedColors,
+                      pdf: pdfBase64
+                  });
+
+              } catch (err) {
+                  console.error("Error processing group", group.name, err);
+              }
+          }
+
+          setBulkItems(prev => [...prev, ...newItems]);
+          if (folderInputRef.current) folderInputRef.current.value = '';
+          setIsProcessing(false);
       }
   };
 
@@ -138,17 +239,24 @@ const UploadModal: React.FC<UploadModalProps> = ({
                const customCatalog = activeTab === 'rug' ? 'Colección Tapetes' : 'Carga Masiva';
                const techSummary = activeTab === 'rug' ? 'Alfombra decorativa' : 'Tejido para tapicería';
 
+               // Construct Color Images Map
+               const colorMap: Record<string, string> = {};
+               item.colors.forEach(c => {
+                   colorMap[c.name] = c.image;
+               });
+
                return {
                   id: `${category}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
                   name: toSentenceCase(item.name),
                   supplier: item.supplier ? item.supplier.toUpperCase() : 'GENÉRICO',
                   technicalSummary: techSummary,
                   specs: { composition: '', martindale: '', usage: '' },
-                  colors: [toSentenceCase(item.name)], // In bulk, usually main image = color name
-                  colorImages: {},
+                  colors: item.colors.map(c => c.name), 
+                  colorImages: colorMap,
                   mainImage: item.image,
                   category: category as any,
-                  customCatalog: customCatalog
+                  customCatalog: customCatalog,
+                  pdfUrl: item.pdf // Attach PDF if present
                };
           });
 
@@ -236,7 +344,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
               supplier: rugSupplier ? rugSupplier.toUpperCase() : 'GENÉRICO',
               technicalSummary: 'Alfombra / Tapete decorativo',
               specs: { composition: 'Fibras Varias', martindale: '', usage: 'Piso' },
-              dimensions: rugDimensions || '', // Save dimensions
               colors: [toSentenceCase(rugName)],
               colorImages: {}, 
               mainImage: rugImage,
@@ -247,7 +354,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
           await onSave(newRug); 
           setRugName('');
           setRugSupplier('');
-          setRugDimensions('');
           setRugImage(null);
           alert("Tapete guardado correctamente.");
       } catch (e: any) {
@@ -378,44 +484,85 @@ const UploadModal: React.FC<UploadModalProps> = ({
   // --- UI COMPONENTS FOR BULK ---
   const BulkUploadView = () => (
       <div className="flex flex-col h-full">
-          {bulkItems.length === 0 ? (
-              <div 
-                  onClick={() => bulkInputRef.current?.click()}
-                  className="flex-1 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors m-4"
-              >
-                  <svg className="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                  <h3 className="text-lg font-bold text-gray-400 uppercase tracking-widest">Seleccionar Archivos</h3>
-                  <p className="text-xs text-gray-300 mt-2">Puedes seleccionar múltiples imágenes a la vez.</p>
+          {isProcessing ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
+                  <h3 className="font-serif text-xl font-bold">Procesando Carpetas...</h3>
+                  <p className="text-sm text-gray-400 mt-2 text-center max-w-md">Leyendo estructuras, comprimiendo imágenes y detectando fichas técnicas. Esto puede tardar unos momentos.</p>
+              </div>
+          ) : bulkItems.length === 0 ? (
+              <div className="flex-1 flex flex-col md:flex-row gap-4 p-6 items-center justify-center">
+                  
+                  {/* Option 1: Folders */}
+                  <div 
+                      onClick={() => folderInputRef.current?.click()}
+                      className="flex-1 w-full h-64 border-2 border-dashed border-blue-300 bg-blue-50/30 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 hover:border-blue-500 transition-all group"
+                  >
+                      <svg className="w-16 h-16 text-blue-300 group-hover:text-blue-500 transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                      <h3 className="text-lg font-bold text-blue-900 uppercase tracking-widest text-center">Subir Carpetas</h3>
+                      <p className="text-[10px] text-blue-700 mt-2 text-center px-4">
+                          Sube una carpeta que contenga subcarpetas de modelos.<br/>
+                          Se detectarán automáticamente nombres, colores y PDFs.
+                      </p>
+                  </div>
+
+                  {/* Option 2: Files */}
+                  <div 
+                      onClick={() => bulkInputRef.current?.click()}
+                      className="flex-1 w-full h-64 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 hover:border-black transition-all group"
+                  >
+                      <svg className="w-16 h-16 text-gray-300 group-hover:text-black transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                      <h3 className="text-lg font-bold text-gray-400 group-hover:text-black uppercase tracking-widest text-center">Archivos Sueltos</h3>
+                      <p className="text-[10px] text-gray-400 mt-2 text-center px-4">
+                          Selecciona múltiples fotos de telas individuales.<br/>
+                          (1 Foto = 1 Modelo)
+                      </p>
+                  </div>
               </div>
           ) : (
               <div className="flex-1 overflow-y-auto p-4">
                   <div className="flex justify-between items-center mb-4 px-2">
-                      <span className="text-xs font-bold uppercase text-gray-400">{bulkItems.length} Elementos listos</span>
-                      <button onClick={() => bulkInputRef.current?.click()} className="text-blue-600 text-xs font-bold hover:underline">+ Agregar más</button>
+                      <span className="text-xs font-bold uppercase text-gray-400">{bulkItems.length} Modelos Detectados</span>
+                      <div className="flex gap-4">
+                          <button onClick={() => setBulkItems([])} className="text-red-400 text-xs font-bold hover:underline">Limpiar Todo</button>
+                          <button onClick={() => folderInputRef.current?.click()} className="text-blue-600 text-xs font-bold hover:underline">+ Agregar Carpetas</button>
+                      </div>
                   </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {bulkItems.map((item) => (
-                          <div key={item.tempId} className="flex gap-3 p-3 bg-white rounded-xl border border-gray-100 shadow-sm">
-                              <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                          <div key={item.tempId} className="flex gap-3 p-3 bg-white rounded-xl border border-gray-100 shadow-sm relative group">
+                              <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 relative">
                                   <img src={item.image} className="w-full h-full object-cover" />
+                                  {item.colors.length > 1 && (
+                                      <div className="absolute bottom-0 right-0 bg-black/60 text-white text-[9px] px-1 font-bold">
+                                          +{item.colors.length}
+                                      </div>
+                                  )}
                               </div>
                               <div className="flex-1 flex flex-col gap-2">
                                   <input 
                                       value={item.name}
                                       onChange={(e) => updateBulkItem(item.tempId, 'name', e.target.value)}
                                       className="w-full p-2 text-xs font-bold border-b border-gray-200 focus:border-black outline-none"
-                                      placeholder="Nombre"
+                                      placeholder="Nombre Modelo"
                                   />
-                                  <input 
-                                      value={item.supplier}
-                                      onChange={(e) => updateBulkItem(item.tempId, 'supplier', e.target.value)}
-                                      className="w-full p-2 text-[10px] uppercase text-gray-500 border-b border-gray-200 focus:border-black outline-none"
-                                      placeholder="PROVEEDOR"
-                                  />
+                                  <div className="flex items-center gap-2">
+                                      <input 
+                                          value={item.supplier}
+                                          onChange={(e) => updateBulkItem(item.tempId, 'supplier', e.target.value)}
+                                          className="flex-1 p-2 text-[10px] uppercase text-gray-500 border-b border-gray-200 focus:border-black outline-none"
+                                          placeholder="PROVEEDOR"
+                                      />
+                                      {item.pdf && (
+                                          <div className="text-red-500" title="PDF Detectado">
+                                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" /></svg>
+                                          </div>
+                                      )}
+                                  </div>
                               </div>
-                              <button onClick={() => removeBulkItem(item.tempId)} className="text-red-400 hover:text-red-600 self-start">
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              <button onClick={() => removeBulkItem(item.tempId)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                               </button>
                           </div>
                       ))}
@@ -423,7 +570,20 @@ const UploadModal: React.FC<UploadModalProps> = ({
               </div>
           )}
           
+          {/* Inputs ocultos */}
           <input ref={bulkInputRef} type="file" multiple accept="image/*" className="hidden" onChange={handleBulkFilesSelect} />
+          {/* Attributes for directory selection */}
+          <input 
+            ref={folderInputRef} 
+            type="file" 
+            className="hidden" 
+            // @ts-ignore
+            webkitdirectory="" 
+            // @ts-ignore
+            directory="" 
+            multiple 
+            onChange={handleFolderSelect} 
+          />
           
           <div className="p-4 border-t border-gray-100 bg-white">
               <button 
@@ -431,7 +591,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                   disabled={bulkItems.length === 0 || isSaving}
                   className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl disabled:opacity-50"
               >
-                  {isSaving ? `Subiendo ${bulkItems.length} Elementos...` : `Guardar Todo (${bulkItems.length})`}
+                  {isSaving ? `Subiendo ${bulkItems.length} Modelos...` : `Guardar Todo (${bulkItems.length})`}
               </button>
           </div>
       </div>
@@ -610,19 +770,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                     placeholder="Ej: Persa Azul Vintage"
                                 />
                              </div>
-
-                             {/* NUEVO CAMPO: DIMENSIONES MANUALES */}
-                             <div>
-                                <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Medidas (Ancho x Largo)</label>
-                                <input 
-                                    value={rugDimensions}
-                                    onChange={(e) => setRugDimensions(e.target.value)}
-                                    className="w-full p-4 rounded-xl border border-gray-200 focus:ring-1 focus:ring-black outline-none"
-                                    placeholder="Ej: 200x300 cm, 1.60x2.30 mts, 8x10 pies..."
-                                />
-                                <p className="text-[9px] text-gray-400 mt-1 pl-1">Escribe libremente. La IA entenderá la proporción.</p>
-                             </div>
-
                              <div>
                                 <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Proveedor</label>
                                 <input 

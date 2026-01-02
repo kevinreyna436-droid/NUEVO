@@ -65,20 +65,6 @@ const safeJsonParse = (text: string | undefined): any => {
 };
 
 /**
- * Helper to extract MIME type and Base64 data from a Data URI.
- * Falls back to image/jpeg if raw base64 is provided.
- */
-const parseDataUri = (dataUri: string) => {
-    if (!dataUri) return { mimeType: "image/jpeg", data: "" };
-    const match = dataUri.match(/^data:([^;]+);base64,(.+)$/);
-    if (match) {
-        return { mimeType: match[1], data: match[2] };
-    }
-    // If it's just raw base64 (no header), assume jpeg (legacy behavior)
-    return { mimeType: "image/jpeg", data: dataUri };
-};
-
-/**
  * Extrae datos técnicos de una tela a partir de una imagen o PDF.
  * UPDATED: Includes visual analysis fallback if text is missing.
  */
@@ -182,17 +168,13 @@ export const extractColorFromSwatch = async (base64Data: string): Promise<{ colo
  * PROMPT REFORZADO: BLOQUEO DE GEOMETRÍA Y ESCALA REDUCIDA
  */
 export const visualizeUpholstery = async (
-    furnitureURI: string, 
-    fabricURI: string,
-    woodURI?: string
+    furnitureBase64: string, 
+    fabricBase64: string,
+    woodBase64?: string
 ): Promise<string | null> => {
   return retryWithBackoff(async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Parse Data URIs to get correct mimeTypes (Critical for PNG vs JPEG)
-    const furniture = parseDataUri(furnitureURI);
-    const fabric = parseDataUri(fabricURI);
-
     // Prompt optimizado con tus requerimientos específicos
     let promptText = `
       Role: Expert 3D Rendering & Texture Mapping Engine.
@@ -200,7 +182,7 @@ export const visualizeUpholstery = async (
       INPUTS:
       - Image 1 (BASE): Furniture photography (Master Geometry).
       - Image 2 (TEXTURE): Fabric swatch (Close-up).
-      ${woodURI ? '- Image 3: Wood swatch.' : ''}
+      ${woodBase64 ? '- Image 3: Wood swatch.' : ''}
 
       OBJECTIVE: Photo-realistically replace the upholstery of the furniture in Image 1 with the texture from Image 2.
 
@@ -226,13 +208,12 @@ export const visualizeUpholstery = async (
     `;
 
     const parts: { inlineData?: { mimeType: string; data: string }; text?: string }[] = [
-      { inlineData: { mimeType: furniture.mimeType, data: furniture.data } },
-      { inlineData: { mimeType: fabric.mimeType, data: fabric.data } }
+      { inlineData: { mimeType: "image/jpeg", data: furnitureBase64 } },
+      { inlineData: { mimeType: "image/jpeg", data: fabricBase64 } }
     ];
 
-    if (woodURI) {
-        const wood = parseDataUri(woodURI);
-        parts.push({ inlineData: { mimeType: wood.mimeType, data: wood.data } });
+    if (woodBase64) {
+        parts.push({ inlineData: { mimeType: "image/jpeg", data: woodBase64 } });
     }
 
     parts.push({ text: promptText });
@@ -260,29 +241,124 @@ export const visualizeUpholstery = async (
 };
 
 /**
- * Nueva Función: Escena Completa (Room + Rug + Furniture)
- * Maneja dimensiones manuales para ajustar el prompt y superposición de elementos.
+ * Visualizador de Escenas (Tapetes y Total Look).
+ * Compone una habitación base + un tapete + (opcionalmente) un mueble generado.
  */
 export const visualizeRoomScene = async (
-    roomURI: string,
-    rugURI: string,
-    furnitureURI: string | undefined, // Puede ser undefined si solo queremos ver el tapete
-    rugDimensions: string
+    roomBase64: string,
+    rugBase64: string,
+    furnitureBase64?: string
 ): Promise<string | null> => {
     return retryWithBackoff(async () => {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
-        const room = parseDataUri(roomURI);
-        const rug = parseDataUri(rugURI);
+        let promptText = `
+        Actúa como un decorador de interiores fotorrealista y experto en composición digital.
 
-        // Logic to interpret dimensions string
-        let orientationInstruction = "Place the rug in the center of the floor.";
-        let scaleInstruction = "The rug size is standard for a living room.";
-        
-        if (rugDimensions) {
-             const nums = rugDimensions.match(/\d+/g)?.map(Number);
-             if (nums && nums.length >= 2) {
-                 const [width, height] = nums;
-                 if (width > 280 || height > 280) {
-                     scaleInstruction = "It is a LARGE rug (Grand Format). It covers a large area of the concrete floor but keeps distance from the walls.";
-                 } else if (width < 150 || height < 150
+        IMAGEN BASE: Usa la PRIMERA imagen proporcionada (cuarto vacío) como la verdad absoluta. 
+        REGLA DE ORO: MANTÉN la iluminación, las sombras de la habitación, el tipo de piso (concreto/madera) y la perspectiva EXACTAMENTE iguales. NO cambies el ángulo de la cámara.
+
+        TAREA PRINCIPAL: Coloca el tapete (Image 2) en el centro del piso de la habitación.
+        `;
+
+        const parts: { inlineData?: { mimeType: string; data: string }; text?: string }[] = [
+            { inlineData: { mimeType: "image/jpeg", data: roomBase64 } }, // Image 1: Room
+            { inlineData: { mimeType: "image/jpeg", data: rugBase64 } }   // Image 2: Rug
+        ];
+
+        if (furnitureBase64) {
+            // SCENARIO: Total Look (Room + Rug + Furniture)
+            parts.push({ inlineData: { mimeType: "image/jpeg", data: furnitureBase64 } }); // Image 3: Furniture
+            
+            promptText += `
+            
+            TAREA SECUNDARIA (COMPLEJA):
+            Además del tapete, la TERCERA imagen es un sillón/mueble ya renderizado.
+            Coloca este mueble (Image 3) SOBRE el tapete que acabas de integrar.
+            
+            REGLAS DE FÍSICA Y LUZ:
+            1. Integración: El mueble debe parecer estar físicamente en la habitación.
+            2. Sombras: 
+               - El sillón debe proyectar una sombra realista sobre el tapete.
+               - El tapete debe proyectar una sombra muy sutil sobre el piso original.
+            3. Escala: Ajusta el tamaño del mueble para que sea coherente con la habitación y el tapete (un tapete de sala suele medir 2x3 metros).
+            4. Perspectiva: Respeta la fuga de la habitación base.
+            `;
+        } else {
+            // SCENARIO: Rug Only
+            promptText += `
+            
+            ESPECIFICACIONES DEL TAPETE:
+            - Integra la textura del tapete (Image 2) sobre el suelo.
+            - Aplica perspectiva correcta (el tapete se aleja hacia el fondo).
+            - El tapete debe verse grande, tipo formato de sala (aprox 2x3 metros).
+            - MANTÉN las sombras que ya existían en el piso original (si hay luz entrando por la ventana, el tapete debe recibir esa luz y sombra).
+            `;
+        }
+
+        parts.push({ text: promptText });
+
+        const response = await ai.models.generateContent({
+            model: "gemini-3-pro-image-preview",
+            contents: { parts: parts },
+            config: {
+                imageConfig: {
+                    imageSize: "1K",
+                    aspectRatio: "16:9" // Paisaje para escenas de habitación
+                }
+            }
+        });
+
+        for (const candidate of response.candidates || []) {
+            for (const part of candidate.content.parts) {
+                if (part.inlineData && part.inlineData.data) {
+                    return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                }
+            }
+        }
+        throw new Error("No image generated by the model");
+    });
+};
+
+export const generateFabricDesign = async (prompt: string, aspectRatio: string = "1:1", size: string = "1K"): Promise<string> => {
+  return retryWithBackoff(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-image-preview",
+      contents: {
+        parts: [{ text: `Design a seamless fabric pattern: ${prompt}. High quality, detailed texture.` }]
+      },
+      config: {
+        imageConfig: { aspectRatio: aspectRatio as any, imageSize: size as any }
+      }
+    });
+    for (const candidate of response.candidates || []) {
+      for (const part of candidate.content.parts) {
+        if (part.inlineData && part.inlineData.data) {
+          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        }
+      }
+    }
+    throw new Error("No design generated");
+  });
+};
+
+export const chatWithExpert = async (message: string, history: any[], context: string): Promise<{ text: string, sources?: any[] }> => {
+  return retryWithBackoff(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [...history, { role: 'user', parts: [{ text: message }] }],
+        config: {
+            systemInstruction: `You are an expert textile consultant for 'Creata Collection'. Context: ${context}. Answer in Spanish.`,
+            tools: [{ googleSearch: {} }]
+        }
+    });
+    const text = response.text || "";
+    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
+        title: chunk.web?.title || "Fuente Web",
+        uri: chunk.web?.uri || "#"
+    })).filter((s: any) => s.uri !== "#") || [];
+    return { text, sources };
+  });
+};
