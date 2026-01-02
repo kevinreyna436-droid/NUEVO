@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Fabric, FurnitureTemplate } from '../types';
-import { visualizeUpholstery } from '../services/geminiService';
+import { visualizeUpholstery, visualizeRoomScene } from '../services/geminiService';
 import PinModal from './PinModal';
 
 interface VisualizerProps {
@@ -37,6 +37,10 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   const [showPinModal, setShowPinModal] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
 
+  // --- RUG SELECTOR STATE ---
+  const [isRugSelectorOpen, setIsRugSelectorOpen] = useState(false);
+  const [isGeneratingScene, setIsGeneratingScene] = useState(false);
+
   useEffect(() => {
     checkApiKey();
     // Si viene una selección desde el Grid (Probar), buscamos la tela correcta
@@ -71,7 +75,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   useEffect(() => {
       let interval: any;
       
-      if (isGenerating) {
+      if (isGenerating || isGeneratingScene) {
           setProgress(0);
           setProgressMessage('Conectando con Gemini 3 Pro...');
           
@@ -85,10 +89,17 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                   
                   const next = Math.min(prev + increment, 98);
 
-                  if (next < 30) setProgressMessage('Analizando geometría 3D del mueble...');
-                  else if (next < 60) setProgressMessage('Calculando física de la tela y arrugas...');
-                  else if (next < 85) setProgressMessage('Ajustando iluminación y sombras...');
-                  else setProgressMessage('Renderizado final de alta resolución...');
+                  if (isGeneratingScene) {
+                      if (next < 30) setProgressMessage('Preparando escenario y perspectivas...');
+                      else if (next < 60) setProgressMessage('Colocando tapete con dimensiones personalizadas...');
+                      else if (next < 85) setProgressMessage('Integrando sillón e iluminación...');
+                      else setProgressMessage('Renderizando escena final...');
+                  } else {
+                      if (next < 30) setProgressMessage('Analizando geometría 3D del mueble...');
+                      else if (next < 60) setProgressMessage('Calculando física de la tela y arrugas...');
+                      else if (next < 85) setProgressMessage('Ajustando iluminación y sombras...');
+                      else setProgressMessage('Renderizado final de alta resolución...');
+                  }
 
                   return next;
               });
@@ -98,7 +109,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       }
 
       return () => clearInterval(interval);
-  }, [isGenerating]);
+  }, [isGenerating, isGeneratingScene]);
 
   const checkApiKey = async () => {
     try {
@@ -132,7 +143,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         'chair': 'Silla',
         'armchair': 'Butaca',
         'bed': 'Cama',
-        'rug': 'Tapete'
+        'rug': 'Tapete/Escena'
     };
     const lower = cat.toLowerCase();
     if (map[lower]) return map[lower];
@@ -190,8 +201,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
   };
 
   const handleGenerate = async (furnitureOverride?: FurnitureTemplate) => {
-      // REMOVIDO: Chequeo estricto de Key. Se confía en el error handler.
-
       const targetFurniture = furnitureOverride || selectedFurniture;
       if (!targetFurniture) return;
 
@@ -219,27 +228,50 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           if (!swatchRaw) throw new Error("No se encontró la imagen de la tela. Asegúrate de que la tela seleccionada tenga foto.");
           const swatchB64 = await ensureBase64(swatchRaw);
 
-          // Buscar Madera (Opcional)
-          let woodB64: string | undefined = undefined;
-          if (selectedWoodId && targetFurniture.category !== 'rug') {
-             const wood = fabrics.find(f => f.id === selectedWoodId);
-             if (wood && wood.mainImage) {
-                 woodB64 = await ensureBase64(wood.mainImage);
+          // LOGIC BRANCH: If category is RUG, use visualizeRoomScene
+          if (targetFurniture.category === 'rug') {
+             // For rugs:
+             // furnitureB64 is the ROOM IMAGE (Scene)
+             // swatchB64 is the RUG IMAGE
+             // furnitureBase64 arg is undefined (no sofa yet)
+             const dimensions = fabric?.dimensions || "";
+             
+             // Update progress messages for Scene Generation
+             setIsGeneratingScene(true); // Trigger scene progress text
+             
+             const result = await visualizeRoomScene(furnitureB64, swatchB64, undefined, dimensions);
+             
+             setIsGeneratingScene(false);
+             
+             if (result) {
+                setProgress(100);
+                await new Promise(resolve => setTimeout(resolve, 600));
+                setResultImage(result);
+             }
+
+          } else {
+             // Standard Furniture Upholstery
+             // Buscar Madera (Opcional)
+             let woodB64: string | undefined = undefined;
+             if (selectedWoodId && targetFurniture.category !== 'rug') {
+                const wood = fabrics.find(f => f.id === selectedWoodId);
+                if (wood && wood.mainImage) {
+                    woodB64 = await ensureBase64(wood.mainImage);
+                }
+             }
+
+             const result = await visualizeUpholstery(furnitureB64, swatchB64, woodB64);
+             
+             if (result) {
+                 setProgress(100);
+                 setProgressMessage('¡Renderizado Completo!');
+                 await new Promise(resolve => setTimeout(resolve, 600));
+                 setResultImage(result);
              }
           }
 
-          // Iniciar generación con nueva instancia de AI (tomando la key actualizada)
-          const result = await visualizeUpholstery(furnitureB64, swatchB64, woodB64);
-          
-          if (result) {
-              setProgress(100);
-              setProgressMessage('¡Renderizado Completo!');
-              await new Promise(resolve => setTimeout(resolve, 600));
-              setResultImage(result);
-          }
-
       } catch (error: any) {
-          console.error("Error visualización Pro:", error);
+          console.error("Error visualización:", error);
           const errorText = error?.message || JSON.stringify(error);
           
           const isOverloaded = errorText.includes('503') || errorText.includes('overloaded') || errorText.includes('UNAVAILABLE');
@@ -255,6 +287,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           }
       } finally {
           setIsGenerating(false);
+          setIsGeneratingScene(false); // Ensure this is reset
       }
   };
 
@@ -287,6 +320,63 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       }
   };
 
+  const handleViewOnRug = () => {
+      // Abre el selector de tapetes en lugar de disparar una acción directa
+      setIsRugSelectorOpen(true);
+  };
+
+  // --- NEW: HANDLE RUG SELECTION & SCENE GENERATION ---
+  const handleRugSelected = async (rug: Fabric) => {
+      setIsRugSelectorOpen(false);
+      
+      // We need a base room scene. 
+      // Assumption: 'rug-01' in templates is the EMPTY ROOM.
+      // If not, we try to find any template with category 'rug' or fallback to the first 'rug' fabric if it was uploaded as scene.
+      // Better strategy: Look for the specific ID 'rug-01' or name containing "Vacía".
+      const roomTemplate = templates.find(t => t.id === 'rug-01' || t.name.includes("Vacía") || t.category === 'rug');
+      
+      if (!roomTemplate) {
+          alert("No se encontró una Escena Base (Habitación Vacía) configurada.");
+          return;
+      }
+      
+      if (!resultImage) {
+          alert("Primero debes generar el mueble.");
+          return;
+      }
+
+      setErrorMessage(null);
+      setIsGeneratingScene(true);
+      setResultImage(null); // Clear previous result to show loader
+      setStep(3); // Ensure we are on result screen
+
+      try {
+           const roomB64 = await ensureBase64(roomTemplate.imageUrl);
+           const rugB64 = await ensureBase64(rug.mainImage);
+           
+           // The "Furniture" for the scene is the Result Image we just generated
+           // But since resultImage is already Base64 Data URL, we pass it directly (after stripping prefix inside ensureBase64 if needed, 
+           // but our service handles Data URLs well usually. Let's make sure).
+           const furnitureResultB64 = await ensureBase64(resultImage);
+
+           const dimensions = rug.dimensions || "Standard"; // Pass manual dimensions
+
+           const sceneResult = await visualizeRoomScene(roomB64, rugB64, furnitureResultB64, dimensions);
+           
+           if (sceneResult) {
+               setProgress(100);
+               await new Promise(resolve => setTimeout(resolve, 600));
+               setResultImage(sceneResult);
+           }
+
+      } catch (error: any) {
+          console.error("Error generating scene:", error);
+          setErrorMessage("Error generando la escena: " + (error.message || "Intente nuevamente."));
+      } finally {
+          setIsGeneratingScene(false);
+      }
+  };
+
   // CAMBIO: Buscar por ID
   const activeFabric = fabrics.find(f => f.id === selectedFabricId);
   const selectedSwatchUrl = (selectedColorName && activeFabric?.colorImages?.[selectedColorName]) 
@@ -311,6 +401,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
   const furnitureTemplates = templates.filter(t => t.category !== 'rug');
   const rugTemplates = templates.filter(t => t.category === 'rug');
+  // Available Rugs for Selector (Exclude the empty room template itself if it's mixed in fabrics, usually fabrics are raw rugs)
+  const availableRugs = fabrics.filter(f => f.category === 'rug');
 
   return (
     <div className="container mx-auto px-4 md:px-6 pb-20 max-w-7xl animate-fade-in-up relative">
@@ -321,6 +413,57 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         onSuccess={() => { setIsEditMode(true); setShowPinModal(false); }} 
         requiredPin="1379"
       />
+
+      {/* RUG SELECTOR BOTTOM SHEET / MODAL */}
+      {isRugSelectorOpen && (
+          <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex justify-center items-end md:items-center p-0 md:p-8 animate-fade-in">
+              <div className="bg-white w-full max-w-3xl rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col max-h-[80vh] md:max-h-[700px] overflow-hidden animate-fade-in-up">
+                  <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                      <div>
+                          <h3 className="font-serif text-2xl font-bold text-slate-900">Selecciona un Tapete</h3>
+                          <p className="text-xs text-gray-400 mt-1 uppercase tracking-wider">Para visualizar en la escena</p>
+                      </div>
+                      <button onClick={() => setIsRugSelectorOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                          <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
+                      {availableRugs.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
+                              <svg className="w-16 h-16 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                              <p className="text-sm font-bold">No hay tapetes cargados en el catálogo.</p>
+                              <p className="text-xs">Usa el botón "." para subir tapetes.</p>
+                          </div>
+                      ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                              {availableRugs.map(rug => (
+                                  <div 
+                                      key={rug.id} 
+                                      onClick={() => handleRugSelected(rug)}
+                                      className="group cursor-pointer bg-white rounded-2xl shadow-sm hover:shadow-xl hover:scale-105 transition-all duration-300 overflow-hidden border border-gray-100 flex flex-col"
+                                  >
+                                      <div className="aspect-video overflow-hidden relative bg-gray-100">
+                                          <img src={rug.mainImage} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={rug.name} />
+                                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                                              <span className="opacity-0 group-hover:opacity-100 bg-white text-black text-[10px] font-bold uppercase px-3 py-1 rounded-full shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all">Seleccionar</span>
+                                          </div>
+                                      </div>
+                                      <div className="p-4 flex flex-col gap-2 items-center">
+                                          <h4 className="font-serif text-sm font-bold text-slate-900 truncate">{rug.name}</h4>
+                                          <span className="px-3 py-1 bg-gray-100 rounded-lg text-[10px] font-bold uppercase text-gray-500 tracking-wider border border-gray-200">
+                                              {rug.dimensions || 'Estándar'}
+                                          </span>
+                                      </div>
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
+
 
       {showOriginalTexture && (previewImage || selectedSwatchUrl) && (
         <div 
@@ -348,6 +491,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           
           {step < 3 && (
             <div className="w-full p-8 md:p-12">
+                 {/* ... (Step 1 and 2 content remains largely same, just context) ... */}
                  {step === 1 && (
                     <div className="animate-fade-in relative">
                         {isEditMode && (
@@ -428,7 +572,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                         {/* Left Side: Furniture */}
                         <div className="w-full md:w-1/3 flex flex-col items-center">
                             <div className="aspect-square w-full bg-white rounded-3xl overflow-hidden border border-gray-100 mb-6 p-6 relative shadow-inner">
-                                <img src={selectedFurniture?.imageUrl} className={`w-full h-full ${selectedFurniture?.category === 'rug' ? 'object-cover' : 'object-contain'} drop-shadow-lg`} />
+                                {selectedFurniture?.imageUrl ? (
+                                    <img src={selectedFurniture.imageUrl} className={`w-full h-full ${selectedFurniture?.category === 'rug' ? 'object-cover' : 'object-contain'} drop-shadow-lg`} />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-gray-300">Sin Imagen Base</div>
+                                )}
                             </div>
                             
                             <button 
@@ -436,7 +584,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 className="w-full py-4 px-6 bg-white/40 hover:bg-white/60 rounded-full text-sm font-bold uppercase tracking-widest text-slate-900 transition-all flex items-center justify-center gap-3 backdrop-blur-md shadow-sm hover:shadow-lg border border-white/50"
                             >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                                Cambiar de sillón
+                                {selectedFurniture?.category === 'rug' ? 'Cambiar escena' : 'Cambiar de sillón'}
                             </button>
                         </div>
 
@@ -495,12 +643,15 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                         {activeFabric?.colors.map((color, idx) => {
                                             const imgUrl = activeFabric.colorImages?.[color] || activeFabric.mainImage;
                                             const isSelected = selectedColorName === color;
+                                            const isRug = selectedFurniture?.category === 'rug';
                                             
                                             return (
                                                 <div key={idx} className="flex flex-col items-center gap-2 group mb-4">
                                                     <div 
                                                         onClick={() => setSelectedColorName(color)} 
-                                                        className={`relative w-28 h-28 md:w-32 md:h-32 rounded-[2rem] cursor-pointer transition-all duration-300 shadow-lg overflow-hidden ${isSelected ? 'ring-4 ring-offset-2 ring-offset-transparent ring-slate-900 scale-105 z-10' : 'hover:scale-105 hover:ring-2 hover:ring-slate-900/50'}`}
+                                                        className={`relative overflow-hidden cursor-pointer transition-all duration-300 shadow-lg 
+                                                            ${isRug ? 'w-48 aspect-video rounded-xl' : 'w-28 h-28 md:w-32 md:h-32 rounded-[2rem]'}
+                                                            ${isSelected ? 'ring-4 ring-offset-2 ring-offset-transparent ring-slate-900 scale-105 z-10' : 'hover:scale-105 hover:ring-2 hover:ring-slate-900/50'}`}
                                                     >
                                                         {imgUrl ? (
                                                             <img src={imgUrl} className="w-full h-full object-cover" alt={color} />
@@ -525,6 +676,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                                     <span className={`text-xs font-bold uppercase tracking-wider text-slate-900 transition-opacity ${isSelected ? 'opacity-100 font-extrabold' : 'opacity-70 group-hover:opacity-100'}`}>
                                                         {toSentenceCase(color)}
                                                     </span>
+                                                    {isRug && activeFabric.dimensions && (
+                                                        <span className="px-2 py-0.5 bg-gray-200 rounded-md text-[9px] font-bold uppercase text-gray-600 tracking-wider border border-gray-300">
+                                                            {activeFabric.dimensions}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             );
                                         })}
@@ -536,7 +692,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 </div>
                             )}
 
-                            {/* --- DYNAMIC WOOD SELECTOR BASED ON PROVIDER (Only for Furniture, not Rugs) --- */}
+                            {/* --- DYNAMIC WOOD SELECTOR --- */}
                             {selectedFurniture?.category !== 'rug' && availableWoods.length > 0 && (
                                 <div className="space-y-4 animate-fade-in pt-4 border-t border-black/5">
                                     <h3 className="font-serif text-3xl mb-2 text-slate-900">3. Elige el acabado (Madera)</h3>
@@ -574,144 +730,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                     </div>
                  )}
             </div>
-          )}
-
-          {step === 3 && (
-            <>
-                {/* Result Area */}
-                <div className="w-full md:w-[65%] relative flex items-center justify-center overflow-hidden min-h-[500px]">
-                     {isGenerating ? (
-                        <div className="text-center z-10 p-10 w-full max-w-md animate-fade-in flex flex-col items-center">
-                            <div className="relative w-full h-4 bg-gray-200 rounded-full overflow-hidden shadow-inner mb-6">
-                                <div 
-                                    className="absolute top-0 left-0 h-full bg-slate-900 transition-all duration-300 ease-out"
-                                    style={{ width: `${progress}%` }}
-                                ></div>
-                                <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_2s_infinite]"></div>
-                            </div>
-                            
-                            <div className="flex justify-between w-full mb-2 px-1">
-                                <span className="text-xs font-bold uppercase text-slate-900 tracking-widest animate-pulse">
-                                    {progressMessage}
-                                </span>
-                                <span className="text-xs font-bold text-slate-500">
-                                    {Math.round(progress)}%
-                                </span>
-                            </div>
-                            
-                            <p className="text-[10px] text-slate-400 mt-4 uppercase tracking-[0.2em] font-medium text-center">
-                                Creando visualización fotorrealista con Gemini 3 Pro
-                            </p>
-                        </div>
-                     ) : errorMessage ? (
-                        <div className="text-center p-10 max-w-md animate-fade-in bg-white/60 backdrop-blur-md rounded-3xl border border-white/50 shadow-xl">
-                            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-red-600 border border-red-500/20">
-                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                            </div>
-                            <h3 className="font-serif text-xl font-bold text-slate-900 mb-4">¡Atención!</h3>
-                            <p className="text-sm text-slate-600 mb-8 leading-relaxed">
-                                {errorMessage}
-                            </p>
-                            
-                            <div className="flex flex-col gap-3">
-                                {/* Siempre mostrar el botón para conectar llave si hubo error de quota o key */}
-                                <button 
-                                    onClick={handleOpenKeyDialog}
-                                    className="bg-blue-600 text-white px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest hover:scale-105 transition-transform shadow-lg shadow-blue-900/50 flex items-center justify-center gap-2"
-                                >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
-                                    Activar Motor Privado
-                                </button>
-                                
-                                <button 
-                                    onClick={() => handleGenerate()} 
-                                    className="bg-slate-900 text-white px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-black transition-colors mt-2"
-                                >
-                                    Intentar nuevamente
-                                </button>
-                                
-                                <button onClick={() => setStep(2)} className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-900 transition-colors pt-2">Volver a Selección</button>
-                            </div>
-                        </div>
-                     ) : resultImage ? (
-                        <img src={resultImage} alt="Render Final" className="w-full h-full object-contain md:object-cover animate-fade-in" />
-                     ) : null}
-                </div>
-
-                {/* Info Panel */}
-                <div className="w-full md:w-[35%] bg-[rgb(241,245,249)] flex flex-col items-center text-center p-8 md:p-10 z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transition-colors duration-500 text-slate-900">
-                    <div className="w-full border-b border-black/10 pb-6 mb-8">
-                        <h3 className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">Resultado Generado</h3>
-                    </div>
-
-                    <div className="flex-1 w-full flex flex-col items-center justify-center space-y-8">
-                        <div>
-                            <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-2">
-                                {getCategoryLabel(selectedFurniture?.category || '')}
-                            </p>
-                            <h2 className="font-serif text-3xl text-slate-900 leading-none">
-                                {toSentenceCase(selectedFurniture?.name || 'Mueble')}
-                            </h2>
-                        </div>
-
-                        <div className="w-full relative">
-                             <div className="w-12 h-px bg-black/10 mx-auto mb-8"></div>
-                             
-                             <div className="mb-6 relative group inline-block">
-                                <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-4">Tapizado con</p>
-                                <div 
-                                    onClick={() => { setPreviewImage(selectedSwatchUrl || null); setShowOriginalTexture(true); }}
-                                    className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-white shadow-xl cursor-pointer hover:scale-110 transition-transform duration-300 mx-auto group"
-                                >
-                                    <img src={selectedSwatchUrl || ''} className="w-full h-full object-cover" alt="Swatch" />
-                                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" /></svg>
-                                    </div>
-                                </div>
-                             </div>
-
-                             <div className="mb-4">
-                                <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-1">Modelo</p>
-                                <h2 className="font-serif text-3xl text-slate-900 leading-tight">
-                                    {toSentenceCase(activeFabric?.name || 'Tela')}
-                                </h2>
-                             </div>
-                             
-                             <div>
-                                <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-1">Color</p>
-                                <p className="text-xl font-serif italic text-slate-600">
-                                    {toSentenceCase(selectedColorName)}
-                                </p>
-                             </div>
-
-                             {selectedWoodId && (
-                                 <div className="mt-4 pt-4 border-t border-black/5">
-                                    <p className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] mb-1">Acabado Madera</p>
-                                    <p className="text-lg font-serif italic text-slate-600">
-                                        {fabrics.find(f => f.id === selectedWoodId)?.name}
-                                    </p>
-                                 </div>
-                             )}
-                        </div>
-                    </div>
-
-                    <div className="w-full space-y-3 mt-8 pt-8 border-t border-black/10">
-                        <button 
-                            onClick={handleDownload}
-                            disabled={!resultImage}
-                            className="w-full bg-slate-900 text-white py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] shadow-lg hover:bg-black hover:scale-105 transition-all disabled:opacity-50"
-                        >
-                            Descargar Imagen
-                        </button>
-                        <button 
-                            onClick={() => setStep(2)}
-                            className="w-full bg-transparent text-slate-900 border border-slate-900/20 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] hover:bg-black/5 transition-colors"
-                        >
-                            Cambiar Textura
-                        </button>
-                    </div>
-                </div>
-            </>
           )}
 
            {!isEditMode && step === 1 && (

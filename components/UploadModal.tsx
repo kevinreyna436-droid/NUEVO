@@ -50,6 +50,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
   // --- RUG STATE (Single) ---
   const [rugName, setRugName] = useState('');
   const [rugSupplier, setRugSupplier] = useState('');
+  const [rugDimensions, setRugDimensions] = useState(''); // New: Dimensions
   const [rugImage, setRugImage] = useState<string | null>(null);
   const rugInputRef = useRef<HTMLInputElement>(null);
 
@@ -235,6 +236,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
               supplier: rugSupplier ? rugSupplier.toUpperCase() : 'GENÉRICO',
               technicalSummary: 'Alfombra / Tapete decorativo',
               specs: { composition: 'Fibras Varias', martindale: '', usage: 'Piso' },
+              dimensions: rugDimensions || '', // Save dimensions
               colors: [toSentenceCase(rugName)],
               colorImages: {}, 
               mainImage: rugImage,
@@ -245,6 +247,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
           await onSave(newRug); 
           setRugName('');
           setRugSupplier('');
+          setRugDimensions('');
           setRugImage(null);
           alert("Tapete guardado correctamente.");
       } catch (e: any) {
@@ -607,6 +610,19 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                     placeholder="Ej: Persa Azul Vintage"
                                 />
                              </div>
+
+                             {/* NUEVO CAMPO: DIMENSIONES MANUALES */}
+                             <div>
+                                <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Medidas (Ancho x Largo)</label>
+                                <input 
+                                    value={rugDimensions}
+                                    onChange={(e) => setRugDimensions(e.target.value)}
+                                    className="w-full p-4 rounded-xl border border-gray-200 focus:ring-1 focus:ring-black outline-none"
+                                    placeholder="Ej: 200x300 cm, 1.60x2.30 mts, 8x10 pies..."
+                                />
+                                <p className="text-[9px] text-gray-400 mt-1 pl-1">Escribe libremente. La IA entenderá la proporción.</p>
+                             </div>
+
                              <div>
                                 <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Proveedor</label>
                                 <input 
