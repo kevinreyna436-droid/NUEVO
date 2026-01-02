@@ -165,7 +165,7 @@ export const extractColorFromSwatch = async (base64Data: string): Promise<{ colo
 
 /**
  * Visualizador Pro: Aplica la tela al mueble (Gemini 3 Pro Image).
- * PROMPT REFORZADO CON GEOMETRY LOCK
+ * PROMPT REFORZADO: BLOQUEO DE GEOMETRÍA Y ESCALA REDUCIDA
  */
 export const visualizeUpholstery = async (
     furnitureBase64: string, 
@@ -175,28 +175,36 @@ export const visualizeUpholstery = async (
   return retryWithBackoff(async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // --- GEOMETRY LOCK PROMPT ---
+    // Prompt optimizado con tus requerimientos específicos
     let promptText = `
-      Role: Professional Digital Retoucher / Texture Mapping Specialist.
-      Task: Apply the provided fabric texture to the furniture in the source image.
+      Role: Expert 3D Rendering & Texture Mapping Engine.
       
       INPUTS:
-      1. Source Image: Furniture scene (Reference Geometry).
-      2. Texture Image: Fabric swatch.
-      ${woodBase64 ? '3. Finish Image: Wood texture.' : ''}
-      
-      CRITICAL RULES (GEOMETRY LOCK):
-      1. **ABSOLUTE POSITIONING**: The furniture MUST remain in the exact same pixel coordinates. Do not move, rotate, zoom, or shift the camera angle.
-      2. **BACKGROUND PRESERVATION**: The floor, walls, shadows, and surrounding objects must remain 100% identical to Input 1.
-      3. **VOLUME & LIGHTING**: You must strictly preserve the original folds, wrinkles, ambient occlusion, and lighting highlights of Input 1.
-      
-      EXECUTION:
-      - Replace the existing upholstery material with Input 2.
-      - Scale the texture down (60-80%) to simulate realistic thread count.
-      - Blend mode: Use "Multiply" logic to keep original shadows visible.
-      ${woodBase64 ? '- Apply Input 3 to rigid parts (legs/arms) maintaining original specular highlights.' : ''}
-      
-      Output only the high-quality composite image.
+      - Image 1 (BASE): Furniture photography (Master Geometry).
+      - Image 2 (TEXTURE): Fabric swatch (Close-up).
+      ${woodBase64 ? '- Image 3: Wood swatch.' : ''}
+
+      OBJECTIVE: Photo-realistically replace the upholstery of the furniture in Image 1 with the texture from Image 2.
+
+      CRITICAL RULES (STRICT):
+      1. **GEOMETRY FREEZE (LOCK) - KEEP ORIGINAL COMPOSITION**: 
+         - The output MUST be pixel-perfectly aligned with Image 1. 
+         - Do NOT change the camera angle, zoom, or perspective.
+         - Do NOT change the background. 
+         - Do NOT change the furniture shape or position. 
+         - The object in the output MUST match the input object's silhouette exactly.
+
+      2. **TEXTURE SCALE REDUCTION (60% SMALLER / HIGH TILING)**: 
+         - The fabric in Image 2 is a macro/close-up shot. 
+         - You MUST scale down the texture significantly by tiling it.
+         - INCREASE TILING DENSITY. The pattern should repeat multiple times across the furniture surface.
+         - The pattern/weave size on the furniture must be 60% smaller than a direct projection.
+         - Repeat the pattern to ensure high frequency and realistic fabric grain.
+         - Do NOT stretch the texture.
+
+      3. **PHYSICS & LIGHTING**: 
+         - Wrap the texture around the cushions and curves naturally.
+         - Preserve all original wrinkles, shadows, and highlights (Ambient Occlusion) from Image 1.
     `;
 
     const parts: { inlineData?: { mimeType: string; data: string }; text?: string }[] = [
@@ -212,7 +220,13 @@ export const visualizeUpholstery = async (
 
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-image-preview",
-      contents: { parts: parts }
+      contents: { parts: parts },
+      config: {
+          imageConfig: {
+              imageSize: "1K",
+              aspectRatio: "1:1"
+          }
+      }
     });
 
     for (const candidate of response.candidates || []) {

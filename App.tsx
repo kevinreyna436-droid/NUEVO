@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import FabricCard from './components/FabricCard';
 import FabricDetail from './components/FabricDetail';
@@ -73,7 +74,7 @@ function App() {
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
   const [isSupplierMenuOpen, setSupplierMenuOpen] = useState(false);
   const [selectedFurnitureToEdit, setSelectedFurnitureToEdit] = useState<FurnitureTemplate | null>(null);
-  const [visualizerPreSelection, setVisualizerPreSelection] = useState<{model: string, color: string} | null>(null);
+  const [visualizerPreSelection, setVisualizerPreSelection] = useState<{model: string, color: string, category?: string} | null>(null);
   const [colorLightbox, setColorLightbox] = useState<{ isOpen: boolean; image: string; fabricId: string; colorName: string; } | null>(null);
   const [visibleItemsCount, setVisibleItemsCount] = useState(24);
 
@@ -135,9 +136,9 @@ function App() {
   };
   const handleGoToDetail = (fabric: Fabric) => { setSelectedFabricId(fabric.id); setView('detail'); };
   const handleQuickView = (img: string, fabric: Fabric, colorName?: string) => { setColorLightbox({ isOpen: true, image: img, fabricId: fabric.id, colorName: colorName || 'Vista Rápida' }); };
-  const handleVisualizeAction = (fabric: Fabric, color?: string) => {
+  const handleVisualizeAction = (fabric: Fabric, color?: string, targetCategory?: string) => {
       const colorName = color || (fabric.colors?.[0] || '');
-      setVisualizerPreSelection({ model: fabric.name, color: colorName });
+      setVisualizerPreSelection({ model: fabric.name, color: colorName, category: targetCategory });
       setActiveTab('visualizer');
       setView('grid');
   };

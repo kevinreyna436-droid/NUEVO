@@ -165,14 +165,21 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                 if (extractedData) {
                     setFormData(prev => ({
                         ...prev,
-                        name: extractedData.name ? toSentenceCase(extractedData.name) : prev.name,
-                        supplier: extractedData.supplier ? extractedData.supplier.toUpperCase() : prev.supplier,
-                        technicalSummary: extractedData.technicalSummary || prev.technicalSummary,
+                        // PRESERVATION LOGIC: Only overwrite if existing field is empty/short
+                        name: (prev.name && prev.name.length > 2) ? prev.name : (extractedData.name ? toSentenceCase(extractedData.name) : prev.name),
+                        
+                        supplier: (prev.supplier && prev.supplier.length > 2) ? prev.supplier : (extractedData.supplier ? extractedData.supplier.toUpperCase() : prev.supplier),
+                        
+                        // "Que no se borre el resumen del pdf y que se conserve todo a menos que yo lo borre"
+                        technicalSummary: (prev.technicalSummary && prev.technicalSummary.length > 5) 
+                            ? prev.technicalSummary 
+                            : (extractedData.technicalSummary || prev.technicalSummary),
+                        
                         specs: {
-                            composition: extractedData.specs?.composition || prev.specs.composition,
-                            weight: extractedData.specs?.weight || prev.specs.weight,
-                            martindale: extractedData.specs?.martindale || prev.specs.martindale,
-                            usage: extractedData.specs?.usage || prev.specs.usage
+                            composition: (prev.specs.composition && prev.specs.composition.length > 2) ? prev.specs.composition : (extractedData.specs?.composition || prev.specs.composition),
+                            weight: (prev.specs.weight && prev.specs.weight.length > 1) ? prev.specs.weight : (extractedData.specs?.weight || prev.specs.weight),
+                            martindale: (prev.specs.martindale && prev.specs.martindale.length > 2) ? prev.specs.martindale : (extractedData.specs?.martindale || prev.specs.martindale),
+                            usage: (prev.specs.usage && prev.specs.usage.length > 2) ? prev.specs.usage : (extractedData.specs?.usage || prev.specs.usage)
                         }
                     }));
                 }
@@ -373,7 +380,7 @@ const EditFabricModal: React.FC<EditFabricModalProps> = ({ fabric, onClose, onSa
                           </div>
                       </div>
                       <p className="text-[9px] text-gray-400 mt-1 italic leading-tight">
-                         💡 Al subir un PDF, la IA intentará completar los datos faltantes automáticamente.
+                         💡 Al subir un PDF, se conservan los datos ya escritos (Resumen, etc.) si ya existen.
                       </p>
                   </div>
               </div>

@@ -12,7 +12,7 @@ interface FabricDetailProps {
   onBack: () => void;
   onEdit: (updatedFabric: Fabric) => void;
   onDelete: (id: string) => void;
-  onVisualize: (fabric: Fabric, color: string) => void;
+  onVisualize: (fabric: Fabric, color: string, targetCategory?: string) => void;
 }
 
 const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onDelete, onVisualize }) => {
@@ -297,9 +297,10 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
                   className="w-full h-full object-contain"
                />
 
-               {/* PREMIUM ACTION BUTTON - HIDDEN FOR RUGS */}
+               {/* PREMIUM ACTION BUTTONS - HIDDEN FOR RUGS */}
                {fabric.category !== 'rug' && (
-                   <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-[120]">
+                   <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-[120] flex gap-4 w-full justify-center px-4 flex-wrap">
+                        {/* BOTÓN UTILIZAR (PRINCIPAL) */}
                         <button 
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -308,7 +309,7 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
                                     onVisualize(fabric, color);
                                 }
                             }}
-                            className="bg-white text-black px-10 py-4 rounded-full font-serif font-bold text-sm uppercase tracking-[0.25em] shadow-[0_10px_30px_rgba(0,0,0,0.3)] hover:bg-black hover:text-white transition-all duration-500 border border-gray-100 hover:scale-105"
+                            className="bg-white text-black px-8 py-4 rounded-full font-serif font-bold text-xs uppercase tracking-[0.2em] shadow-[0_10px_30px_rgba(0,0,0,0.3)] hover:bg-black hover:text-white transition-all duration-500 border border-gray-100 hover:scale-105 min-w-[140px]"
                         >
                             Utilizar
                         </button>
@@ -459,7 +460,10 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
 
         {/* 2. Muestrario Interactivo (Circular Grid) */}
         <div className="w-full">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-[0.25em] mb-16">Variantes de Color</h3>
+            {/* Conditionally hide title for Rugs */}
+            {fabric.category !== 'rug' && (
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-[0.25em] mb-16">Variantes de Color</h3>
+            )}
             
             <div className="flex flex-wrap justify-center gap-20 gap-y-32">
               {sortedColors.map((color, idx) => {

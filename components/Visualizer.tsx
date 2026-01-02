@@ -7,7 +7,7 @@ import PinModal from './PinModal';
 interface VisualizerProps {
   fabrics: Fabric[];
   templates: FurnitureTemplate[];
-  initialSelection?: { model: string; color: string } | null;
+  initialSelection?: { model: string; color: string; category?: string } | null;
   onEditFurniture?: (template: FurnitureTemplate) => void;
 }
 
@@ -50,10 +50,22 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         if (foundFabric) {
             setSelectedFabricId(foundFabric.id);
             setSelectedColorName(initialSelection.color);
-            setStep(1); // Mantenemos el paso 1 para que elija mueble primero, o 2 si prefieres saltar
+            
+            // Logic to pre-select furniture based on category (e.g., 'rug')
+            if (initialSelection.category) {
+                 const targetTemplate = templates.find(t => t.category === initialSelection.category);
+                 if (targetTemplate) {
+                     setSelectedFurniture(targetTemplate);
+                     setStep(2); // Skip furniture selection if category is enforced
+                 } else {
+                     setStep(1);
+                 }
+            } else {
+                setStep(1); 
+            }
         }
     }
-  }, [initialSelection, fabrics]);
+  }, [initialSelection, fabrics, templates]);
 
   // PROGRESS BAR SIMULATION LOGIC
   useEffect(() => {
@@ -61,7 +73,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       
       if (isGenerating) {
           setProgress(0);
-          setProgressMessage('Iniciando motor de renderizado...');
+          setProgressMessage('Conectando con Gemini 3 Pro...');
           
           interval = setInterval(() => {
               setProgress((prev) => {
@@ -73,10 +85,10 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                   
                   const next = Math.min(prev + increment, 98);
 
-                  if (next < 30) setProgressMessage('Analizando geometría 3D...');
-                  else if (next < 60) setProgressMessage('Aplicando textura y escala...');
-                  else if (next < 85) setProgressMessage('Proyectando luces y sombras...');
-                  else setProgressMessage('Finalizando detalles de alta resolución...');
+                  if (next < 30) setProgressMessage('Analizando geometría 3D del mueble...');
+                  else if (next < 60) setProgressMessage('Calculando física de la tela y arrugas...');
+                  else if (next < 85) setProgressMessage('Ajustando iluminación y sombras...');
+                  else setProgressMessage('Renderizado final de alta resolución...');
 
                   return next;
               });
@@ -102,7 +114,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
     // @ts-ignore
     await window.aistudio.openSelectKey();
     setHasKey(true);
-    if (errorMessage && (errorMessage.includes("saturado") || errorMessage.includes("cuota"))) {
+    // Limpiar errores si se selecciona la llave exitosamente
+    if (errorMessage && (errorMessage.includes("saturado") || errorMessage.includes("cuota") || errorMessage.includes("Key"))) {
         setErrorMessage(null);
     }
   };
@@ -176,14 +189,26 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (furnitureOverride?: FurnitureTemplate) => {
+      // REMOVIDO: Chequeo estricto de Key. Se confía en el error handler.
+
+      const targetFurniture = furnitureOverride || selectedFurniture;
+      if (!targetFurniture) return;
+
+      if (furnitureOverride) {
+          setSelectedFurniture(furnitureOverride);
+          if (furnitureOverride.category === 'rug') {
+            setSelectedWoodId('');
+          }
+      }
+
       setErrorMessage(null);
       setIsGenerating(true);
       setResultImage(null);
       setStep(3);
 
       try {
-          const furnitureB64 = await ensureBase64(selectedFurniture!.imageUrl);
+          const furnitureB64 = await ensureBase64(targetFurniture.imageUrl);
           
           // Buscar Tela
           const fabric = fabrics.find(f => f.id === selectedFabricId);
@@ -196,18 +221,19 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
           // Buscar Madera (Opcional)
           let woodB64: string | undefined = undefined;
-          if (selectedWoodId) {
+          if (selectedWoodId && targetFurniture.category !== 'rug') {
              const wood = fabrics.find(f => f.id === selectedWoodId);
              if (wood && wood.mainImage) {
                  woodB64 = await ensureBase64(wood.mainImage);
              }
           }
 
+          // Iniciar generación con nueva instancia de AI (tomando la key actualizada)
           const result = await visualizeUpholstery(furnitureB64, swatchB64, woodB64);
           
           if (result) {
               setProgress(100);
-              setProgressMessage('¡Listo!');
+              setProgressMessage('¡Renderizado Completo!');
               await new Promise(resolve => setTimeout(resolve, 600));
               setResultImage(result);
           }
@@ -217,14 +243,15 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
           const errorText = error?.message || JSON.stringify(error);
           
           const isOverloaded = errorText.includes('503') || errorText.includes('overloaded') || errorText.includes('UNAVAILABLE');
-          const isQuotaLimit = errorText.includes('429') || errorText.includes('exhausted') || errorText.includes('limit');
+          const isQuotaLimit = errorText.includes('429') || errorText.includes('exhausted') || errorText.includes('limit') || errorText.includes('RESOURCE_EXHAUSTED');
+          const isKeyError = errorText.includes('API key') || errorText.includes('unauthorized') || errorText.includes('403');
 
-          if (isQuotaLimit) {
-              setErrorMessage("Has alcanzado el límite de cuota gratuita de Google. Espera 30 segundos o activa tu propio motor privado para uso ilimitado.");
+          if (isQuotaLimit || isKeyError) {
+              setErrorMessage("⚠️ Límite de Cuota o Falta de Key: El modelo 'Gemini 3 Pro' requiere una cuenta facturable o una Key válida.");
           } else if (isOverloaded) {
-              setErrorMessage("El motor de IA está saturado por alta demanda global. Para prioridad inmediata, activa tu propio motor privado.");
+              setErrorMessage("⚠️ Motor Saturado: El servicio público está muy ocupado. Usa una Key Privada para prioridad.");
           } else {
-              setErrorMessage("Error procesando imagen para la IA: " + errorText);
+              setErrorMessage("Error técnico: " + errorText.substring(0, 100));
           }
       } finally {
           setIsGenerating(false);
@@ -308,7 +335,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
       )}
 
       <div className="text-center mb-6">
-        <h2 className="font-serif text-4xl md:text-5xl font-bold text-slate-900">Visualizador Pro</h2>
+        <h2 className="font-serif text-4xl md:text-5xl font-bold text-slate-900">Visualizador</h2>
         
         {isEditMode && (
              <div className="inline-block bg-red-500 text-white px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest mb-4 animate-pulse mt-4">
@@ -409,7 +436,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                 className="w-full py-4 px-6 bg-white/40 hover:bg-white/60 rounded-full text-sm font-bold uppercase tracking-widest text-slate-900 transition-all flex items-center justify-center gap-3 backdrop-blur-md shadow-sm hover:shadow-lg border border-white/50"
                             >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                                Cambiar Escenario
+                                Cambiar de sillón
                             </button>
                         </div>
 
@@ -538,10 +565,10 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
 
                             <button 
                                 disabled={!selectedColorName || !selectedSwatchUrl} 
-                                onClick={handleGenerate} 
-                                className="w-full bg-slate-900 text-white py-6 rounded-2xl font-bold uppercase tracking-[0.2em] text-sm shadow-xl disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] hover:shadow-2xl hover:bg-black transition-all mt-auto"
+                                onClick={() => handleGenerate()} 
+                                className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold uppercase tracking-[0.2em] text-xs shadow-lg disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] hover:shadow-xl hover:bg-black transition-all mt-auto"
                             >
-                                {!selectedSwatchUrl ? 'Esta tela no tiene foto' : 'Ver Resultado Pro'}
+                                {!selectedSwatchUrl ? 'Esta tela no tiene foto' : 'Ver resultados'}
                             </button>
                         </div>
                     </div>
@@ -587,18 +614,18 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                             </p>
                             
                             <div className="flex flex-col gap-3">
-                                {!hasKey && (
-                                    <button 
-                                        onClick={handleOpenKeyDialog}
-                                        className="bg-blue-600 text-white px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest hover:scale-105 transition-transform shadow-lg shadow-blue-900/50"
-                                    >
-                                        Activar Motor Privado
-                                    </button>
-                                )}
+                                {/* Siempre mostrar el botón para conectar llave si hubo error de quota o key */}
+                                <button 
+                                    onClick={handleOpenKeyDialog}
+                                    className="bg-blue-600 text-white px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest hover:scale-105 transition-transform shadow-lg shadow-blue-900/50 flex items-center justify-center gap-2"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+                                    Activar Motor Privado
+                                </button>
                                 
                                 <button 
-                                    onClick={handleGenerate} 
-                                    className="bg-slate-900 text-white px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-black transition-colors"
+                                    onClick={() => handleGenerate()} 
+                                    className="bg-slate-900 text-white px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-black transition-colors mt-2"
                                 >
                                     Intentar nuevamente
                                 </button>
