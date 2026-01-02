@@ -292,7 +292,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
         isOpen={showPinModal} 
         onClose={() => setShowPinModal(false)} 
         onSuccess={() => { setIsEditMode(true); setShowPinModal(false); }} 
-        requiredPin="2717"
+        requiredPin="1379"
       />
 
       {showOriginalTexture && (previewImage || selectedSwatchUrl) && (
@@ -346,7 +346,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ fabrics, templates, initialSele
                                         />
                                         <div className={`absolute bottom-0 left-0 right-0 backdrop-blur-md p-3 text-center border-t border-black/5 ${isEditMode ? 'bg-red-500/20' : 'bg-white/50'}`}>
                                             <h4 className="font-serif font-bold text-sm text-slate-900 line-clamp-1">{item.name}</h4>
-                                            <span className="text-[9px] bg-black text-white px-2 py-0.5 rounded-full absolute top-2 right-2 shadow-sm">{item.supplier || 'GENERIC'}</span>
+                                            
                                             {isEditMode && (
                                                 <p className="text-[9px] uppercase font-bold text-red-600">Editar</p>
                                             )}
