@@ -61,7 +61,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
   // --- FURNITURE STATE (MUEBLES) ---
   const [furnName, setFurnName] = useState('');
-  const [furnCategory, setFurnCategory] = useState('sofa');
+  const [furnCategory, setFurnCategory] = useState('');
   const [furnSupplier, setFurnSupplier] = useState('');
   const [furnImage, setFurnImage] = useState<string | null>(null);
   const furnInputRef = useRef<HTMLInputElement>(null);
@@ -322,7 +322,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
           
           await onSaveFurniture(template);
           setFurnName('');
-          setFurnCategory('sofa');
+          setFurnCategory('');
           setFurnSupplier('');
           setFurnImage(null);
           alert("Mueble guardado correctamente.");
@@ -712,17 +712,12 @@ const UploadModal: React.FC<UploadModalProps> = ({
                          </div>
                          <div>
                             <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Categoría</label>
-                            <select 
+                            <input 
                                 value={furnCategory}
                                 onChange={(e) => setFurnCategory(e.target.value)}
-                                className="w-full p-4 rounded-xl border border-gray-200 focus:ring-1 focus:ring-black outline-none bg-white"
-                            >
-                                <option value="sofa">Sofá</option>
-                                <option value="chair">Silla</option>
-                                <option value="armchair">Butaca</option>
-                                <option value="bed">Cama</option>
-                                {/* Removed 'rug' scene option from here */}
-                            </select>
+                                className="w-full p-4 rounded-xl border border-gray-200 focus:ring-1 focus:ring-black outline-none"
+                                placeholder="Ej: Sofá, Silla, Butaca..."
+                            />
                          </div>
                      </div>
                      <div>
