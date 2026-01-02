@@ -444,16 +444,18 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
             </p>
         </div>
 
-        {/* Trigger for Specs Modal */}
-        <div className="w-full max-w-3xl mb-16">
-            <button 
-                onClick={() => setShowSpecs(true)}
-                className="group flex items-center justify-center mx-auto space-x-2 text-sm font-medium text-gray-500 hover:text-black transition-colors px-6 py-3 rounded-full border border-gray-300 hover:border-black hover:bg-white"
-            >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                <span>Ficha técnica</span>
-            </button>
-        </div>
+        {/* Trigger for Specs Modal - HIDDEN FOR RUGS */}
+        {fabric.category !== 'rug' && (
+            <div className="w-full max-w-3xl mb-16">
+                <button 
+                    onClick={() => setShowSpecs(true)}
+                    className="group flex items-center justify-center mx-auto space-x-2 text-sm font-medium text-gray-500 hover:text-black transition-colors px-6 py-3 rounded-full border border-gray-300 hover:border-black hover:bg-white"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    <span>Ficha técnica</span>
+                </button>
+            </div>
+        )}
 
         {/* 2. Muestrario Interactivo (Circular Grid) */}
         <div className="w-full">
@@ -463,12 +465,14 @@ const FabricDetail: React.FC<FabricDetailProps> = ({ fabric, onBack, onEdit, onD
               {sortedColors.map((color, idx) => {
                 const colorImg = fabric.colorImages?.[color] || fabric.mainImage;
                 const showStockDot = isColorInStock(color);
+                const isRug = fabric.category === 'rug';
                 
                 return (
                   <div key={idx} className="flex flex-col items-center group w-64">
                     <div 
                       onClick={() => setLightboxIndex(idx)} 
-                      className="relative w-64 h-64 rounded-full border-[1px] border-gray-300 overflow-hidden cursor-pointer bg-white shadow-md transition-all duration-500 hover:shadow-2xl hover:scale-105"
+                      className={`relative border-[1px] border-gray-300 overflow-hidden cursor-pointer bg-white shadow-md transition-all duration-500 hover:shadow-2xl hover:scale-105 
+                        ${isRug ? 'w-64 aspect-[3/4] rounded-xl' : 'w-64 h-64 rounded-full'}`}
                     >
                        <img 
                          src={colorImg} 

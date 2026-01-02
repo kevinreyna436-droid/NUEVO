@@ -32,8 +32,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
   onReset,
   onSaveFurniture
 }) => {
-  // Tabs: 'fabric' | 'rug' | 'wood' | 'furniture'
-  const [activeTab, setActiveTab] = useState<'fabric' | 'rug' | 'wood' | 'furniture'>('fabric');
+  // Tabs: 'fabric' | 'rug' | 'wood' | 'furniture' | 'scene'
+  const [activeTab, setActiveTab] = useState<'fabric' | 'rug' | 'wood' | 'furniture' | 'scene'>('fabric');
   const [isSaving, setIsSaving] = useState(false);
   
   // MODE: Single vs Bulk
@@ -59,12 +59,17 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const [woodImage, setWoodImage] = useState<string | null>(null);
   const woodInputRef = useRef<HTMLInputElement>(null);
 
-  // --- FURNITURE STATE ---
+  // --- FURNITURE STATE (MUEBLES) ---
   const [furnName, setFurnName] = useState('');
   const [furnCategory, setFurnCategory] = useState('sofa');
   const [furnSupplier, setFurnSupplier] = useState('');
   const [furnImage, setFurnImage] = useState<string | null>(null);
   const furnInputRef = useRef<HTMLInputElement>(null);
+
+  // --- SCENE STATE (ESCENAS) ---
+  const [sceneName, setSceneName] = useState('');
+  const [sceneImage, setSceneImage] = useState<string | null>(null);
+  const sceneInputRef = useRef<HTMLInputElement>(null);
 
   // Reset states when tab changes
   useEffect(() => {
@@ -290,7 +295,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
       }
   };
 
-  // 4. FURNITURE
+  // 4. FURNITURE (MUEBLES)
   const handleFurnImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files?.[0]) {
           try {
@@ -323,6 +328,45 @@ const UploadModal: React.FC<UploadModalProps> = ({
           alert("Mueble guardado correctamente.");
       } catch (e: any) { 
           alert("Error al guardar el mueble: " + e.message);
+      } finally {
+          setIsSaving(false);
+      }
+  };
+
+  // 5. SCENE (ESCENAS)
+  const handleSceneImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files?.[0]) {
+          try {
+              const base64 = await compressImage(e.target.files[0], 2048, 0.9);
+              setSceneImage(base64);
+              if (!sceneName) {
+                  setSceneName(toSentenceCase(e.target.files[0].name));
+              }
+          } catch(err) {
+              alert("Error al procesar imagen de la escena");
+          }
+      }
+  };
+
+  const handleSaveScene = async () => {
+      if (!sceneName || !sceneImage || !onSaveFurniture) return;
+      setIsSaving(true);
+      try {
+          const template: FurnitureTemplate = {
+              id: `scene-${Date.now()}`,
+              name: toSentenceCase(sceneName),
+              category: 'rug', // Se clasifica como 'rug' para aparecer en la sección de tapetes/escenas
+              imageUrl: sceneImage,
+              supplier: 'ESCENA',
+              catalog: 'Carga Manual'
+          };
+          
+          await onSaveFurniture(template);
+          setSceneName('');
+          setSceneImage(null);
+          alert("Escena guardada correctamente.");
+      } catch (e: any) { 
+          alert("Error al guardar la escena: " + e.message);
       } finally {
           setIsSaving(false);
       }
@@ -419,36 +463,42 @@ const UploadModal: React.FC<UploadModalProps> = ({
           <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
              <div>
                  <h2 className="font-serif text-2xl font-bold text-slate-900">Centro de Carga</h2>
-                 <p className="text-xs text-gray-400 mt-1">Sube telas, tapetes, maderas o escenas.</p>
+                 <p className="text-xs text-gray-400 mt-1">Sube telas, tapetes, maderas, muebles o escenas.</p>
              </div>
              <button onClick={onClose} className="text-gray-400 hover:text-black">
                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
              </button>
           </div>
 
-          {/* Tabs - 4 PESTAÑAS CLARAS */}
+          {/* Tabs - 5 PESTAÑAS */}
           <div className="flex border-b border-gray-100 overflow-x-auto">
              <button 
                 onClick={() => setActiveTab('fabric')}
-                className={`flex-1 py-4 px-2 text-xs font-bold uppercase tracking-widest min-w-[100px] ${activeTab === 'fabric' ? 'bg-white text-black border-b-2 border-black' : 'bg-gray-50 text-gray-400'}`}
+                className={`flex-1 py-4 px-2 text-xs font-bold uppercase tracking-widest min-w-[80px] ${activeTab === 'fabric' ? 'bg-white text-black border-b-2 border-black' : 'bg-gray-50 text-gray-400'}`}
              >
                 Telas
              </button>
              <button 
                 onClick={() => setActiveTab('rug')}
-                className={`flex-1 py-4 px-2 text-xs font-bold uppercase tracking-widest min-w-[100px] ${activeTab === 'rug' ? 'bg-white text-black border-b-2 border-black' : 'bg-gray-50 text-gray-400'}`}
+                className={`flex-1 py-4 px-2 text-xs font-bold uppercase tracking-widest min-w-[80px] ${activeTab === 'rug' ? 'bg-white text-black border-b-2 border-black' : 'bg-gray-50 text-gray-400'}`}
              >
                 Tapetes
              </button>
              <button 
                 onClick={() => setActiveTab('wood')}
-                className={`flex-1 py-4 px-2 text-xs font-bold uppercase tracking-widest min-w-[100px] ${activeTab === 'wood' ? 'bg-white text-black border-b-2 border-black' : 'bg-gray-50 text-gray-400'}`}
+                className={`flex-1 py-4 px-2 text-xs font-bold uppercase tracking-widest min-w-[80px] ${activeTab === 'wood' ? 'bg-white text-black border-b-2 border-black' : 'bg-gray-50 text-gray-400'}`}
              >
                 Maderas
              </button>
              <button 
                 onClick={() => setActiveTab('furniture')}
-                className={`flex-1 py-4 px-2 text-xs font-bold uppercase tracking-widest min-w-[100px] ${activeTab === 'furniture' ? 'bg-white text-black border-b-2 border-black' : 'bg-gray-50 text-gray-400'}`}
+                className={`flex-1 py-4 px-2 text-xs font-bold uppercase tracking-widest min-w-[80px] ${activeTab === 'furniture' ? 'bg-white text-black border-b-2 border-black' : 'bg-gray-50 text-gray-400'}`}
+             >
+                Muebles
+             </button>
+             <button 
+                onClick={() => setActiveTab('scene')}
+                className={`flex-1 py-4 px-2 text-xs font-bold uppercase tracking-widest min-w-[80px] ${activeTab === 'scene' ? 'bg-white text-black border-b-2 border-black' : 'bg-gray-50 text-gray-400'}`}
              >
                 Escenas
              </button>
@@ -579,7 +629,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                  </div>
              )}
 
-             {/* 3. TAB: WOODS (Sin Bulk por ahora, suele ser menos volumen) */}
+             {/* 3. TAB: WOODS */}
              {activeTab === 'wood' && (
                  <div className="max-w-lg mx-auto space-y-6 pt-8 px-8">
                      <div 
@@ -626,9 +676,15 @@ const UploadModal: React.FC<UploadModalProps> = ({
                  </div>
              )}
 
-             {/* 4. TAB: FURNITURE / SCENES */}
+             {/* 4. TAB: FURNITURE (MUEBLES) - Solo para sofás, sillas, etc. */}
              {activeTab === 'furniture' && (
                  <div className="max-w-lg mx-auto space-y-6 pt-8 px-8">
+                     <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
+                         <p className="text-[10px] text-blue-800 font-bold uppercase tracking-wide">
+                             Muebles: Sube un recorte (PNG/JPG con fondo blanco) del sofá o silla.
+                         </p>
+                     </div>
+
                      <div 
                         onClick={() => furnInputRef.current?.click()}
                         className="w-full aspect-square bg-white rounded-2xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-black transition-colors relative overflow-hidden group"
@@ -638,7 +694,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         ) : (
                             <>
                                 <svg className="w-10 h-10 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                                <span className="text-xs font-bold text-gray-400 uppercase">Foto del Mueble/Escena</span>
+                                <span className="text-xs font-bold text-gray-400 uppercase">Foto del Mueble</span>
                             </>
                         )}
                         <input ref={furnInputRef} type="file" className="hidden" accept="image/*" onChange={handleFurnImageChange} />
@@ -665,7 +721,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                                 <option value="chair">Silla</option>
                                 <option value="armchair">Butaca</option>
                                 <option value="bed">Cama</option>
-                                <option value="rug">Escena Habitación (Para Tapetes)</option>
+                                {/* Removed 'rug' scene option from here */}
                             </select>
                          </div>
                      </div>
@@ -682,6 +738,50 @@ const UploadModal: React.FC<UploadModalProps> = ({
                      <button 
                         onClick={handleSaveFurnitureInternal}
                         disabled={!furnName || !furnImage || isSaving}
+                        className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl disabled:opacity-50"
+                     >
+                        {isSaving ? 'Guardando...' : 'Guardar Mueble'}
+                     </button>
+                 </div>
+             )}
+
+             {/* 5. TAB: SCENE (ESCENAS) - Solo Nombre y Foto */}
+             {activeTab === 'scene' && (
+                 <div className="max-w-lg mx-auto space-y-6 pt-8 px-8">
+                     <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-4">
+                         <p className="text-[10px] text-purple-800 font-bold uppercase tracking-wide">
+                             Escenas: Sube una foto de una habitación vacía o ambiente para visualizar tapetes.
+                         </p>
+                     </div>
+
+                     <div 
+                        onClick={() => sceneInputRef.current?.click()}
+                        className="w-full aspect-video bg-white rounded-2xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-black transition-colors relative overflow-hidden group"
+                     >
+                        {sceneImage ? (
+                            <img src={sceneImage} className="w-full h-full object-cover" />
+                        ) : (
+                            <>
+                                <svg className="w-10 h-10 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                <span className="text-xs font-bold text-gray-400 uppercase">Foto del Lugar</span>
+                            </>
+                        )}
+                        <input ref={sceneInputRef} type="file" className="hidden" accept="image/*" onChange={handleSceneImageChange} />
+                     </div>
+                     
+                     <div>
+                        <label className="block text-xs font-bold uppercase text-gray-400 mb-2">Nombre de la Escena</label>
+                        <input 
+                            value={sceneName}
+                            onChange={(e) => setSceneName(e.target.value)}
+                            className="w-full p-4 rounded-xl border border-gray-200 focus:ring-1 focus:ring-black outline-none"
+                            placeholder="Ej: Sala Principal Vacía"
+                        />
+                     </div>
+                     
+                     <button 
+                        onClick={handleSaveScene}
+                        disabled={!sceneName || !sceneImage || isSaving}
                         className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl disabled:opacity-50"
                      >
                         {isSaving ? 'Guardando...' : 'Guardar Escena'}
