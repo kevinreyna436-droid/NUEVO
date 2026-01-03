@@ -25,13 +25,14 @@ interface BulkItem {
     pdf?: string; // Base64 of the PDF
     specsImage?: string; // Base64 of Specs Image
     originalFile?: File;
+    technicalSummary?: string; // New field for dimensions or summary
 }
 
 const UploadModal: React.FC<UploadModalProps> = ({ 
   isOpen, 
   onClose, 
   onSave, 
-  onBulkSave,
+  onBulkSave, 
   onReset,
   existingFabrics,
   onSaveFurniture
@@ -63,7 +64,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const [fabImage, setFabImage] = useState<string | null>(null);
   const fabInputRef = useRef<HTMLInputElement>(null);
 
-  // ... (Other single states remain similar, simplified for brevity in this complex update)
   // --- RUG STATE ---
   const [rugName, setRugName] = useState('');
   const [rugSupplier, setRugSupplier] = useState('');
@@ -122,7 +122,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
                      catalog: '',
                      image: base64,
                      colors: [{ name: name, image: base64 }],
-                     originalFile: file
+                     originalFile: file,
+                     technicalSummary: ''
                  });
              } catch (err) { console.error(err); }
           }
@@ -204,7 +205,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
                       image: processedColors[0].image,
                       colors: processedColors,
                       pdf: pdfBase64,
-                      specsImage: specsImgBase64
+                      specsImage: specsImgBase64,
+                      technicalSummary: ''
                   });
 
               } catch (err) { console.error(err); }
@@ -280,7 +282,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                   id: `${category}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
                   name: toSentenceCase(item.name),
                   supplier: item.supplier ? item.supplier.toUpperCase() : 'GENÉRICO',
-                  technicalSummary: activeTab === 'rug' ? 'Alfombra decorativa' : 'Tejido para tapicería',
+                  technicalSummary: item.technicalSummary || (activeTab === 'rug' ? 'Alfombra decorativa' : 'Tejido para tapicería'),
                   specs: { composition: '', martindale: '', usage: '' },
                   colors: item.colors.map(c => c.name), 
                   colorImages: colorMap,
@@ -302,159 +304,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
           setIsSaving(false);
       }
   };
-
-  // --- UI COMPONENTS ---
-  const BulkUploadView = () => (
-      <div className="flex flex-col h-full bg-gray-50">
-          {isProcessing ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-8">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
-                  <h3 className="font-serif text-xl font-bold">Procesando Archivos...</h3>
-              </div>
-          ) : bulkItems.length === 0 ? (
-              <div className="flex-1 flex flex-col md:flex-row gap-4 p-6 items-center justify-center">
-                  <div onClick={() => folderInputRef.current?.click()} className="flex-1 w-full h-64 border-2 border-dashed border-blue-300 bg-blue-50/30 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 transition-all">
-                      <svg className="w-16 h-16 text-blue-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
-                      <h3 className="text-lg font-bold text-blue-900 uppercase tracking-widest text-center">Subir Carpetas</h3>
-                      <p className="text-[10px] text-blue-700 mt-2 text-center px-4">Detecta subcarpetas como Modelos y archivos como Colores/PDF.</p>
-                  </div>
-                  <div onClick={() => bulkInputRef.current?.click()} className="flex-1 w-full h-64 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-all">
-                      <svg className="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                      <h3 className="text-lg font-bold text-gray-400 uppercase tracking-widest text-center">Archivos Sueltos</h3>
-                  </div>
-              </div>
-          ) : (
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  <div className="flex justify-between items-center px-2">
-                      <span className="text-xs font-bold uppercase text-gray-400">{bulkItems.length} Elementos</span>
-                      <div className="flex gap-4">
-                          <button onClick={() => setBulkItems([])} className="text-red-400 text-xs font-bold hover:underline">Limpiar Todo</button>
-                          <button onClick={() => folderInputRef.current?.click()} className="text-blue-600 text-xs font-bold hover:underline">+ Agregar Más</button>
-                      </div>
-                  </div>
-                  
-                  {bulkItems.map((item) => {
-                      const isRepetida = isDuplicate(item.name);
-                      const isExpanded = expandedItemId === item.tempId;
-
-                      return (
-                          <div key={item.tempId} className={`bg-white rounded-xl border transition-all duration-300 overflow-hidden ${isRepetida ? 'border-red-300 shadow-red-100 shadow-md' : 'border-gray-100 shadow-sm'}`}>
-                              {/* HEADER COMPACTO */}
-                              <div className="flex gap-4 p-4 items-start relative">
-                                  <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 cursor-pointer" onClick={() => setExpandedItemId(isExpanded ? null : item.tempId)}>
-                                      <img src={item.image} className="w-full h-full object-cover" />
-                                      {item.colors.length > 1 && <div className="absolute bottom-0 left-0 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded-tr-lg font-bold">+{item.colors.length}</div>}
-                                  </div>
-                                  
-                                  <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
-                                      <div className="relative">
-                                          {isRepetida && <span className="absolute -top-3 right-0 text-[9px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full animate-pulse shadow-sm">REPETIDA</span>}
-                                          <input value={item.name} onChange={(e) => updateBulkItem(item.tempId, 'name', e.target.value)} className={`w-full text-sm font-bold border-b pb-1 outline-none ${isRepetida ? 'text-red-600 border-red-200' : 'text-slate-900 border-gray-200 focus:border-black'}`} placeholder="Nombre Modelo" />
-                                      </div>
-                                      <input value={item.supplier} onChange={(e) => updateBulkItem(item.tempId, 'supplier', e.target.value)} className="w-full text-xs uppercase text-gray-500 border-b border-gray-200 pb-1 outline-none focus:border-black" placeholder="PROVEEDOR" />
-                                      <input value={item.catalog} onChange={(e) => updateBulkItem(item.tempId, 'catalog', e.target.value)} className="w-full text-xs uppercase text-blue-500 border-b border-gray-200 pb-1 outline-none focus:border-blue-500" placeholder="COLECCIÓN" />
-                                  </div>
-
-                                  <div className="flex flex-col gap-2 ml-2">
-                                      <button onClick={() => updateBulkItem(item.tempId, 'name', '')} title="Eliminar" className="text-gray-300 hover:text-red-500"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
-                                      <button onClick={() => setExpandedItemId(isExpanded ? null : item.tempId)} className={`text-gray-400 hover:text-black transition-transform ${isExpanded ? 'rotate-180' : ''}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg></button>
-                                  </div>
-                              </div>
-
-                              {/* BODY EXPANDIDO (COLORES Y FICHA) */}
-                              {isExpanded && (
-                                  <div className="px-4 pb-4 pt-0 bg-gray-50 border-t border-gray-100 flex flex-col gap-4 animate-fade-in">
-                                      
-                                      {/* SECCIÓN COLORES */}
-                                      <div className="pt-4">
-                                          <p className="text-[10px] font-bold uppercase text-gray-400 mb-2">Gestionar Colores ({item.colors.length})</p>
-                                          <div className="flex flex-wrap gap-3">
-                                              {item.colors.map((col, idx) => (
-                                                  <div key={idx} className="relative group w-16 h-16 rounded-lg overflow-hidden shadow-sm border border-gray-200">
-                                                      <img src={col.image} className="w-full h-full object-cover" title={col.name} />
-                                                      <button onClick={() => handleRemoveColor(item.tempId, idx)} className="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
-                                                  </div>
-                                              ))}
-                                              <button 
-                                                  onClick={() => { setActiveItemForAdd(item.tempId); addColorInputRef.current?.click(); }}
-                                                  className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-black hover:text-black transition-colors"
-                                              >
-                                                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                                              </button>
-                                          </div>
-                                      </div>
-
-                                      {/* SECCIÓN FICHA TÉCNICA */}
-                                      <div className="border-t border-gray-200 pt-3 flex items-center justify-between">
-                                          <div>
-                                              <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Ficha Técnica</p>
-                                              <div className="flex items-center gap-2">
-                                                  {item.pdf ? (
-                                                      <span className="text-xs font-bold text-red-600 flex items-center gap-1"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" /></svg> PDF Cargado</span>
-                                                  ) : item.specsImage ? (
-                                                      <span className="text-xs font-bold text-blue-600 flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> Imagen Cargada</span>
-                                                  ) : (
-                                                      <span className="text-xs text-gray-400 italic">No asignada</span>
-                                                  )}
-                                                  {(item.pdf || item.specsImage) && (
-                                                      <button 
-                                                          onClick={() => {
-                                                              updateBulkItem(item.tempId, 'pdf', undefined);
-                                                              updateBulkItem(item.tempId, 'specsImage', undefined);
-                                                          }} 
-                                                          className="text-[10px] text-gray-400 hover:text-red-500 underline ml-2"
-                                                      >
-                                                          Quitar
-                                                      </button>
-                                                  )}
-                                              </div>
-                                          </div>
-                                          <div className="flex gap-2">
-                                              <button onClick={() => { setActiveItemForAdd(item.tempId); addSpecsPdfInputRef.current?.click(); }} className="px-3 py-1.5 rounded-full border border-gray-200 text-[10px] font-bold uppercase hover:bg-black hover:text-white transition-colors">Subir PDF</button>
-                                              <button onClick={() => { setActiveItemForAdd(item.tempId); addSpecsImgInputRef.current?.click(); }} className="px-3 py-1.5 rounded-full border border-gray-200 text-[10px] font-bold uppercase hover:bg-black hover:text-white transition-colors">Subir Foto</button>
-                                          </div>
-                                      </div>
-                                  </div>
-                              )}
-                          </div>
-                      );
-                  })}
-              </div>
-          )}
-          
-          {/* Hidden Inputs */}
-          <input ref={bulkInputRef} type="file" multiple accept="image/*" className="hidden" onChange={handleBulkFilesSelect} />
-          {/* @ts-ignore */}
-          <input ref={folderInputRef} type="file" className="hidden" webkitdirectory="" directory="" multiple onChange={handleFolderSelect} />
-          
-          <input ref={addColorInputRef} type="file" accept="image/*" className="hidden" onChange={handleAddColor} />
-          <input ref={addSpecsImgInputRef} type="file" accept="image/*" className="hidden" onChange={handleAddSpecsImage} />
-          <input ref={addSpecsPdfInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleAddSpecsPdf} />
-          
-          <div className="p-4 border-t border-gray-100 bg-white shadow-lg z-10">
-              <button 
-                  onClick={saveAllBulkItems}
-                  disabled={bulkItems.length === 0 || isSaving}
-                  className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl disabled:opacity-50 hover:bg-gray-900 transition-colors"
-              >
-                  {isSaving ? `Subiendo ${bulkItems.length} Modelos...` : `Guardar Todo (${bulkItems.length})`}
-              </button>
-          </div>
-      </div>
-  );
-
-  // ... (Keep ModeToggle and Single Upload Forms as is, effectively restoring them from context if needed, but for simplicity we assume the rest of the component is preserved or I can output the full file content if you want to be safe)
-  
-  // Re-implementing the full return structure to ensure Single Upload works too
-  const ModeToggle = () => (
-      <div className="flex justify-center mb-6 px-8">
-          <div className="bg-gray-100 p-1 rounded-full flex w-full max-w-xs relative">
-              <div className={`absolute top-1 bottom-1 w-[48%] bg-white rounded-full shadow-sm transition-all duration-300 ${isBulkMode ? 'left-[50%]' : 'left-[2%]'}`}></div>
-              <button onClick={() => setIsBulkMode(false)} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest z-10 transition-colors ${!isBulkMode ? 'text-black' : 'text-gray-400'}`}>Individual</button>
-              <button onClick={() => setIsBulkMode(true)} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest z-10 transition-colors ${isBulkMode ? 'text-black' : 'text-gray-400'}`}>Masivo</button>
-          </div>
-      </div>
-  );
 
   // Single Upload Handlers (Recap from previous context)
   const handleFabImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -485,7 +334,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
           alert("Tela guardada correctamente.");
       } catch (e: any) { alert("Error: " + e.message); } finally { setIsSaving(false); }
   };
-  // (Assuming handleSaveRug, handleSaveWood, handleSaveFurniture, handleSaveScene exist identically to previous versions)
   // Re-implementing simplified versions for the full file output:
   const handleRugImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) { setRugImage(await compressImage(e.target.files[0])); if(!rugName) setRugName(toSentenceCase(e.target.files[0].name)); }};
   const handleSaveRug = async () => { if(!rugName || !rugImage) return; setIsSaving(true); await onSave({ id: `rug-${Date.now()}`, name: toSentenceCase(rugName), supplier: rugSupplier.toUpperCase() || 'GENÉRICO', technicalSummary: 'Tapete', specs: {composition:'', martindale:'', usage:''}, colors: [toSentenceCase(rugName)], mainImage: rugImage, category: 'rug', customCatalog: 'TAPETES' }); setIsSaving(false); setRugName(''); setRugImage(null); };
@@ -529,10 +377,167 @@ const UploadModal: React.FC<UploadModalProps> = ({
              {/* FABRICS & RUGS SUPPORT BULK MODE */}
              {(activeTab === 'fabric' || activeTab === 'rug') && (
                  <div className="h-full flex flex-col pt-6">
-                     <ModeToggle />
+                     
+                     {/* Mode Toggle (Inlined) */}
+                     <div className="flex justify-center mb-6 px-8">
+                        <div className="bg-gray-100 p-1 rounded-full flex w-full max-w-xs relative">
+                            <div className={`absolute top-1 bottom-1 w-[48%] bg-white rounded-full shadow-sm transition-all duration-300 ${isBulkMode ? 'left-[50%]' : 'left-[2%]'}`}></div>
+                            <button onClick={() => setIsBulkMode(false)} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest z-10 transition-colors ${!isBulkMode ? 'text-black' : 'text-gray-400'}`}>Individual</button>
+                            <button onClick={() => setIsBulkMode(true)} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest z-10 transition-colors ${isBulkMode ? 'text-black' : 'text-gray-400'}`}>Masivo</button>
+                        </div>
+                     </div>
                      
                      {isBulkMode ? (
-                         <BulkUploadView />
+                         // BULK UPLOAD VIEW (INLINED)
+                         <div className="flex flex-col h-full bg-gray-50">
+                            {isProcessing ? (
+                                <div className="flex-1 flex flex-col items-center justify-center p-8">
+                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
+                                    <h3 className="font-serif text-xl font-bold">Procesando Archivos...</h3>
+                                </div>
+                            ) : bulkItems.length === 0 ? (
+                                <div className="flex-1 flex flex-col md:flex-row gap-4 p-6 items-center justify-center">
+                                    <div onClick={() => folderInputRef.current?.click()} className="flex-1 w-full h-64 border-2 border-dashed border-blue-300 bg-blue-50/30 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 transition-all">
+                                        <svg className="w-16 h-16 text-blue-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                                        <h3 className="text-lg font-bold text-blue-900 uppercase tracking-widest text-center">Subir Carpetas</h3>
+                                        <p className="text-[10px] text-blue-700 mt-2 text-center px-4">Detecta subcarpetas como Modelos y archivos como Colores/PDF.</p>
+                                    </div>
+                                    <div onClick={() => bulkInputRef.current?.click()} className="flex-1 w-full h-64 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-all">
+                                        <svg className="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                        <h3 className="text-lg font-bold text-gray-400 uppercase tracking-widest text-center">Archivos Sueltos</h3>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                    <div className="flex justify-between items-center px-2">
+                                        <span className="text-xs font-bold uppercase text-gray-400">{bulkItems.length} Elementos</span>
+                                        <div className="flex gap-4">
+                                            <button onClick={() => setBulkItems([])} className="text-red-400 text-xs font-bold hover:underline">Limpiar Todo</button>
+                                            <button onClick={() => folderInputRef.current?.click()} className="text-blue-600 text-xs font-bold hover:underline">+ Agregar Más</button>
+                                        </div>
+                                    </div>
+                                    
+                                    {bulkItems.map((item) => {
+                                        const isRepetida = isDuplicate(item.name);
+                                        const isExpanded = expandedItemId === item.tempId;
+
+                                        return (
+                                            <div key={item.tempId} className={`bg-white rounded-xl border transition-all duration-300 overflow-hidden ${isRepetida ? 'border-red-300 shadow-red-100 shadow-md' : 'border-gray-100 shadow-sm'}`}>
+                                                {/* HEADER COMPACTO */}
+                                                <div className="flex gap-4 p-4 items-start relative">
+                                                    <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 cursor-pointer" onClick={() => setExpandedItemId(isExpanded ? null : item.tempId)}>
+                                                        <img src={item.image} className="w-full h-full object-cover" />
+                                                        {item.colors.length > 1 && <div className="absolute bottom-0 left-0 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded-tr-lg font-bold">+{item.colors.length}</div>}
+                                                    </div>
+                                                    
+                                                    <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                        <div className="relative">
+                                                            {isRepetida && <span className="absolute -top-3 right-0 text-[9px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full animate-pulse shadow-sm">REPETIDA</span>}
+                                                            <input value={item.name} onChange={(e) => updateBulkItem(item.tempId, 'name', e.target.value)} className={`w-full text-sm font-bold border-b pb-1 outline-none ${isRepetida ? 'text-red-600 border-red-200' : 'text-slate-900 border-gray-200 focus:border-black'}`} placeholder="Nombre Modelo" />
+                                                        </div>
+                                                        <input value={item.supplier} onChange={(e) => updateBulkItem(item.tempId, 'supplier', e.target.value)} className="w-full text-xs uppercase text-gray-500 border-b border-gray-200 pb-1 outline-none focus:border-black" placeholder="PROVEEDOR" />
+                                                        <input value={item.catalog} onChange={(e) => updateBulkItem(item.tempId, 'catalog', e.target.value)} className="w-full text-xs uppercase text-blue-500 border-b border-gray-200 pb-1 outline-none focus:border-blue-500" placeholder="COLECCIÓN" />
+                                                    </div>
+
+                                                    <div className="flex flex-col gap-2 ml-2">
+                                                        <button onClick={() => updateBulkItem(item.tempId, 'name', '')} title="Eliminar" className="text-gray-300 hover:text-red-500"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                                                        <button onClick={() => setExpandedItemId(isExpanded ? null : item.tempId)} className={`text-gray-400 hover:text-black transition-transform ${isExpanded ? 'rotate-180' : ''}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg></button>
+                                                    </div>
+                                                </div>
+
+                                                {/* BODY EXPANDIDO (COLORES Y FICHA) */}
+                                                {isExpanded && (
+                                                    <div className="px-4 pb-4 pt-0 bg-gray-50 border-t border-gray-100 flex flex-col gap-4 animate-fade-in">
+                                                        
+                                                        {/* SECCIÓN COLORES */}
+                                                        <div className="pt-4">
+                                                            <p className="text-[10px] font-bold uppercase text-gray-400 mb-2">Gestionar Colores ({item.colors.length})</p>
+                                                            <div className="flex flex-wrap gap-3">
+                                                                {item.colors.map((col, idx) => (
+                                                                    <div key={idx} className="relative group w-16 h-16 rounded-lg overflow-hidden shadow-sm border border-gray-200">
+                                                                        <img src={col.image} className="w-full h-full object-cover" title={col.name} />
+                                                                        <button onClick={() => handleRemoveColor(item.tempId, idx)} className="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                                                                    </div>
+                                                                ))}
+                                                                <button 
+                                                                    onClick={() => { setActiveItemForAdd(item.tempId); addColorInputRef.current?.click(); }}
+                                                                    className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-black hover:text-black transition-colors"
+                                                                >
+                                                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* SECCIÓN FICHA TÉCNICA O MEDIDAS (Rug vs Fabric) */}
+                                                        {activeTab === 'rug' ? (
+                                                            <div className="border-t border-gray-200 pt-3">
+                                                                <p className="text-[10px] font-bold uppercase text-gray-400 mb-2">Medidas Disponibles / Descripción</p>
+                                                                <input 
+                                                                    value={item.technicalSummary || ''} 
+                                                                    onChange={(e) => updateBulkItem(item.tempId, 'technicalSummary', e.target.value)} 
+                                                                    className="w-full text-xs text-slate-700 border border-gray-200 rounded-lg p-3 focus:border-black outline-none shadow-sm" 
+                                                                    placeholder="Ej: 1.60x2.30, 2.00x3.00, 2.50x3.50..." 
+                                                                />
+                                                                <p className="text-[9px] text-gray-400 mt-1 italic">Ingresa las medidas separadas por coma para el visualizador.</p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="border-t border-gray-200 pt-3 flex items-center justify-between">
+                                                                <div>
+                                                                    <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Ficha Técnica</p>
+                                                                    <div className="flex items-center gap-2">
+                                                                        {item.pdf ? (
+                                                                            <span className="text-xs font-bold text-red-600 flex items-center gap-1"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" /></svg> PDF Cargado</span>
+                                                                        ) : item.specsImage ? (
+                                                                            <span className="text-xs font-bold text-blue-600 flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> Imagen Cargada</span>
+                                                                        ) : (
+                                                                            <span className="text-xs text-gray-400 italic">No asignada</span>
+                                                                        )}
+                                                                        {(item.pdf || item.specsImage) && (
+                                                                            <button 
+                                                                                onClick={() => {
+                                                                                    updateBulkItem(item.tempId, 'pdf', undefined);
+                                                                                    updateBulkItem(item.tempId, 'specsImage', undefined);
+                                                                                }} 
+                                                                                className="text-[10px] text-gray-400 hover:text-red-500 underline ml-2"
+                                                                            >
+                                                                                Quitar
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex gap-2">
+                                                                    <button onClick={() => { setActiveItemForAdd(item.tempId); addSpecsPdfInputRef.current?.click(); }} className="px-3 py-1.5 rounded-full border border-gray-200 text-[10px] font-bold uppercase hover:bg-black hover:text-white transition-colors">Subir PDF</button>
+                                                                    <button onClick={() => { setActiveItemForAdd(item.tempId); addSpecsImgInputRef.current?.click(); }} className="px-3 py-1.5 rounded-full border border-gray-200 text-[10px] font-bold uppercase hover:bg-black hover:text-white transition-colors">Subir Foto</button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            
+                            {/* Hidden Inputs */}
+                            <input ref={bulkInputRef} type="file" multiple accept="image/*" className="hidden" onChange={handleBulkFilesSelect} />
+                            {/* @ts-ignore */}
+                            <input ref={folderInputRef} type="file" className="hidden" webkitdirectory="" directory="" multiple onChange={handleFolderSelect} />
+                            
+                            <input ref={addColorInputRef} type="file" accept="image/*" className="hidden" onChange={handleAddColor} />
+                            <input ref={addSpecsImgInputRef} type="file" accept="image/*" className="hidden" onChange={handleAddSpecsImage} />
+                            <input ref={addSpecsPdfInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleAddSpecsPdf} />
+                            
+                            <div className="p-4 border-t border-gray-100 bg-white shadow-lg z-10">
+                                <button 
+                                    onClick={saveAllBulkItems}
+                                    disabled={bulkItems.length === 0 || isSaving}
+                                    className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl disabled:opacity-50 hover:bg-gray-900 transition-colors"
+                                >
+                                    {isSaving ? `Subiendo ${bulkItems.length} Modelos...` : `Guardar Todo (${bulkItems.length})`}
+                                </button>
+                            </div>
+                         </div>
                      ) : (
                          <div className="max-w-lg mx-auto w-full space-y-6 px-8 pb-8">
                              {/* Single Upload Form (Simplified Logic Reuse) */}
